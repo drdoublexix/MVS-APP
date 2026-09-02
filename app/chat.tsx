@@ -102,6 +102,7 @@ export default function ChatScreen() {
     const routeKey = params.conversationId || '';
     if (!currentUserId || !routeRecipient || !params.conversationId || openedRoute.current === routeKey) return;
     openedRoute.current = routeKey;
+    let cancelled = false;
     const participantName = params.merchantName || params.vet || 'Merchant';
     const nextActive: Thread = {
       id: conversationIdFor(currentUserId, routeRecipient),
@@ -112,9 +113,11 @@ export default function ChatScreen() {
       messages: [],
     };
     queueMicrotask(() => {
+      if (cancelled) return;
       setActive(nextActive);
       setMessage(params.starterMessage || '');
     });
+    return () => { cancelled = true; };
   }, [currentUserId, params.conversationId, params.recipientId, params.merchantId, params.merchantName, params.receiver_id, params.vet_id, params.vet, params.productName, params.starterMessage]);
 
   useEffect(() => {
