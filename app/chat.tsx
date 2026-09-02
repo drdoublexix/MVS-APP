@@ -29,6 +29,8 @@ type Thread = {
   messages: RealtimeMessage[];
 };
 
+const firstParam = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+
 const conversationIdFor = (firstId: string, secondId: string) => {
   const ids = [firstId, secondId].sort();
   return `conv_${ids[0]}_${ids[1]}`;
@@ -37,12 +39,21 @@ const conversationIdFor = (firstId: string, secondId: string) => {
 export default function ChatScreen() {
   const params = useLocalSearchParams<ChatParams>();
   const router = useRouter();
+  const conversationIdParam = firstParam(params.conversationId);
+  const recipientIdParam = firstParam(params.recipientId);
+  const merchantIdParam = firstParam(params.merchantId);
+  const merchantNameParam = firstParam(params.merchantName);
+  const vetIdParam = firstParam(params.vet_id);
+  const receiverIdParam = firstParam(params.receiver_id);
+  const vetParam = firstParam(params.vet);
+  const productNameParam = firstParam(params.productName);
+  const starterMessageParam = firstParam(params.starterMessage);
   const [currentUserId, setCurrentUserId] = useState('');
   const [userRole, setUserRole] = useState('client');
   const [threads, setThreads] = useState<Thread[]>([]);
   const [active, setActive] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<RealtimeMessage[]>([]);
-  const [message, setMessage] = useState(params.starterMessage || '');
+  const [message, setMessage] = useState(starterMessageParam || '');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const openedRoute = useRef<string | null>(null);
@@ -98,27 +109,27 @@ export default function ChatScreen() {
   }, []);
 
   useEffect(() => {
-    const routeRecipient = normalizeUuid(params.recipientId || params.merchantId || params.vet_id || params.receiver_id);
-    const routeKey = params.conversationId || '';
-    if (!currentUserId || !routeRecipient || !params.conversationId || openedRoute.current === routeKey) return;
+    const routeRecipient = normalizeUuid(recipientIdParam || merchantIdParam || vetIdParam || receiverIdParam);
+    const routeKey = conversationIdParam || '';
+    if (!currentUserId || !routeRecipient || !conversationIdParam || openedRoute.current === routeKey) return;
     openedRoute.current = routeKey;
     let cancelled = false;
-    const participantName = params.merchantName || params.vet || 'Merchant';
+    const participantName = merchantNameParam || vetParam || 'Merchant';
     const nextActive: Thread = {
       id: conversationIdFor(currentUserId, routeRecipient),
       participantId: routeRecipient,
       participantName,
-      participantRole: params.vet ? 'veterinarian' : 'merchant',
-      productName: params.productName,
+      participantRole: vetParam ? 'veterinarian' : 'merchant',
+      productName: productNameParam,
       messages: [],
     };
     queueMicrotask(() => {
       if (cancelled) return;
       setActive(nextActive);
-      setMessage(params.starterMessage || '');
+      setMessage(starterMessageParam || '');
     });
     return () => { cancelled = true; };
-  }, [currentUserId, params.conversationId, params.recipientId, params.merchantId, params.merchantName, params.receiver_id, params.vet_id, params.vet, params.productName, params.starterMessage]);
+  }, [currentUserId, conversationIdParam, recipientIdParam, merchantIdParam, merchantNameParam, receiverIdParam, vetIdParam, vetParam, productNameParam, starterMessageParam]);
 
   useEffect(() => {
     if (!active || !isUuid(currentUserId) || !isUuid(active.participantId)) return;
