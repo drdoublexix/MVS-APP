@@ -3,7 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { fetchMerchantProductThreads, markConversationPaid, useMarketplace, type ProductConversation } from '../../lib/marketplace';
-import { getConversationMessages, getCurrentUser, sendRealtimeMessage, subscribeToMessages, supabase, type RealtimeMessage } from '../../lib/supabase';
+import { getConversationMessages, getCurrentUser, isUuid, sendRealtimeMessage, subscribeToMessages, supabase, type RealtimeMessage } from '../../lib/supabase';
 
 const naira = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
@@ -60,10 +60,10 @@ export default function MerchantChatScreen() {
     const content = reply.trim();
     try {
       const user = await getCurrentUser();
-      if (!user) return;
+      if (!user || !isUuid(user.id)) return;
 
       const receiverId = selected.clientId || '';
-      if (!receiverId) return;
+      if (!isUuid(receiverId)) return;
 
       const savedMessage = await sendRealtimeMessage({
         conversation_id: selected.id,

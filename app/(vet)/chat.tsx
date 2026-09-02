@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { type VetConversation } from '../../lib/marketplace';
-import { getConversationMessages, getCurrentUser, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
+import { getConversationMessages, getCurrentUser, isUuid, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
 
 export default function VetChatScreen() {
   const params = useLocalSearchParams<{ conversationId?: string; merchantId?: string; productName?: string; productPrice?: string; starterMessage?: string }>();
@@ -19,7 +19,7 @@ export default function VetChatScreen() {
     const [preview, setPreview] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
 
     useEffect(() => {
-      if (!params.merchantId || !params.productName || !currentUserId || active) return;
+      if (!isUuid(params.merchantId) || !params.productName || !isUuid(currentUserId) || active) return;
       const merchantId = params.merchantId;
       const productName = params.productName;
       const productPrice = params.productPrice;
@@ -91,7 +91,7 @@ export default function VetChatScreen() {
     if (!active) return;
     let mounted = true;
     const loadMessages = async () => {
-      if ((active.clientId || active.participantId) && currentUserId) {
+      if (isUuid(active.clientId || active.participantId) && isUuid(currentUserId)) {
         const participantId = active.clientId || active.participantId;
         const { data } = await supabase
           .from('messages')
@@ -121,9 +121,9 @@ export default function VetChatScreen() {
     const content = message.trim(); 
     try {
       const user = await getCurrentUser();
-      if (user) {
+      if (user && isUuid(user.id)) {
         const clientId = active.participantId || remoteMessages.find((item) => item.sender_id !== user.id)?.sender_id;
-        if (!clientId) {
+        if (!isUuid(clientId)) {
           console.warn('[Vet Chat] No client recipient found for conversation:', active.id);
           return;
         }
@@ -155,14 +155,14 @@ export default function VetChatScreen() {
     setMessage(''); 
   };
   const attachMedia = async () => {
-    if (!active || !currentUserId || uploadingAttachment) return;
+    if (!active || !isUuid(currentUserId) || uploadingAttachment) return;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], selectionLimit: 1 });
       if (result.canceled || !result.assets[0]) return;
       setUploadingAttachment(true);
       const uploaded = await uploadChatAttachment(active.id, result.assets[0]);
       const clientId = remoteMessages.find((item) => item.sender_id !== currentUserId)?.sender_id;
-      if (!clientId) throw new Error('No pet parent found for this conversation.');
+      if (!isUuid(clientId)) throw new Error('No pet parent found for this conversation.');
       const content = message.trim();
       const mediaMessage: RealtimeMessage = { id: `temp-${Date.now()}`, conversation_id: active.id, sender_id: currentUserId, receiver_id: clientId, content, message_type: 'text', media_url: uploaded.publicUrl, media_type: uploaded.mediaType, created_at: new Date().toISOString() };
       setRemoteMessages((items) => [...items, mediaMessage]);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase, type RealtimeMessage } from './supabase';
+import { isUuid, supabase, type RealtimeMessage } from './supabase';
 
 export type MarketplaceProduct = {
   id: string;
@@ -164,6 +164,7 @@ export const resolveProductInquiryClient = async (conversationId: string, mercha
 };
 
 export const fetchMerchantProductThreads = async (merchantId: string): Promise<ProductConversation[]> => {
+  if (!isUuid(merchantId)) return [];
   const { data, error } = await supabase
     .from('products')
     .select('*')
