@@ -1,14 +1,15 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { type VetConversation } from '../../lib/marketplace';
 import { getConversationMessages, getCurrentUser, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
 
 export default function VetChatScreen() {
-  const params = useLocalSearchParams<{ merchantId?: string; productName?: string; productPrice?: string; starterMessage?: string }>();
+  const params = useLocalSearchParams<{ conversationId?: string; merchantId?: string; productName?: string; productPrice?: string; starterMessage?: string }>();
+  const router = useRouter();
   const [active, setActive] = useState<VetConversation | null>(null);
   const [inbox, setInbox] = useState<VetConversation[]>([]);
   const [message, setMessage] = useState('');
@@ -25,9 +26,9 @@ export default function VetChatScreen() {
       const starterMessage = params.starterMessage;
       queueMicrotask(() => {
         setMessage(starterMessage || `Hi! I would like to inquire about purchasing ${productName} listed for ₦${productPrice || '0'}.`);
-        setActive({ id: `product-${currentUserId}-${merchantId}`, participantId: merchantId, vet: productName, category: 'Product inquiry', messages: [] });
+        setActive({ id: params.conversationId || `merchant_${currentUserId}_${merchantId}`, participantId: merchantId, vet: productName, category: 'Product inquiry', messages: [] });
       });
-    }, [params.merchantId, params.productName, params.productPrice, params.starterMessage, currentUserId, active]);
+    }, [params.conversationId, params.merchantId, params.productName, params.productPrice, params.starterMessage, currentUserId, active]);
   
   // Get current user
   useEffect(() => {
@@ -113,7 +114,7 @@ export default function VetChatScreen() {
       return items.map((current, index) => index === temporaryIndex ? item : current);
     }));
     return () => { mounted = false; unsubscribe(); };
-  }, [active]);
+  }, [active, currentUserId]);
   
   const send = async () => { 
     if (!active || !message.trim()) return; 
@@ -178,7 +179,7 @@ export default function VetChatScreen() {
   // Merge local and remote messages, prioritizing remote messages
   const displayMessages = remoteMessages.length > 0 ? remoteMessages : active.messages;
   
-  return <SafeAreaView style={styles.container}><View style={styles.roomHeader}><TouchableOpacity onPress={() => setActive(null)}><MaterialCommunityIcons name="arrow-left" size={23} color="#FFFFFF" /></TouchableOpacity><View style={styles.flex}><Text style={styles.title}>{active.vet}</Text><Text style={styles.muted}>{active.category}</Text></View></View><ScrollView contentContainerStyle={styles.room}><View style={styles.categoryBanner}><MaterialCommunityIcons name="clipboard-text" size={18} color="#10B981" /><Text style={styles.categoryText}>{active.category}</Text></View>{displayMessages && displayMessages.length > 0 ? displayMessages.map((item) => {
+  return <SafeAreaView style={styles.container}><View style={styles.roomHeader}><TouchableOpacity onPress={() => { setActive(null); setRemoteMessages([]); setMessage(''); router.replace('/(vet)/chat'); }}><MaterialCommunityIcons name="arrow-left" size={23} color="#FFFFFF" /></TouchableOpacity><View style={styles.flex}><Text style={styles.title}>{active.vet}</Text><Text style={styles.muted}>{active.category}</Text></View></View><ScrollView contentContainerStyle={styles.room}><View style={styles.categoryBanner}><MaterialCommunityIcons name="clipboard-text" size={18} color="#10B981" /><Text style={styles.categoryText}>{active.category}</Text></View>{displayMessages && displayMessages.length > 0 ? displayMessages.map((item) => {
     const isVet = typeof item === 'object' && 'sender' in item ? item.sender === 'vet' : item.sender_id === currentUserId;
     const messageText = typeof item === 'object' && 'content' in item ? item.content : item.text;
     const messageId = item.id;

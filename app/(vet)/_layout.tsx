@@ -36,7 +36,7 @@ export default function VetLayout() {
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Patients',
+          title: 'Chat',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="message" color={color} size={size} />
           ),
