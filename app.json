@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "MVS",
+    "slug": "mvs-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "mvs",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.mvs.app",
+      "supportsTabletMode": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "MVS needs access to your location to find nearby veterinarians.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "MVS needs access to your location to find nearby veterinarians.",
+        "UIRequiredDeviceCapabilities": [
+          "location-services"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.mvs.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow MVS to access your location."
+        }
+      ],
+      [
+        "expo-router",
+        {
+          "origin": false
+        }
+      ]
+    ]
+  }
+}
