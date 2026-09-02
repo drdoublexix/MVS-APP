@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { createProductConversation, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
+import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 interface Tip {
@@ -24,9 +24,7 @@ export default function ClientHome() {
   const inquireAboutProduct = async (product: (typeof products)[number]) => {
     const user = await getCurrentUser();
     if (!user || !normalizeUuid(product.merchantId)) return;
-    const conversation = createProductConversation(product.id, user.id, user.user_metadata?.full_name || user.email?.split('@')[0] || 'Pet Parent');
-    if (!conversation) return;
-    router.push({ pathname: '/(client)/chat', params: { conversationId: conversation.id, productId: product.id, merchantId: product.merchantId, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
+    router.push({ pathname: '/chat', params: { productId: product.id, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
   };
 
   useFocusEffect(
