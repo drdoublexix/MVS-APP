@@ -55,10 +55,6 @@ const normalizeProduct = (product: any): MarketplaceProduct => ({
 
 let products: MarketplaceProduct[] = [];
 let conversations: ProductConversation[] = [];
-let vetConversations: VetConversation[] = [
-  { id: 'vet-1', vet: 'Dr. Ade Williams', category: 'Vaccination', messages: [{ id: 'vet-message-1', sender: 'vet', text: 'Please share your pet vaccination record.', createdAt: Date.now() }] },
-  { id: 'vet-2', vet: 'Pawsitive Care Veterinary', category: 'Pet Checks', messages: [{ id: 'vet-message-2', sender: 'vet', text: 'Appointment confirmed for tomorrow.', createdAt: Date.now() }] },
-];
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
 
@@ -73,7 +69,7 @@ export const useMarketplace = () => {
     const unsubscribe = subscribeMarketplace(() => refresh((value) => value + 1));
     return () => { unsubscribe(); };
   }, []);
-  return { products, conversations, vetConversations };
+  return { products, conversations };
 };
 
 export const fetchMarketplaceProducts = async () => {
@@ -188,29 +184,6 @@ export const addConversationMessage = (conversationId: string, sender: Marketpla
     ? { ...conversation, messages: [...conversation.messages, { id: `message-${Date.now()}`, sender, text, createdAt: Date.now() }] }
     : conversation);
   notify();
-};
-
-export const addVetConversationMessage = (conversationId: string, sender: 'client' | 'vet', text: string) => {
-  vetConversations = vetConversations.map((conversation) => conversation.id === conversationId
-    ? { ...conversation, messages: [...conversation.messages, { id: `vet-message-${Date.now()}`, sender, text, createdAt: Date.now() }] }
-    : conversation);
-  notify();
-};
-
-export const createVetConversation = (vet: string, category: string, conversationId?: string) => {
-  const existing = vetConversations.find((conversation) => conversationId
-    ? conversation.id === conversationId
-    : conversation.vet === vet && conversation.category === category);
-  if (existing) return existing;
-  const conversation: VetConversation = {
-    id: conversationId || `vet-conversation-${Date.now()}`,
-    vet,
-    category,
-    messages: [{ id: `vet-message-${Date.now()}`, sender: 'vet', text: 'Your consultation request is ready. How can I help?', createdAt: Date.now() }],
-  };
-  vetConversations = [conversation, ...vetConversations];
-  notify();
-  return conversation;
 };
 
 export const markConversationPaid = (conversationId: string) => {

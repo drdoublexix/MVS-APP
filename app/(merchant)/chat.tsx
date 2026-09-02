@@ -159,10 +159,10 @@ function MerchantConversation({ conversation, remoteMessages, reply, setReply, s
         </View>
       </View>
       
-      {displayMessages.map((message) => {
+      {displayMessages.map((message, index) => {
         const isMerchant = typeof message === 'object' && 'sender' in message ? message.sender === 'merchant' : message.sender_id === currentUserId;
         const messageText = typeof message === 'object' && 'content' in message ? message.content : message.text;
-        const messageId = typeof message === 'object' && 'id' in message ? message.id : `${Math.random()}`;
+        const messageId = typeof message === 'object' && 'id' in message ? message.id : `message-${index}`;
         return (
           <View key={messageId} style={[styles.bubble, isMerchant ? styles.merchantBubble : styles.clientBubble]}>
             <Text style={styles.primary}>{messageText}</Text>

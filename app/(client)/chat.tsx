@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { formatPaymentRef, initializePayment } from '../../lib/flutterwave';
-import { createVetConversation, useMarketplace, type VetConversation } from '../../lib/marketplace';
+import { useMarketplace, type VetConversation } from '../../lib/marketplace';
 import { getConversationMessages, getCurrentUser, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
 
 type Params = { conversationId?: string; category?: string; vet?: string; receiver_id?: string; vet_id?: string; productId?: string; merchantId?: string; productName?: string; productPrice?: string; starterMessage?: string };
@@ -13,7 +13,7 @@ type Params = { conversationId?: string; category?: string; vet?: string; receiv
 export default function ClientChatScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
-  const { conversations, vetConversations } = useMarketplace();
+  const { conversations } = useMarketplace();
   const [backendVetConversations, setBackendVetConversations] = useState<VetConversation[]>([]);
   const [backendVetConversationsLoaded, setBackendVetConversationsLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState(params.conversationId || '');
@@ -23,10 +23,6 @@ export default function ClientChatScreen() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
-  useEffect(() => {
-    if (params.starterMessage) setMessage(params.starterMessage);
-  }, [params.starterMessage]);
-  
   // Get current user
   useEffect(() => {
     let mounted = true;
@@ -107,20 +103,19 @@ export default function ClientChatScreen() {
 
     const initializeVetConversation = async () => {
       let conversationId = `vet-${currentUserId}-${vetId}`;
-      const conversation = createVetConversation(vetName, category, conversationId);
-      if (conversation) {
-        setActiveVet(conversation);
-        setSelectedId(conversation.id);
-      }
+      setActiveVet({ id: conversationId, vet: vetName, category, messages: [], participantId: vetId });
+      setSelectedId(conversationId);
     };
 
     void initializeVetConversation();
   }, [params.category, params.vet, params.vet_id, currentUserId, activeVet]);
   
   const productConversation = conversations.find((item) => item.id === selectedId);
-  const vetConversation = activeVet ? vetConversations.find((item) => item.id === activeVet.id) || activeVet : null;
+  const vetConversation = activeVet;
 
-  useEffect(() => setSelectedId(params.conversationId || ''), [params.conversationId]);
+  useEffect(() => {
+    queueMicrotask(() => setSelectedId(params.conversationId || ''));
+  }, [params.conversationId]);
   useEffect(() => {
     const conversationId = selectedId || (activeVet ? activeVet.id : null);
     if (!conversationId) return;

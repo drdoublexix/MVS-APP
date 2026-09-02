@@ -4,12 +4,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { addVetConversationMessage, useMarketplace, type VetConversation } from '../../lib/marketplace';
+import { type VetConversation } from '../../lib/marketplace';
 import { getConversationMessages, getCurrentUser, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
 
 export default function VetChatScreen() {
   const params = useLocalSearchParams<{ merchantId?: string; productName?: string; productPrice?: string; starterMessage?: string }>();
-  const { vetConversations } = useMarketplace();
   const [active, setActive] = useState<VetConversation | null>(null);
   const [inbox, setInbox] = useState<VetConversation[]>([]);
   const [message, setMessage] = useState('');
@@ -20,8 +19,14 @@ export default function VetChatScreen() {
 
     useEffect(() => {
       if (!params.merchantId || !params.productName || !currentUserId || active) return;
-      setMessage(params.starterMessage || `Hi! I would like to inquire about purchasing ${params.productName} listed for ₦${params.productPrice || '0'}.`);
-      setActive({ id: `product-${currentUserId}-${params.merchantId}`, participantId: params.merchantId, vet: params.productName, category: 'Product inquiry', messages: [] });
+      const merchantId = params.merchantId;
+      const productName = params.productName;
+      const productPrice = params.productPrice;
+      const starterMessage = params.starterMessage;
+      queueMicrotask(() => {
+        setMessage(starterMessage || `Hi! I would like to inquire about purchasing ${productName} listed for ₦${productPrice || '0'}.`);
+        setActive({ id: `product-${currentUserId}-${merchantId}`, participantId: merchantId, vet: productName, category: 'Product inquiry', messages: [] });
+      });
     }, [params.merchantId, params.productName, params.productPrice, params.starterMessage, currentUserId, active]);
   
   // Get current user
@@ -113,8 +118,6 @@ export default function VetChatScreen() {
   const send = async () => { 
     if (!active || !message.trim()) return; 
     const content = message.trim(); 
-    addVetConversationMessage(active.id, 'vet', content);
-    
     try {
       const user = await getCurrentUser();
       if (user) {
@@ -170,7 +173,7 @@ export default function VetChatScreen() {
       setUploadingAttachment(false);
     }
   };
-  if (!active) return <SafeAreaView style={styles.container}><View style={styles.header}><View><Text style={styles.title}>Patient Messages</Text><Text style={styles.muted}>Consultations and client replies</Text></View><MaterialCommunityIcons name="message-text" size={24} color="#10B981" /></View><ScrollView contentContainerStyle={styles.list}>{[...inbox, ...vetConversations].map((conversation) => <TouchableOpacity key={conversation.id} style={styles.thread} onPress={() => setActive(conversation)}><View style={styles.avatar}><MaterialCommunityIcons name="paw" size={23} color="#FFFFFF" /></View><View style={styles.flex}><Text style={styles.primary}>{conversation.vet}</Text><Text style={styles.category}>{conversation.category}</Text><Text style={styles.muted}>{conversation.messages[conversation.messages.length - 1]?.text}</Text></View><MaterialCommunityIcons name="chevron-right" size={22} color="#64748B" /></TouchableOpacity>)}</ScrollView></SafeAreaView>;
+  if (!active) return <SafeAreaView style={styles.container}><View style={styles.header}><View><Text style={styles.title}>Patient Messages</Text><Text style={styles.muted}>Consultations and client replies</Text></View><MaterialCommunityIcons name="message-text" size={24} color="#10B981" /></View><ScrollView contentContainerStyle={styles.list}>{inbox.map((conversation) => <TouchableOpacity key={conversation.id} style={styles.thread} onPress={() => setActive(conversation)}><View style={styles.avatar}><MaterialCommunityIcons name="paw" size={23} color="#FFFFFF" /></View><View style={styles.flex}><Text style={styles.primary}>{conversation.vet}</Text><Text style={styles.category}>{conversation.category}</Text><Text style={styles.muted}>{conversation.messages[conversation.messages.length - 1]?.text}</Text></View><MaterialCommunityIcons name="chevron-right" size={22} color="#64748B" /></TouchableOpacity>)}</ScrollView></SafeAreaView>;
   
   // Merge local and remote messages, prioritizing remote messages
   const displayMessages = remoteMessages.length > 0 ? remoteMessages : active.messages;
@@ -178,7 +181,7 @@ export default function VetChatScreen() {
   return <SafeAreaView style={styles.container}><View style={styles.roomHeader}><TouchableOpacity onPress={() => setActive(null)}><MaterialCommunityIcons name="arrow-left" size={23} color="#FFFFFF" /></TouchableOpacity><View style={styles.flex}><Text style={styles.title}>{active.vet}</Text><Text style={styles.muted}>{active.category}</Text></View></View><ScrollView contentContainerStyle={styles.room}><View style={styles.categoryBanner}><MaterialCommunityIcons name="clipboard-text" size={18} color="#10B981" /><Text style={styles.categoryText}>{active.category}</Text></View>{displayMessages && displayMessages.length > 0 ? displayMessages.map((item) => {
     const isVet = typeof item === 'object' && 'sender' in item ? item.sender === 'vet' : item.sender_id === currentUserId;
     const messageText = typeof item === 'object' && 'content' in item ? item.content : item.text;
-    const messageId = typeof item === 'object' && 'id' in item ? item.id : `${Math.random()}`;
+    const messageId = item.id;
     const remoteMessage = typeof item === 'object' && 'media_url' in item ? item as RealtimeMessage : null;
     return <View key={messageId} style={[styles.bubble, isVet ? styles.vetBubble : styles.clientBubble]}>{remoteMessage?.media_url && remoteMessage.media_type === 'image' && <TouchableOpacity onPress={() => setPreview({ url: remoteMessage.media_url!, type: 'image' })}><Image source={{ uri: remoteMessage.media_url }} style={styles.imageAttachment} /></TouchableOpacity>}{remoteMessage?.media_url && remoteMessage.media_type === 'video' && <TouchableOpacity onPress={() => setPreview({ url: remoteMessage.media_url!, type: 'video' })}><Video source={{ uri: remoteMessage.media_url }} useNativeControls style={styles.videoAttachment} resizeMode={ResizeMode.CONTAIN} /></TouchableOpacity>}{messageText ? <Text style={styles.primary}>{messageText}</Text> : null}<MediaPreview preview={preview} onClose={() => setPreview(null)} /></View>;
   }) : <Text style={styles.emptyMessage}>No messages yet. Waiting for client...</Text>}<Text style={styles.infoText}>Client messages appear on the left. Your replies appear on the right.</Text></ScrollView><View style={styles.composer}><TouchableOpacity style={styles.attach} onPress={() => void attachMedia()} disabled={uploadingAttachment}>{uploadingAttachment ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="paperclip" size={20} color="#FFFFFF" />}</TouchableOpacity><TextInput value={message} onChangeText={setMessage} placeholder="Reply to client..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline /><TouchableOpacity style={styles.send} onPress={send}><MaterialCommunityIcons name="send" size={19} color="#FFFFFF" /></TouchableOpacity></View></SafeAreaView>;

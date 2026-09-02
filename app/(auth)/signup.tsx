@@ -21,7 +21,7 @@ export default function SignupScreen() {
 
   useEffect(() => {
     if (params.role === 'client' || params.role === 'vet' || params.role === 'merchant') {
-      setRole(params.role);
+      queueMicrotask(() => setRole(params.role as AppRole));
     }
   }, [params.role]);
 
