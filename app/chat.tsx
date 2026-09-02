@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getCurrentUser, isUuid, normalizeUuid, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../lib/supabase';
 
@@ -45,6 +45,7 @@ export default function ChatScreen() {
   const [message, setMessage] = useState(params.starterMessage || '');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const openedRoute = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -98,7 +99,9 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const routeRecipient = normalizeUuid(params.recipientId || params.merchantId || params.vet_id || params.receiver_id);
-    if (!currentUserId || !routeRecipient || !params.conversationId) return;
+    const routeKey = params.conversationId || '';
+    if (!currentUserId || !routeRecipient || !params.conversationId || openedRoute.current === routeKey) return;
+    openedRoute.current = routeKey;
     const participantName = params.merchantName || params.vet || 'Merchant';
     const nextActive: Thread = {
       id: conversationIdFor(currentUserId, routeRecipient),
