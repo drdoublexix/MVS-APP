@@ -50,16 +50,17 @@ export default function ChatScreen() {
     const loadInbox = async () => {
       try {
         const user = await getCurrentUser();
-        if (!user || !isUuid(user.id)) return;
-        const roleResult = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+        const cleanUserId = normalizeUuid(user?.id);
+        if (!cleanUserId) return;
+        const roleResult = await supabase.from('profiles').select('role').eq('id', cleanUserId).maybeSingle();
         const { data, error } = await supabase
           .from('messages')
           .select('*')
-          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-          .order('created_at', { ascending: true });
+          .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
+          .order('created_at', { ascending: false });
         if (error) throw error;
         const rows = (data || []) as RealtimeMessage[];
-        const participantIds = [...new Set(rows.map((row) => normalizeUuid(row.sender_id === user.id ? row.receiver_id : row.sender_id)).filter((id): id is string => Boolean(id)))];
+        const participantIds = [...new Set(rows.map((row) => normalizeUuid(row.sender_id === cleanUserId ? row.receiver_id : row.sender_id)).filter((id): id is string => Boolean(id)))];
         const profiles = participantIds.length > 0
           ? await supabase.from('profiles').select('id, full_name, email, role').in('id', participantIds)
           : { data: [], error: null };
@@ -67,21 +68,21 @@ export default function ChatScreen() {
         const profileMap = new Map((profiles.data || []).map((profile) => [profile.id, profile]));
         const grouped = new Map<string, RealtimeMessage[]>();
         for (const row of rows) {
-          const participantId = normalizeUuid(row.sender_id === user.id ? row.receiver_id : row.sender_id);
+          const participantId = normalizeUuid(row.sender_id === cleanUserId ? row.receiver_id : row.sender_id);
           if (!participantId) continue;
           grouped.set(participantId, [...(grouped.get(participantId) || []), row]);
         }
         if (!mounted) return;
-        setCurrentUserId(user.id);
+        setCurrentUserId(cleanUserId);
         setUserRole(roleResult.data?.role || 'client');
         setThreads(Array.from(grouped.entries()).map(([participantId, participantMessages]) => {
           const profile = profileMap.get(participantId);
           return {
-            id: conversationIdFor(user.id, participantId),
+            id: conversationIdFor(cleanUserId, participantId),
             participantId,
             participantName: profile?.full_name || profile?.email || 'Contact',
             participantRole: profile?.role || 'user',
-            messages: participantMessages,
+            messages: [...participantMessages].sort((first, second) => first.created_at.localeCompare(second.created_at)),
           };
         }));
       } catch (error) {
