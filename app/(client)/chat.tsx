@@ -118,6 +118,7 @@ export default function ClientChatScreen() {
   const vetConversation = activeVet;
 
   useEffect(() => {
+    if (!params.conversationId) return;
     queueMicrotask(() => setSelectedId(params.conversationId || ''));
   }, [params.conversationId]);
   useEffect(() => {
@@ -232,7 +233,7 @@ export default function ClientChatScreen() {
     router.replace('/(client)/chat');
   };
 
-  if (productConversation) return <ChatRoom title={productConversation.product.merchant} subtitle={productConversation.product.name} messages={remoteMessages} message={message} setMessage={setMessage} onBack={() => setSelectedId('')} onSend={() => void send(productConversation.id, productConversation.product.merchantId)} onAttach={() => void attachMedia(productConversation.id, productConversation.product.merchantId)} uploadingAttachment={uploadingAttachment} isProduct={true} productId={productConversation.productId} productPrice={parseInt(params.productPrice || '0')} productName={params.productName} conversationId={productConversation.id} paymentStatus={productConversation.paymentStatus} merchantId={productConversation.product.merchantId} />;
+  if (productConversation) return <ChatRoom title={productConversation.product.merchant} subtitle={productConversation.product.name} messages={remoteMessages} message={message} setMessage={setMessage} onBack={() => { setSelectedId(''); setRemoteMessages([]); setMessage(''); router.replace({ pathname: '/(client)/chat', params: {} }); }} onSend={() => void send(productConversation.id, productConversation.product.merchantId)} onAttach={() => void attachMedia(productConversation.id, productConversation.product.merchantId)} uploadingAttachment={uploadingAttachment} isProduct={true} productId={productConversation.productId} productPrice={parseInt(params.productPrice || '0')} productName={params.productName} conversationId={productConversation.id} paymentStatus={productConversation.paymentStatus} merchantId={productConversation.product.merchantId} />;
   if (vetConversation) return <ChatRoom title={vetConversation.vet} subtitle={vetConversation.category} messages={remoteMessages} message={message} setMessage={setMessage} onBack={returnToChatInbox} onSend={() => void send(vetConversation.id, vetConversation.participantId || params.receiver_id || params.vet_id || '')} onAttach={() => void attachMedia(vetConversation.id, vetConversation.participantId || params.receiver_id || params.vet_id || '')} uploadingAttachment={uploadingAttachment} isProduct={false} />;
 
   return <SafeAreaView style={styles.container}><View style={styles.header}><Text style={styles.title}>Active Chats</Text><TouchableOpacity onPress={() => router.replace('/')}><MaterialCommunityIcons name="arrow-left" size={22} color="#3B82F6" /></TouchableOpacity></View><ScrollView contentContainerStyle={styles.list}>

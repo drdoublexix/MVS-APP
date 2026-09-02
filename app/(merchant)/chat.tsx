@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { fetchMerchantProductThreads, markConversationPaid, useMarketplace, type ProductConversation } from '../../lib/marketplace';
@@ -9,6 +9,7 @@ const naira = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
 export default function MerchantChatScreen() {
   const params = useLocalSearchParams<{ conversationId?: string }>();
+  const router = useRouter();
   const { conversations } = useMarketplace();
   const [selectedId, setSelectedId] = useState(params.conversationId || '');
   const [reply, setReply] = useState('');
@@ -122,7 +123,7 @@ export default function MerchantChatScreen() {
           </TouchableOpacity>
         );
       })}
-    </ScrollView> : <MerchantConversation conversation={selected} remoteMessages={remoteMessages} reply={reply} setReply={setReply} sendReply={sendReply} onBack={() => setSelectedId('')} onConfirmPayment={handleConfirmPayment} order={order} onMarkOrderCompleted={markOrderCompleted} />}
+    </ScrollView> : <MerchantConversation conversation={selected} remoteMessages={remoteMessages} reply={reply} setReply={setReply} sendReply={sendReply} onBack={() => { setSelectedId(''); setRemoteMessages([]); setReply(''); router.replace({ pathname: '/(merchant)/chat', params: {} }); }} onConfirmPayment={handleConfirmPayment} order={order} onMarkOrderCompleted={markOrderCompleted} />}
   </SafeAreaView>;
 }
 
