@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { createProductConversation, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
+import { getCurrentUser } from '../../lib/supabase';
 
 interface InvoiceItem { id: string; service: string; amount: number; }
 
@@ -26,8 +27,10 @@ export default function VetDashboardScreen() {
   const subtotal = items.reduce((total, item) => total + item.amount, 0);
   const fee = subtotal * 0.1;
 
-  const inquireAboutProduct = (product: (typeof products)[number]) => {
-    const conversation = createProductConversation(product.id, 'Veterinary Practice');
+  const inquireAboutProduct = async (product: (typeof products)[number]) => {
+    const user = await getCurrentUser();
+    if (!user) return;
+    const conversation = createProductConversation(product.id, user.id, user.user_metadata?.full_name || user.email?.split('@')[0] || 'Veterinary Practice');
     if (conversation) router.push({ pathname: '/(vet)/chat', params: { conversationId: conversation.id, merchantId: product.merchantId, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
   };
 

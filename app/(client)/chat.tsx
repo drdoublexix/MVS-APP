@@ -23,6 +23,10 @@ export default function ClientChatScreen() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
+  useEffect(() => {
+    if (params.starterMessage) queueMicrotask(() => setMessage(params.starterMessage!));
+  }, [params.starterMessage]);
+
   // Get current user
   useEffect(() => {
     let mounted = true;

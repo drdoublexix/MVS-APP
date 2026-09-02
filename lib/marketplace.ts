@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from './supabase';
+import { supabase, type RealtimeMessage } from './supabase';
 
 export type MarketplaceProduct = {
   id: string;
@@ -84,7 +84,17 @@ export const fetchMarketplaceProducts = async () => {
     return products;
   }
 
-  const nextProducts = (data || []).map(normalizeProduct);
+  const rows = data || [];
+  const merchantIds = [...new Set(rows.map((product) => String(product.merchant_id || '')).filter(Boolean))];
+  const { data: profiles, error: profilesError } = merchantIds.length > 0
+    ? await supabase.from('profiles').select('id, full_name, email').in('id', merchantIds)
+    : { data: [], error: null };
+  if (profilesError) console.warn('[Marketplace] Failed to fetch merchant names:', profilesError);
+  const merchantNames = new Map((profiles || []).map((profile) => [profile.id, profile.full_name || profile.email || 'MVS Merchant']));
+  const nextProducts = rows.map((product) => normalizeProduct({
+    ...product,
+    merchant: merchantNames.get(String(product.merchant_id)) || product.merchant,
+  }));
   products = nextProducts;
   notify();
   return products;
@@ -95,16 +105,21 @@ export const addMarketplaceProduct = (product: Omit<MarketplaceProduct, 'id'>) =
   return created;
 };
 
-export const getProductConversationId = (productId: string) => `product_${productId}`;
+export const getProductConversationId = (clientId: string, merchantId: string) => `merchant_${clientId}_${merchantId}`;
 
 export const getProduct = (productId: string) => products.find((product) => product.id === productId);
 
-export const createProductConversation = (productId: string, clientName = 'Pet Parent') => {
+export const createProductConversation = (productId: string, clientId: string, clientName = 'Pet Parent') => {
   const product = getProduct(productId);
   if (!product) return undefined;
-  const conversationId = getProductConversationId(productId);
-  const existing = conversations.find((conversation) => conversation.id === conversationId && conversation.clientName === clientName);
-  if (existing) return existing;
+  const conversationId = getProductConversationId(clientId, product.merchantId);
+  const existing = conversations.find((conversation) => conversation.id === conversationId);
+  if (existing) {
+    const updated = { ...existing, product };
+    conversations = conversations.map((conversation) => conversation.id === conversationId ? updated : conversation);
+    notify();
+    return updated;
+  }
   const conversation: ProductConversation = {
     id: conversationId,
     productId,
@@ -157,22 +172,35 @@ export const fetchMerchantProductThreads = async (merchantId: string): Promise<P
 
   if (error) throw error;
 
-  const merchantThreads: ProductConversation[] = [];
+  const productsForMerchant = (data || []).map(normalizeProduct);
+  const { data: messageRows, error: messagesError } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('receiver_id', merchantId)
+    .order('created_at', { ascending: true });
+  if (messagesError) throw messagesError;
 
-  for (const product of data || []) {
-    const conversationId = getProductConversationId(String(product.id));
-    const { clientId, clientName } = await resolveProductInquiryClient(conversationId, merchantId);
-
-    merchantThreads.push({
-      id: conversationId,
-      productId: String(product.id),
-      product: normalizeProduct(product),
-      clientId,
-      clientName,
-      paymentStatus: 'unpaid' as const,
-      messages: [],
-    });
+  const grouped = new Map<string, RealtimeMessage[]>();
+  for (const item of (messageRows || []) as RealtimeMessage[]) {
+    const thread = grouped.get(item.sender_id) || [];
+    thread.push(item);
+    grouped.set(item.sender_id, thread);
   }
+
+  const merchantThreads: ProductConversation[] = Array.from(grouped.entries()).map(([clientId, messages]) => {
+    const product = productsForMerchant[0] || {
+      id: 'product', name: 'Product inquiry', price: 0, merchant: 'MVS Merchant', merchantId, icon: 'package', category: 'General', stock: 0,
+    };
+    return {
+      id: getProductConversationId(clientId, merchantId),
+      productId: product.id,
+      product,
+      clientId,
+      clientName: String(messages[0]?.metadata?.sender_name || 'Pet Parent'),
+      paymentStatus: 'unpaid' as const,
+      messages: messages.map((item) => ({ id: item.id, sender: item.sender_id === merchantId ? 'merchant' : 'client', text: item.content, createdAt: Date.parse(item.created_at) })),
+    };
+  });
 
   conversations = merchantThreads.length > 0 ? merchantThreads : conversations;
   notify();
