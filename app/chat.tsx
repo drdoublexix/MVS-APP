@@ -7,6 +7,7 @@ import { getCurrentUser, isUuid, normalizeUuid, sendRealtimeMessage, subscribeTo
 
 type ChatParams = {
   conversationId?: string;
+  recipientId?: string;
   merchantId?: string;
   merchantName?: string;
   vet_id?: string;
@@ -96,8 +97,8 @@ export default function ChatScreen() {
   }, []);
 
   useEffect(() => {
-    const routeRecipient = normalizeUuid(params.merchantId || params.vet_id || params.receiver_id);
-    if (!currentUserId || !routeRecipient || !params.conversationId && !params.productName && !params.vet) return;
+    const routeRecipient = normalizeUuid(params.recipientId || params.merchantId || params.vet_id || params.receiver_id);
+    if (!currentUserId || !routeRecipient || !params.conversationId) return;
     const participantName = params.merchantName || params.vet || 'Merchant';
     const nextActive: Thread = {
       id: conversationIdFor(currentUserId, routeRecipient),
@@ -111,7 +112,7 @@ export default function ChatScreen() {
       setActive(nextActive);
       setMessage(params.starterMessage || '');
     });
-  }, [currentUserId, params.conversationId, params.merchantId, params.merchantName, params.receiver_id, params.vet_id, params.vet, params.productName, params.starterMessage]);
+  }, [currentUserId, params.conversationId, params.recipientId, params.merchantId, params.merchantName, params.receiver_id, params.vet_id, params.vet, params.productName, params.starterMessage]);
 
   useEffect(() => {
     if (!active || !isUuid(currentUserId) || !isUuid(active.participantId)) return;
@@ -141,6 +142,7 @@ export default function ChatScreen() {
     setActive(null);
     setMessages([]);
     setMessage('');
+    router.setParams({ conversationId: undefined, recipientId: undefined, merchantId: undefined, vet_id: undefined, receiver_id: undefined, productId: undefined, productName: undefined, productPrice: undefined, starterMessage: undefined });
     router.replace('/chat');
   };
 

@@ -30,7 +30,8 @@ export default function VetDashboardScreen() {
   const inquireAboutProduct = async (product: (typeof products)[number]) => {
     const user = await getCurrentUser();
     if (!user || !normalizeUuid(product.merchantId)) return;
-    router.push({ pathname: '/chat', params: { merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
+    const conversationId = `conv_${[user.id, product.merchantId].sort().join('_')}`;
+    router.push({ pathname: '/chat', params: { conversationId, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
   };
 
   const addItem = () => {
