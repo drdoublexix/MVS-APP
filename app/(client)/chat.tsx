@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { formatPaymentRef, initializePayment } from '../../lib/flutterwave';
 import { useMarketplace, type VetConversation } from '../../lib/marketplace';
-import { getConversationMessages, getCurrentUser, isUuid, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
+import { getConversationMessages, getCurrentUser, isUuid, normalizeUuid, sendRealtimeMessage, subscribeToMessages, supabase, uploadChatAttachment, type RealtimeMessage } from '../../lib/supabase';
 
 type Params = { conversationId?: string; category?: string; vet?: string; receiver_id?: string; vet_id?: string; productId?: string; merchantId?: string; productName?: string; productPrice?: string; starterMessage?: string };
 
@@ -32,7 +32,7 @@ export default function ClientChatScreen() {
     let mounted = true;
 
     void getCurrentUser().then(async (user) => {
-      if (!user) {
+      if (!user || !isUuid(user.id)) {
         if (mounted) setBackendVetConversationsLoaded(true);
         return;
       }
@@ -50,7 +50,7 @@ export default function ClientChatScreen() {
       }
 
       const rows = (messageRows || []) as RealtimeMessage[];
-      const participantIds = [...new Set(rows.map((item) => item.sender_id === user.id ? item.receiver_id : item.sender_id))];
+      const participantIds = [...new Set(rows.map((item) => item.sender_id === user.id ? item.receiver_id : item.sender_id).filter((id) => isUuid(id)))];
       if (participantIds.length === 0) {
         if (mounted) {
           setBackendVetConversations([]);
@@ -100,10 +100,10 @@ export default function ClientChatScreen() {
   }, []);
   
   useEffect(() => {
-    if (!params.category || !params.vet || !isUuid(params.vet_id) || !isUuid(currentUserId) || activeVet) return;
+    const vetId = normalizeUuid(params.vet_id);
+    if (!params.category || !params.vet || !vetId || !isUuid(currentUserId) || activeVet) return;
     const category = params.category;
     const vetName = params.vet;
-    const vetId = params.vet_id;
 
     const initializeVetConversation = async () => {
       let conversationId = `vet-${currentUserId}-${vetId}`;
@@ -125,8 +125,8 @@ export default function ClientChatScreen() {
     if (!conversationId) return;
     let mounted = true;
     const loadMessages = async () => {
-      const participantId = activeVet?.participantId || params.vet_id;
-      if (activeVet && isUuid(participantId) && isUuid(currentUserId)) {
+      const participantId = normalizeUuid(activeVet?.participantId || params.vet_id);
+      if (activeVet && participantId && isUuid(currentUserId)) {
         const { data } = await supabase
           .from('messages')
           .select('*')
@@ -152,7 +152,8 @@ export default function ClientChatScreen() {
 
   const send = async (conversationId: string, receiverId: string) => {
     const content = message.trim();
-    if (!content || !isUuid(receiverId)) return;
+    const rawReceiverId = normalizeUuid(receiverId);
+    if (!content || !rawReceiverId) return;
     
     try {
       const user = await getCurrentUser();
@@ -171,7 +172,7 @@ export default function ClientChatScreen() {
           id: `temp-${Date.now()}`,
           conversation_id: conversationId,
           sender_id: user.id,
-          receiver_id: receiverId,
+          receiver_id: rawReceiverId,
           content,
           message_type: 'text',
           metadata: { sender_name: senderName },
@@ -180,7 +181,7 @@ export default function ClientChatScreen() {
         setRemoteMessages((prev) => [...prev, tempMessage]);
         
         // Send to Supabase
-        await sendRealtimeMessage({ conversation_id: conversationId, sender_id: user.id, receiver_id: receiverId, content, message_type: 'text', metadata: { sender_name: senderName } });
+        await sendRealtimeMessage({ conversation_id: conversationId, sender_id: user.id, receiver_id: rawReceiverId, content, message_type: 'text', metadata: { sender_name: senderName } });
       }
     } catch (error) {
       console.error('[Client Chat] Failed to send message:', error);
@@ -190,7 +191,8 @@ export default function ClientChatScreen() {
   };
 
   const attachMedia = async (conversationId: string, receiverId: string) => {
-    if (uploadingAttachment || !isUuid(receiverId)) return;
+    const rawReceiverId = normalizeUuid(receiverId);
+    if (uploadingAttachment || !rawReceiverId) return;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], selectionLimit: 1 });
       if (result.canceled || !result.assets[0]) return;
@@ -204,7 +206,7 @@ export default function ClientChatScreen() {
         id: `temp-${Date.now()}`,
         conversation_id: conversationId,
         sender_id: user.id,
-        receiver_id: receiverId,
+        receiver_id: rawReceiverId,
         content: caption,
         message_type: 'text',
         media_url: uploaded.publicUrl,
@@ -212,7 +214,7 @@ export default function ClientChatScreen() {
         created_at: new Date().toISOString(),
       };
       setRemoteMessages((items) => [...items, mediaMessage]);
-      await sendRealtimeMessage({ conversation_id: conversationId, sender_id: user.id, receiver_id: receiverId, content: caption, message_type: 'text', media_url: uploaded.publicUrl, media_type: uploaded.mediaType });
+      await sendRealtimeMessage({ conversation_id: conversationId, sender_id: user.id, receiver_id: rawReceiverId, content: caption, message_type: 'text', media_url: uploaded.publicUrl, media_type: uploaded.mediaType });
       setMessage('');
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Could not upload attachment.';
@@ -273,7 +275,8 @@ function ChatRoom({ title, subtitle, messages, message, setMessage, onBack, onSe
   }, [conversationId, isProduct]);
 
   const handleInitiatePayment = async () => {
-    if (!productPrice || !productName || !userEmail || !isUuid(currentUserId) || !isUuid(merchantId)) return;
+    const rawMerchantId = normalizeUuid(merchantId);
+    if (!productPrice || !productName || !userEmail || !isUuid(currentUserId) || !rawMerchantId) return;
     setIsProcessingPayment(true);
     try {
       const paymentPayload = await initializePayment(
@@ -287,7 +290,7 @@ function ChatRoom({ title, subtitle, messages, message, setMessage, onBack, onSe
       await sendRealtimeMessage({
         conversation_id: conversationId || '',
         sender_id: currentUserId,
-        receiver_id: merchantId,
+        receiver_id: rawMerchantId,
         content: `Payment initiated: ₦${productPrice.toLocaleString('en-NG')} (Ref: ${formatPaymentRef(paymentPayload.tx_ref)})`,
         message_type: 'invoice',
       });
@@ -311,7 +314,7 @@ function ChatRoom({ title, subtitle, messages, message, setMessage, onBack, onSe
           conversation_id: conversationId,
           product_id: productId || productName || 'product',
           buyer_id: currentUserId,
-          merchant_id: merchantId,
+          merchant_id: rawMerchantId,
           amount: productPrice,
           status: 'paid',
         }).select('id, status').single();

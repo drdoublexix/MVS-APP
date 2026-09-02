@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { createProductConversation, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
-import { getCurrentUser, isUuid } from '../../lib/supabase';
+import { getCurrentUser, normalizeUuid } from '../../lib/supabase';
 
 interface InvoiceItem { id: string; service: string; amount: number; }
 
@@ -29,7 +29,7 @@ export default function VetDashboardScreen() {
 
   const inquireAboutProduct = async (product: (typeof products)[number]) => {
     const user = await getCurrentUser();
-    if (!user || !isUuid(product.merchantId)) return;
+    if (!user || !normalizeUuid(product.merchantId)) return;
     const conversation = createProductConversation(product.id, user.id, user.user_metadata?.full_name || user.email?.split('@')[0] || 'Veterinary Practice');
     if (conversation) router.push({ pathname: '/(vet)/chat', params: { conversationId: conversation.id, merchantId: product.merchantId, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
   };

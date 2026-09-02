@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { createProductConversation, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
-import { getCurrentUser, isUuid, supabase } from '../../lib/supabase';
+import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 interface Tip {
   id: string;
@@ -23,7 +23,7 @@ export default function ClientHome() {
 
   const inquireAboutProduct = async (product: (typeof products)[number]) => {
     const user = await getCurrentUser();
-    if (!user || !isUuid(product.merchantId)) return;
+    if (!user || !normalizeUuid(product.merchantId)) return;
     const conversation = createProductConversation(product.id, user.id, user.user_metadata?.full_name || user.email?.split('@')[0] || 'Pet Parent');
     if (!conversation) return;
     router.push({ pathname: '/(client)/chat', params: { conversationId: conversation.id, productId: product.id, merchantId: product.merchantId, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });

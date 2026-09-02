@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { isUuid, supabase, type RealtimeMessage } from './supabase';
+import { isUuid, normalizeUuid, supabase, type RealtimeMessage } from './supabase';
 
 export type MarketplaceProduct = {
   id: string;
@@ -45,7 +45,7 @@ const normalizeProduct = (product: any): MarketplaceProduct => ({
   name: product.name || 'Pet Product',
   price: Number(product.price || 0),
   merchant: product.profiles?.full_name || product.merchant || 'MVS Merchant',
-  merchantId: String(product.merchant_id || product.merchantId || product.merchant || 'merchant'),
+  merchantId: normalizeUuid(String(product.merchant_id || product.merchantId || '')) || '',
   icon: product.icon || 'package',
   category: product.category || 'General',
   stock: Number(product.stock || 0),

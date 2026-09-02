@@ -112,6 +112,11 @@ export type RealtimeMessage = {
 export const isUuid = (value: string | undefined | null): value is string =>
   typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+export const normalizeUuid = (value: string | undefined | null): string | null => {
+  const rawValue = value?.replace(/^(merchant_|vet_|client_)/i, '');
+  return isUuid(rawValue) ? rawValue : null;
+};
+
 export const MAX_CHAT_ATTACHMENT_SIZE = 104857600;
 
 export const uploadProductImage = async (asset: ImagePickerAsset) => {
@@ -191,7 +196,10 @@ export const getProfileRole = async (userId: string): Promise<AppRole | null> =>
 };
 
 export const sendRealtimeMessage = async (message: Omit<RealtimeMessage, 'id' | 'created_at'>) => {
-  const { data, error } = await supabase.from('messages').insert(message).select().single();
+  const senderId = normalizeUuid(message.sender_id);
+  const receiverId = normalizeUuid(message.receiver_id);
+  if (!senderId || !receiverId) throw new Error('Chat participants must use valid UUIDs.');
+  const { data, error } = await supabase.from('messages').insert({ ...message, sender_id: senderId, receiver_id: receiverId }).select().single();
   if (error) throw error;
   return data as RealtimeMessage;
 };
