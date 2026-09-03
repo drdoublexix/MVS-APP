@@ -208,7 +208,10 @@ export default function ChatScreen() {
       if (result.canceled || !result.assets[0]) return;
       setUploading(true);
       const uploaded = await uploadChatAttachment(conversationIdFor(cleanSenderId, cleanReceiverId), result.assets[0]);
-      await sendRealtimeMessage({ conversation_id: conversationIdFor(cleanSenderId, cleanReceiverId), sender_id: cleanSenderId, receiver_id: cleanReceiverId, content: message.trim(), message_type: 'text', media_url: uploaded.publicUrl, media_type: uploaded.mediaType });
+      const user = await getCurrentUser();
+      const senderEmail = user?.email || '';
+      if (!senderEmail) throw new Error('Authenticated user email is missing.');
+      await sendRealtimeMessage({ conversation_id: conversationIdFor(cleanSenderId, cleanReceiverId), sender_id: cleanSenderId, receiver_id: cleanReceiverId, content: message.trim(), message_type: 'text', metadata: { sender_name: senderEmail, sender_email: senderEmail }, media_url: uploaded.publicUrl, media_type: uploaded.mediaType });
       setMessage('');
     } catch (error) {
       Alert.alert('Attachment failed', error instanceof Error ? error.message : 'Could not upload attachment.');
