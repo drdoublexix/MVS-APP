@@ -2,7 +2,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 type VetProfile = {
   id: string;
@@ -17,14 +17,6 @@ type VetProfile = {
 };
 
 type Category = 'Emergency Request' | 'Vaccination' | 'Pet Checks' | 'General Inquiry' | 'Others';
-
-const starterMessages: Record<Category, string> = {
-  'Emergency Request': 'Hi doctor, my pet needs urgent attention. Please help!',
-  'Vaccination': 'Hi, I need to schedule a vaccination appointment for my pet.',
-  'Pet Checks': 'Hi, I would like to book a routine health checkup for my pet.',
-  'General Inquiry': 'Hi, I have a question about my pet\'s health and would like your advice.',
-  'Others': 'Hi doctor, I would like to consult with you about my pet.',
-};
 
 const categories: Category[] = ['Emergency Request', 'Vaccination', 'Pet Checks', 'General Inquiry', 'Others'];
 
@@ -70,18 +62,25 @@ export default function VetsScreen() {
     setIntakeVet(vet);
   };
 
-  const startChat = (category: Category) => {
+  const startChat = async (category: Category) => {
     if (!intakeVet) return;
+    const doctorId = normalizeUuid(intakeVet.id);
+    const user = await getCurrentUser();
+    const userId = normalizeUuid(user?.id);
+    if (!doctorId || !userId) return;
     setIntakeVet(null);
+    const conversationId = `conv_${[userId, doctorId].sort().join('_')}`;
+    const initialMessage = `Hello Dr. ${intakeVet.full_name}, I would like to inquire about: ${category}.`;
     router.push({
-      pathname: '/(client)/chat',
+      pathname: '/chat',
       params: {
+        conversationId,
         category,
         vet: intakeVet.full_name,
         clinic: intakeVet.clinic_name || 'Veterinary Clinic',
-        receiver_id: intakeVet.id,
-        vet_id: intakeVet.id,
-        starterMessage: starterMessages[category],
+        receiver_id: doctorId,
+        vet_id: doctorId,
+        starterMessage: initialMessage,
       },
     });
   };
