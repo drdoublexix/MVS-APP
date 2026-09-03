@@ -172,6 +172,12 @@ export default function ChatScreen() {
       return;
     }
     const conversationId = conversationIdFor(cleanSenderId, cleanReceiverId);
+    const user = await getCurrentUser();
+    const senderEmail = user?.email || '';
+    if (!senderEmail) {
+      console.error('[Chat Error]: Authenticated user email is missing');
+      return;
+    }
     const optimistic: RealtimeMessage = {
       id: `temp-${Date.now()}`,
       conversation_id: conversationId,
@@ -179,7 +185,7 @@ export default function ChatScreen() {
       receiver_id: cleanReceiverId,
       content: text,
       message_type: 'text',
-      metadata: { sender_name: 'Chat participant' },
+      metadata: { sender_name: senderEmail, sender_email: senderEmail },
       created_at: new Date().toISOString(),
     };
     setMessages((current) => [...current, optimistic]);
