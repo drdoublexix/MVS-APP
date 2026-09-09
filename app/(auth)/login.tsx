@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { sanitizeInput } from '../../lib/sanitize';
 import { loginUser, sendPasswordResetLink, supabase, type AppRole } from '../../lib/supabase';
 
@@ -32,7 +32,7 @@ export default function LoginScreen() {
     try {
       const { user } = await loginUser(sanitizeInput(email), password);
       if (!user) throw new Error('Login did not return a user.');
-      
+
       // Don't manually route - let the root layout auth listener handle it
       // The onAuthStateChange will fire and trigger proper routing
       console.log('Login successful, waiting for auth state update...');
@@ -66,7 +66,7 @@ export default function LoginScreen() {
     console.log('Google Auth Clicked for role:', selectedRole);
     setLoading(true);
     setError('');
-    
+
     try {
       // Normalize role string for OAuth
       let userRole: AppRole = 'client';
@@ -110,7 +110,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
@@ -121,7 +121,13 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={styles.brandMark}><MaterialCommunityIcons name="hospital-box-outline" size={25} color="#08111F" /></View>
+          <View style={styles.brandMark}>
+            <Image
+              source={require('../../assets/images/mvsfp.jpeg')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={styles.eyebrow}>MOBILE VETERINARY SERVICES</Text>
           <Text style={styles.title}>Good to see you again.</Text>
           <Text style={styles.subtitle}>Sign in to continue caring for the pets that matter most.</Text>
@@ -160,7 +166,7 @@ export default function LoginScreen() {
             />
           </View>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.loginButton, loading && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={loading}
@@ -173,7 +179,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
           {resetMessage ? <Text style={styles.resetMessage}>{resetMessage}</Text> : null}
           <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>OR</Text><View style={styles.divider} /></View>
-          
+
           {Platform.OS === 'web' ? (
             <Pressable
               ref={googleButtonRef}
@@ -226,33 +232,39 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 18,
     marginBottom: 28,
+    alignItems: 'center',
   },
   brandMark: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#5EEAD4',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
+    backgroundColor: 'transparent',
+  },
+  logoImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
   },
   eyebrow: {
     color: '#5EEAD4',
     fontSize: 11,
     fontWeight: '800',
     marginBottom: 10,
+    textAlign: 'center',
   },
   title: {
     fontSize: 32,
     fontWeight: '700',
     color: '#F8FAFC',
     marginBottom: 10,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
     color: '#9BAEC2',
     maxWidth: 340,
+    textAlign: 'center',
   },
   form: {
     gap: 17,

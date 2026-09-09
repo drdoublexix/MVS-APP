@@ -7,11 +7,6 @@
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "mvs",
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -20,7 +15,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.mvs.app",
-      "supportsTabletMode": true,
+      "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "MVS needs access to your location to find nearby veterinarians.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "MVS needs access to your location to find nearby veterinarians.",
@@ -43,9 +38,17 @@
       }
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.jpeg"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       [
         "expo-location",
         {

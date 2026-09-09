@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
 import { sanitizeInput } from '../../lib/sanitize';
 import { supabase, type AppRole } from '../../lib/supabase';
@@ -94,7 +94,6 @@ export default function SignupScreen() {
       }
 
       console.log('[Signup] Signup successful:', data.user?.id);
-      // Check if session was auto-confirmed
       const { data: sessionData } = await supabase.auth.getSession();
       console.log('[Signup] Session after signup:', sessionData.session?.user?.id);
 
@@ -187,11 +186,15 @@ export default function SignupScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.brandMark}>
-            <MaterialCommunityIcons name="hospital-box-outline" size={25} color="#08111F" />
+            <Image
+              source={require('../../assets/images/mvsfp.jpeg')}
+              style={{ width: 80, height: 80, borderRadius: 40 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.eyebrow}>MOBILE VETERINARY SERVICES</Text>
-          <Text style={styles.title}>Your care circle starts here.</Text>
-          <Text style={styles.subtitle}>Create one account for trusted veterinary care, products, and support.</Text>
+          <Text style={styles.title}>Your farm animals/pet care circle starts here.</Text>
+          <Text style={styles.subtitle}>Create an account for trusted veterinary care, products, and support.</Text>
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -356,33 +359,34 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 18,
     marginBottom: 28,
+    alignItems: 'center',
   },
   brandMark: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#5EEAD4',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
+    backgroundColor: 'transparent',
   },
   eyebrow: {
     color: '#5EEAD4',
     fontSize: 11,
     fontWeight: '800',
     marginBottom: 10,
+    textAlign: 'center',
   },
   title: {
     fontSize: 32,
     fontWeight: '700',
     color: '#F8FAFC',
     marginBottom: 10,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
     color: '#9BAEC2',
     maxWidth: 340,
+    textAlign: 'center',
   },
   form: {
     gap: 17,
