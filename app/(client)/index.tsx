@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, SafeAr
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
+import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 interface Message {
@@ -118,7 +119,7 @@ export default function ClientHome() {
   };
 
   const askAiAssistant = async () => {
-    const prompt = userQuery.trim();
+    const prompt = sanitizeInput(userQuery);
     if (!prompt || aiLoading || !aiSession) return;
 
     const serviceError = 'Unable to connect to MVS Assistant service. Please try again.';

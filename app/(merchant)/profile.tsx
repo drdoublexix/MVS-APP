@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, sendPasswordResetLink, supabase, updatePassword } from '../../lib/supabase';
 
 type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
@@ -155,18 +156,22 @@ export default function MerchantProfileScreen() {
   const saveProfile = async () => {
     const user = await getCurrentUser();
     if (!user) return;
-    const formattedPhoneNumber = profile.phone.trim().replace(/[\s()-]/g, '');
+    const cleanName = sanitizeInput(profile.name);
+    const cleanBusiness = sanitizeInput(profile.business);
+    const cleanLocation = sanitizeInput(profile.location);
+    const cleanBusinessNumber = sanitizeInput(profile.businessNumber);
+    const formattedPhoneNumber = sanitizeInput(profile.phone).replace(/[\s()-]/g, '');
     if (!/^\+[1-9]\d{7,14}$/.test(formattedPhoneNumber)) { Alert.alert('Invalid phone number', 'Enter a valid international number, for example +2348000000000.'); return; }
     const { error: profileError } = await supabase.from('profiles').update({ phone_number: formattedPhoneNumber }).eq('id', user.id);
     if (profileError) { Alert.alert(profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile', profileError.code === '23505' ? 'This phone number is already associated with another MVS account.' : profileError.message); return; }
     await supabase.auth.updateUser({
       data: {
         ...user.user_metadata,
-        full_name: profile.name,
+        full_name: cleanName,
         phone: formattedPhoneNumber,
-        business: profile.business,
-        location: profile.location,
-        business_number: profile.businessNumber,
+        business: cleanBusiness,
+        location: cleanLocation,
+        business_number: cleanBusinessNumber,
       },
     });
     setProfile((current) => ({ ...current, phone: formattedPhoneNumber }));
@@ -187,7 +192,7 @@ export default function MerchantProfileScreen() {
       const selectedBank = NIGERIAN_BANKS.find((bank) => bank.code === bankCode);
       if (!selectedBank) { Alert.alert('Select a bank', 'Choose your Nigerian bank before saving.'); return; }
       if (!/^\d{10}$/.test(accountNumber)) { Alert.alert('Invalid account number', 'Account number must contain exactly 10 digits.'); return; }
-      const { error: dbErr } = await supabase.from('profiles').update({ bank_name: selectedBank.label, bank_code: bankCode, account_number: accountNumber, account_name: profile.accountName.trim() }).eq('id', user.id);
+      const { error: dbErr } = await supabase.from('profiles').update({ bank_name: sanitizeInput(selectedBank.label), bank_code: sanitizeInput(bankCode), account_number: sanitizeInput(accountNumber), account_name: sanitizeInput(profile.accountName) }).eq('id', user.id);
       if (dbErr) { Alert.alert('Database Error', dbErr.message); return; }
       const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('create-subaccount', { body: { userId: user.id, bankCode, accountNumber, businessName: user.user_metadata?.full_name || 'Emmanuel Francis', email: user.email || 'francisemmanuel303@gmail.com', phone: user.user_metadata?.phone || '08000000000' } });
       if (edgeErr || !edgeData?.success) { console.error('Subaccount creation failed:', edgeErr || edgeData); Alert.alert('Warning', `Bank saved, but subaccount creation failed: ${edgeErr?.message || edgeData?.error || 'Unknown error'}`); return; }

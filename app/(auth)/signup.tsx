@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
+import { sanitizeInput } from '../../lib/sanitize';
 import { supabase, type AppRole } from '../../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -72,13 +73,16 @@ export default function SignupScreen() {
         localStorage.setItem('mvs_pending_signup_role', userRole);
       }
 
+      const cleanEmail = sanitizeInput(email);
+      const cleanFullName = sanitizeInput(fullName);
+      const cleanPhoneNumber = sanitizeInput(normalizedPhoneNumber);
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: cleanEmail,
         password: password,
         options: {
           data: {
-            full_name: fullName.trim(),
-            phone_number: normalizedPhoneNumber,
+            full_name: cleanFullName,
+            phone_number: cleanPhoneNumber,
             role: userRole,
           },
         },
@@ -96,7 +100,7 @@ export default function SignupScreen() {
 
       if (sessionData.session?.user) {
         const user = sessionData.session.user;
-        const profileName = fullName.trim() || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Merchant';
+        const profileName = cleanFullName || sanitizeInput(user.user_metadata?.full_name) || sanitizeInput(user.email?.split('@')[0]) || 'Merchant';
         let location = { latitude: null as number | null, longitude: null as number | null, city: '', state: '' };
         try {
           location = (await requestDeviceLocation()) || location;
@@ -104,7 +108,7 @@ export default function SignupScreen() {
           console.warn('[Signup] Location unavailable:', locationError);
         }
         const { error: profileError } = await supabase.from('profiles').upsert(
-          { id: user.id, email: user.email, full_name: profileName, phone_number: normalizedPhoneNumber, role: userRole, ...location },
+          { id: user.id, email: sanitizeInput(user.email), full_name: profileName, phone_number: cleanPhoneNumber, role: userRole, ...location },
           { onConflict: 'id' },
         );
         if (profileError) {

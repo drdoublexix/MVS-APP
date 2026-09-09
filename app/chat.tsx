@@ -23,6 +23,7 @@ import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
+import { sanitizeInput } from "../lib/sanitize";
 import {
     deleteRealtimeMessage,
     ensureConsultationRecord,
@@ -790,7 +791,8 @@ export default function ChatScreen() {
     setInvoiceSubmitting(true);
     try {
       const user = await getCurrentUser();
-      const sellerName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "Seller";
+      const sellerName = sanitizeInput(user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "Seller");
+      const cleanNote = sanitizeInput(note);
       let sellerSubaccountId: string | undefined;
       const { data: sellerProfile, error: sellerProfileError } = await supabase.from("profiles").select("flutterwave_subaccount_id").eq("id", currentUserId).maybeSingle();
       if (sellerProfileError) console.warn("[Invoice] Seller Flutterwave subaccount unavailable:", sellerProfileError.message);
@@ -801,8 +803,8 @@ export default function ChatScreen() {
         .select("id, amount, status")
         .single();
       if (error) throw error;
-      const invoiceMetadata: InvoiceMetadata = { order_id: order.id, amount: Number(order.amount), note: note || undefined, seller_name: sellerName, seller_subaccount_id: sellerSubaccountId, status: "pending" };
-      const invoiceMessage = await sendRealtimeMessage({ conversation_id: active.id, sender_id: currentUserId, receiver_id: active.participantId, content: note || "Invoice", message_type: "invoice", metadata: invoiceMetadata });
+      const invoiceMetadata: InvoiceMetadata = { order_id: order.id, amount: Number(order.amount), note: cleanNote || undefined, seller_name: sellerName, seller_subaccount_id: sellerSubaccountId, status: "pending" };
+      const invoiceMessage = await sendRealtimeMessage({ conversation_id: active.id, sender_id: currentUserId, receiver_id: active.participantId, content: cleanNote || "Invoice", message_type: "invoice", metadata: invoiceMetadata });
       setMessages((current) => appendUniqueMessage(current, invoiceMessage));
       setInvoiceVisible(false);
     } catch (error) {
@@ -896,14 +898,14 @@ export default function ChatScreen() {
   const sendMessage = async () => {
     const cleanSenderId = normalizeUuid(currentUserId);
     const cleanReceiverId = normalizeUuid(active?.participantId);
-    const text = message.trim();
+    const text = sanitizeInput(message);
     if (!active || !text || !cleanSenderId || !cleanReceiverId) {
       console.error("[Chat Error]: Missing sender or receiver ID");
       return;
     }
     const conversationId = conversationIdFor(cleanSenderId, cleanReceiverId);
     const user = await getCurrentUser();
-    const senderEmail = user?.email || "";
+    const senderEmail = sanitizeInput(user?.email);
     if (!senderEmail) {
       console.error("[Chat Error]: Authenticated user email is missing");
       return;
@@ -996,7 +998,7 @@ export default function ChatScreen() {
         conversation_id: conversationIdFor(cleanSenderId, cleanReceiverId),
         sender_id: cleanSenderId,
         receiver_id: cleanReceiverId,
-        content: message.trim(),
+        content: sanitizeInput(message),
         message_type: "text",
         metadata: { sender_name: senderEmail, sender_email: senderEmail },
         media_url: uploaded.publicUrl,

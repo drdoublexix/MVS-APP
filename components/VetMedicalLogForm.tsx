@@ -1,6 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { sanitizeInput } from '../lib/sanitize';
 import { getCurrentUser, supabase } from '../lib/supabase';
 
 type Props = { petId: string; onSaved: () => void };
@@ -56,7 +57,10 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
   };
 
   const save = async () => {
-    if (!title.trim() || !petId || saving) return;
+    const cleanTitle = sanitizeInput(title);
+    const cleanTreatmentType = sanitizeInput(treatmentType);
+    const cleanNotes = sanitizeInput(notes);
+    if (!cleanTitle || !petId || saving) return;
     setSaving(true);
     try {
       const user = await getCurrentUser();
@@ -66,13 +70,13 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
       const { error } = await supabase.from('pet_medical_records').insert({
         pet_id: petId,
         vet_id: user.id,
-        treatment_type: treatmentType,
-        title: title.trim(),
+        treatment_type: cleanTreatmentType,
+        title: cleanTitle,
         dose_series_number: Number(doseSeriesNumber) || 1,
         total_series_doses: Number(totalSeriesDoses) || 1,
         administered_date: toDateValue(administeredDate),
         next_due_date: nextDueDate ? toDateValue(nextDueDate) : null,
-        notes: notes.trim() || null,
+        notes: cleanNotes || null,
       });
       if (error) throw error;
       setNotes('');

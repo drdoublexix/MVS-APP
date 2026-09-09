@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { sanitizeInput } from '../../lib/sanitize';
 import { loginUser, sendPasswordResetLink, supabase, type AppRole } from '../../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -29,7 +30,7 @@ export default function LoginScreen() {
     setResetMessage('');
 
     try {
-      const { user } = await loginUser(email, password);
+      const { user } = await loginUser(sanitizeInput(email), password);
       if (!user) throw new Error('Login did not return a user.');
       
       // Don't manually route - let the root layout auth listener handle it
@@ -52,7 +53,7 @@ export default function LoginScreen() {
     setError('');
     setResetMessage('');
     try {
-      await sendPasswordResetLink(email.trim(), 'http://localhost:8081/reset-password');
+      await sendPasswordResetLink(sanitizeInput(email), 'http://localhost:8081/reset-password');
       setResetMessage('A reset password link has been sent to your email.');
     } catch (err: any) {
       setError(err.message || 'We could not send the reset password link.');

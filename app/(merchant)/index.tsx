@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { addMarketplaceProduct, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
+import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
 const categories = ['Food', 'Accessories', 'Animals', 'Agro-allied'];
@@ -84,16 +85,18 @@ export default function MerchantDashboardScreen() {
   }, []));
 
   const publish = async () => {
+    const cleanTitle = sanitizeInput(form.title);
+    const cleanCategory = sanitizeInput(form.category);
     const price = Number(form.price); const stock = Number(form.stock);
-    if (!form.title.trim() || !form.category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) return;
+    if (!cleanTitle || !cleanCategory || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) return;
 
     try {
       const user = await getCurrentUser();
       const merchantId = user?.id || 'current-merchant';
 
       const { error } = await supabase.from('products').insert({
-        name: form.title.trim(),
-        category: form.category,
+        name: cleanTitle,
+        category: cleanCategory,
         price,
         stock,
         merchant_id: merchantId,
@@ -102,8 +105,8 @@ export default function MerchantDashboardScreen() {
       if (error) throw error;
 
       addMarketplaceProduct({
-        name: form.title.trim(),
-        category: form.category,
+        name: cleanTitle,
+        category: cleanCategory,
         price,
         stock,
         merchant: user?.user_metadata?.full_name || 'MVS Merchant Store',

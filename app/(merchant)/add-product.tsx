@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { addMarketplaceProduct } from '../../lib/marketplace';
+import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase, uploadProductImage } from '../../lib/supabase';
 
 export default function AddProductScreen() {
@@ -41,8 +42,9 @@ export default function AddProductScreen() {
       if (!user) throw new Error('You must be signed in as a merchant.');
 
       const imageUrl = image ? await uploadProductImage(image) : undefined;
-      const productNameValue = productName.trim();
-      const productDescription = description.trim();
+      const productNameValue = sanitizeInput(productName);
+      const productDescription = sanitizeInput(description);
+      const cleanCategory = sanitizeInput(category);
       const merchantName = user.user_metadata?.full_name || user.user_metadata?.name || 'MVS Merchant Store';
 
       const { data, error } = await supabase
@@ -55,7 +57,7 @@ export default function AddProductScreen() {
             description: productDescription,
             price: priceValue,
             image_url: imageUrl,
-            category: category || 'General',
+            category: cleanCategory || 'General',
             stock: Number.isNaN(stockValue) ? 1 : stockValue,
           },
         ]);
@@ -65,7 +67,7 @@ export default function AddProductScreen() {
       addMarketplaceProduct({
         name: productNameValue,
         description: productDescription,
-        category: category || 'General',
+        category: cleanCategory || 'General',
         price: priceValue,
         stock: Number.isNaN(stockValue) ? 1 : stockValue,
         merchant: merchantName,

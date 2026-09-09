@@ -5,6 +5,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, SafeAreaView,
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
+import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 interface Message {
@@ -126,7 +127,7 @@ export default function VetDashboardScreen() {
   };
 
   const askAiAssistant = async (isRetry = false) => {
-    const prompt = (isRetry ? retryPrompt : userQuery).trim();
+    const prompt = sanitizeInput(isRetry ? retryPrompt : userQuery);
     if (!prompt || aiLoading || !aiSession) return;
 
     const userMsg: Message = { role: 'user', content: prompt };
