@@ -1,7 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useUnreadMessages } from '../../lib/unreadMessages';
 
 export default function ClientLayout() {
+  const { totalUnreadCount } = useUnreadMessages();
+
   return (
     <Tabs
       screenOptions={{
@@ -37,6 +40,8 @@ export default function ClientLayout() {
         name="chat"
         options={{
           title: 'Chat',
+          tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined,
+          tabBarBadgeStyle: { backgroundColor: '#EF4444', color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' },
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="message" color={color} size={size} />
           ),

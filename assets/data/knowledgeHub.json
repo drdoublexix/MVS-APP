@@ -1,0 +1,146 @@
+[
+  {
+    "id": "dog-vaccination",
+    "category": "Vaccination",
+    "title": "Dog Vaccination Guide",
+    "icon": "dog",
+    "summary": "Core and non-core immunization schedules to safeguard canine health.",
+    "content": [
+      "Vaccination is the cornerstone of proactive canine healthcare, serving as the primary defense against devastating and potentially fatal infectious diseases. Immunization works by introducing a harmless antigen into the dog's body, stimulating the immune system to produce antibodies without causing the disease itself. This proactive measure ensures that when your dog encounters wild pathogens, their body can mount an immediate and effective defense.",
+      "In Nigeria and across West Africa, essential core vaccines include Rabies, Canine Distemper, Parvovirus, Infectious Canine Hepatitis, and Leptospirosis (DHPP/DHLPP). Parvovirus and Distemper are notoriously persistent in the environment and carry extremely high mortality rates in unvaccinated puppies. Rabies, being a fatal zoonotic disease transferable to humans, is strictly required by law for all domestic dogs.",
+      "Puppies typically begin their core vaccination series between 6 to 8 weeks of age, receiving boosters every 3 to 4 weeks until they reach approximately 16 weeks. This structured series is critical to bridge the gap as maternal antibody protection naturally declines. Adult dogs require regular booster shots every 1 to 3 years, depending on the specific vaccine protocol and lifestyle risk factors.",
+      "Following any vaccination, it is normal for dogs to display mild lethargy or slight soreness at the injection site for 24 to 48 hours. However, owners should monitor closely for rare allergic reactions, such as facial swelling, hives, vomiting, or persistent lethargy, and report them to a licensed veterinarian immediately."
+    ]
+  },
+  {
+    "id": "cat-vaccination",
+    "category": "Vaccination",
+    "title": "Cat Vaccination Guide",
+    "icon": "cat",
+    "summary": "Essential immunizations against Feline Panleukopenia, Calicivirus, and Rabies.",
+    "content": [
+      "Feline vaccinations are essential for maintaining long-term health and preventing contagious viral outbreak among indoor and outdoor cats alike. Even strictly indoor cats require vaccination because airborne pathogens or viral elements tracked in on footwear and clothing can still pose severe health risks.",
+      "Core feline vaccines safeguard against Feline Panleukopenia (Feline Distemper), Feline Viral Rhinotracheitis (FVR), Feline Calicivirus (FCV), and Rabies. Panleukopenia is particularly dangerous, causing severe leukopenia, severe dehydration, and high mortality in young kittens. FVR and Calicivirus account for the vast majority of debilitating upper respiratory infections in cats.",
+      "Kittens should start their primary vaccination series at 6 to 8 weeks of age, receiving booster doses every 3 to 4 weeks until reaching 16 weeks. A primary booster is administered one year later, followed by routine revaccination every 1 to 3 years based on veterinary recommendation.",
+      "Keeping an updated, accurate vaccination log is critical for feline owners, especially when using boarding facilities or catteries. Always consult your veterinarian to customize the vaccination protocol according to your cat's specific housing environment and risk exposure."
+    ]
+  },
+  {
+    "id": "poultry-vaccination",
+    "category": "Vaccination",
+    "title": "Poultry Vaccination Protocols",
+    "icon": "feather",
+    "summary": "Flock protection against Newcastle Disease, Gumboro, and Fowl Pox.",
+    "content": [
+      "Flock immunization is the backbone of successful commercial and backyard poultry management. Given the high-density housing typical in poultry farming, highly infectious diseases can spread rapidly through a flock within hours, leading to catastrophic mortality and farm economic loss.",
+      "The most critical poultry vaccines include Newcastle Disease (ND), Infectious Bursal Disease (IBD or Gumboro), Fowl Pox, Marek's Disease, and Infectious Bronchitis. Newcastle Disease remains a devastating viral threat in West Africa, capable of causing up to 100% mortality in unvaccinated flocks through acute respiratory and neurological distress.",
+      "Poultry vaccination timing is age-dependent: Marek's vaccine is administered at hatchery/day 1, Gumboro is typically administered via drinking water during weeks 1 and 3, and Newcastle Disease vaccines (such as ND Lasota or Intraocular) are given at day 7 and repeated periodically. Strict adherence to cold-chain storage for vaccines is crucial to maintain potency.",
+      "Additionally, please note that poultry vaccination schedules vary significantly by breed (Broilers vs. Layers vs. Breeders) and geographic location. For example, the vaccination schedule used in Southern Nigeria differs from protocols suited for Northern regional climate and disease prevalence. Farmers must consult with a licensed local veterinarian to establish a tailored vaccination schedule before administering any regimen.",
+      "Vaccinations must always be paired with rigorous biosecurity measures—including visitor footbaths, proper pen sanitation, and clean feed management. A vaccine will not compensate for poor hygiene, but together they ensure maximum flock survival and productivity."
+    ]
+  },
+  {
+    "id": "clean-water-nutrition",
+    "category": "Hydration & Nutrition",
+    "title": "Clean Water & Animal Hydration",
+    "icon": "water",
+    "summary": "The critical role of fresh, clean water in pet health and farm livestock productivity.",
+    "content": [
+      "Water is the most vital yet most frequently overlooked nutritional requirement for pets and livestock alike. Animals can survive losing almost all body fat and half their body protein, but losing just 10% of body water can lead to severe organ failure, heat stroke, or death. Clean water facilitates digestion, nutrient absorption, thermal regulation, and cellular waste removal.",
+      "Sourcing fresh, non-contaminated water is paramount. Stagnant, algae-ridden, or chemically tainted water harbors deadly pathogens such as E. coli, Salmonella, and internal parasites. For poultry and swine, contaminated drinking water severely impairs feed conversion ratios and causes chronic gastrointestinal issues.",
+      "Proper water management requires clean, scrubbed watering bowls or automated nipples cleaned daily. In hot climates, water must be kept shaded and cool; animals will drastically reduce their water intake if the water becomes warm, directly leading to reduced feed consumption and heat stress.",
+      "Always ensure continuous, unrestricted access to fresh drinking water. If you notice sudden changes in an animal's water consumption—either excessive drinking (polydipsia) or refusal to drink (adipsia)—consult a veterinarian immediately, as this is often an early indicator of kidney disease, diabetes, or systemic infection."
+    ]
+  },
+  {
+    "id": "ruminant-health-deworming",
+    "category": "Livestock Care",
+    "title": "Ruminant Health & Deworming",
+    "icon": "shield-cross",
+    "summary": "Strategic deworming and parasite prevention protocols for cattle, goats, and sheep.",
+    "content": [
+      "Internal and external parasites represent one of the greatest economic threats to ruminant farming across West Africa. Gastrointestinal helminthes, liver flukes, and tick-borne diseases can severely cause anemia, rapid weight loss, poor milk production, and high mortality, especially in young kids, lambs, and calves.",
+      "Strategic deworming protocols should be implemented at key seasonal transitions—particularly at the onset and end of the rainy season when pasture larvae counts surge. Blanket, over-frequent deworming must be avoided to prevent anthelmintic resistance; instead, targeted treatment based on FAMACHA scoring or fecal egg counts ensures long-term medication efficacy.",
+      "Pasture management plays a critical role in parasite control. Practicing rotational grazing allows pastures to rest, breaking the life cycle of intestinal worms. Additionally, keeping ruminants off wet, early-morning pastures reduces their consumption of active larvae attached to dew-covered grass blades.",
+      "Tick management using approved pour-on or spray acaricides is equally crucial to prevent devastating blood-borne illnesses like Babesiosis (Redwater) and Anaplasmosis. Always consult a veterinarian to select the appropriate active ingredient and observe strict meat and milk withdrawal periods after treatment."
+    ]
+  },
+  {
+    "id": "pet-nutrition-feeding",
+    "category": "Hydration & Nutrition",
+    "title": "Pet Nutrition & Safe Feeding",
+    "icon": "food-drumstick",
+    "summary": "Essential dietary guidelines and severe household toxicity risks for dogs and cats.",
+    "content": [
+      "Providing a balanced, species-appropriate diet is fundamental to lifetime wellness and longevity for domestic pets. Dogs are omnivorous carnivores requiring balanced ratios of animal proteins, healthy fats, complex carbohydrates, vitamins, and minerals, while cats are obligate carnivores that require higher dietary protein and essential amino acids like taurine.",
+      "Pet owners must be acutely aware of common household human foods that are highly toxic to companion animals. Onions, garlic, and leeks cause oxidative damage to red blood cells leading to severe anemia. Chocolate, coffee, and caffeinated items contain methylxanthines that trigger cardiac arrhythmias and seizures.",
+      "Other hazardous foods include grapes and raisins (which cause acute kidney failure), cooked poultry or meat bones (which splinter easily and can cause intestinal perforation), and the artificial sweetener Xylitol (found in sugar-free products, causing rapid hypoglycemia and liver failure).",
+      "Establish structured feeding schedules rather than continuous free-feeding to prevent obesity, which predisposes pets to osteoarthritis, diabetes, and cardiovascular strain. Always transition to new diets gradually over 7 to 10 days to avoid acute gastrointestinal upset."
+    ]
+  },
+  {
+    "id": "canine-emergency-first-aid",
+    "category": "First Aid & Triage",
+    "title": "Pet Emergency First Aid",
+    "icon": "medical-bag",
+    "summary": "Recognizing critical signs and applying immediate first aid before reaching a vet.",
+    "content": [
+      "Knowing how to recognize medical emergencies and administer basic first aid can be the difference between life and death for your pet. Common acute emergencies include severe trauma, suspected poisoning, heatstroke, bloat (Gastric Dilation-Volvulus), and acute viral gastroenteritis such as Canine Parvovirus.",
+      "In cases of heatstroke—evidenced by excessive panting, dark red gums, drooling, and collapse—immediately move the pet to a shaded or air-conditioned space and apply cool (not ice-cold) water to their belly, paws, and neck while transporting them to a veterinary clinic. Never use ice water, as it causes blood vessel constriction and traps core body heat.",
+      "For bleeding wounds, apply direct pressure using a clean cloth or sterile gauze. Do not apply tight tourniquets unless specifically instructed by a veterinary professional, as improper application can cause permanent tissue damage. Keep the animal calm and restrained to prevent shock.",
+      "If you suspect toxin ingestion, do not induce vomiting unless explicitly directed by a licensed veterinarian, as corrosive substances can cause double the damage to the esophagus during regurgitation. Bring the suspected toxin container or packaging directly to the emergency clinic."
+    ]
+  },
+  {
+    "id": "poultry-biosecurity",
+    "category": "Biosecurity",
+    "title": "Poultry Biosecurity Measures",
+    "icon": "shield-check",
+    "summary": "Strict farm hygiene, sanitation, and isolation steps to halt infectious disease spread.",
+    "content": [
+      "Biosecurity encompasses all practical measures implemented to prevent the introduction and spread of disease-causing organisms within a poultry flock. A well-enforced biosecurity program is far more cost-effective than attempting to treat an active disease outbreak.",
+      "Key physical biosecurity protocols include maintaining strict perimeter fencing, controlling farm traffic, and mandating disinfectant footbaths and hand sanitization stations at every pen entrance. All visitors and farm personnel should wear dedicated clean boots and coveralls before entering production areas.",
+      "Wild birds, rodents, and stray animals are frequent vectors for lethal pathogens such as Avian Influenza and Salmonella. Ensure feed storage facilities are vermin-proof, clean up spilled feed promptly, and install mesh netting over ventilation openings in poultry houses.",
+      "Implement an 'all-in, all-out' flock management system whenever possible. This strategy allows complete cleaning, washing, and chemical disinfection of housing units followed by a minimum 14-day downtime before introducing new batches of chicks."
+    ]
+  },
+  {
+    "id": "rabies-public-health",
+    "category": "Public Health",
+    "title": "Rabies Awareness & Prevention",
+    "icon": "alert-decagram",
+    "summary": "Understanding Rabies transmission, annual vaccination laws, and bite exposure protocols.",
+    "content": [
+      "Rabies is a fatal viral zoonotic disease that attacks the central nervous system of mammals, including humans. The virus is primarily transmitted through the saliva of infected animals via bites, scratches, or direct contact with open wounds and mucous membranes.",
+      "Annual vaccination of domestic dogs and cats remains the single most effective barrier against human Rabies transmission. In many jurisdictions, rabies vaccination is legally mandated for all pet owners to protect community health and control stray animal reservoir dynamics.",
+      "If a person or pet is bitten by a suspected rabid animal, immediate post-exposure action is essential: thoroughly wash the bite wound under running water with soap for at least 15 minutes. This simple measure dramatically reduces viral load at the wound site.",
+      "Seek emergency medical attention immediately following a bite to initiate Post-Exposure Prophylaxis (PEP) before neurological symptoms develop. Once clinical symptoms of Rabies appear, the disease is almost 100% fatal. Responsible pet ownership and prompt veterinary care are essential to eradicating Rabies."
+    ]
+  },
+  {
+    "id": "toxoplasmosis-feline-public-health",
+    "category": "Public Health",
+    "title": "Toxoplasmosis & Feline Safety",
+    "icon": "shield-alert",
+    "summary": "Understanding Toxoplasma gondii transmission, pregnancy risks, and safe handling.",
+    "content": [
+      "Toxoplasmosis is a widespread zoonotic infection caused by the microscopic protozoan parasite Toxoplasma gondii. While domestic and wild felids (cats) are the only definitive hosts in which the parasite can complete its reproductive cycle and shed infectious oocysts in feces, virtually all warm-blooded animals, including humans, can serve as intermediate hosts.",
+      "Most healthy cats and adults infected with Toxoplasmosis show no visible symptoms or exhibit mild, flu-like signs. However, the infection poses severe risks to pregnant women and immunocompromised individuals. If a woman contracts primary Toxoplasmosis during pregnancy, the parasite can cross the placenta, resulting in congenital toxoplasmosis.",
+      "Congenital infection can cause severe fetal malformations, structural brain abnormalities, hydrocephalus, chorioretinitis leading to blindness, microcephaly, developmental delays, or spontaneous abortion. Transmission to humans occurs primarily through accidental ingestion of oocysts from contaminated litter boxes, soil, unwashed vegetables, or raw/undercooked meat containing tissue cysts.",
+      "Preventive management is straightforward and does not require surrendering domestic cats. Expectant mothers should delegate daily litter box cleaning to another household member, or wear disposable gloves and thoroughly wash hands with soap and warm water if handling litter. Ensure litter boxes are scooped daily, as oocysts require 1 to 5 days after shedding to become infectious."
+    ]
+  },
+  {
+    "id": "anthrax-ruminant-public-health",
+    "category": "Public Health",
+    "title": "Anthrax Warning & Herd Safety",
+    "icon": "alert-octagon",
+    "summary": "Recognizing lethal Anthrax symptoms, handling sudden livestock death, and emergency protocols.",
+    "content": [
+      "Anthrax is a severe, acute zoonotic disease caused by the spore-forming bacterium Bacillus anthracis. It primarily strikes domestic and wild ruminants—such as cattle, sheep, and goats—leading to rapid, peracute death. Because Bacillus anthracis spores can survive in soil for decades, grazing livestock can ingest or inhale spores during grazing in endemic pasture areas.",
+      "The clinical presentation of Anthrax in ruminants is extremely rapid. Animals are frequently found dead without prior observed signs of illness. A pathognomonic hallmark of Anthrax is the presence of dark, frank blood oozing from body orifices (nose, mouth, anus, and vulva) that notoriously fails to clot, accompanied by rapid carcass decomposition and incomplete rigor mortis.",
+      "CRITICAL SAFETY WARNING: If a farmer or handler discovers a dead animal exhibiting dark, unclotted blood discharges, DO NOT open or cut the carcass (necropsy). Opening the carcass releases vegetative bacteria into the air, where they form highly resistant, long-lasting spores that contaminate the soil and environment for decades.",
+      "Never butcher, sell, touch, skin, or consume meat from an animal suspected of dying from Anthrax. Anthrax is directly transmissible to humans through cutaneous contact, inhalation, or ingestion, causing severe illness or fatal systemic infection. Immediately quarantine the area, keep all personnel and dogs away, and contact a licensed veterinarian and official public health officers for safe disposal and ring vaccination."
+    ]
+  }
+]

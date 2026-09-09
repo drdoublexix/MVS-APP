@@ -2,6 +2,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { registerForPushNotifications } from '../lib/notifications';
 import { supabase } from '../lib/supabase';
 
 function RootAuthGate() {
@@ -65,6 +66,9 @@ function RootAuthGate() {
         await supabase
           .from('profiles')
           .upsert({ id: session.user.id, email: session.user.email, full_name: fullName, role: userRole }, { onConflict: 'id' });
+        void registerForPushNotifications(session.user.id).catch((error) => {
+          console.warn('[Notifications] Push registration failed:', error);
+        });
         if (pendingRole && typeof window !== 'undefined') window.localStorage.removeItem('mvs_pending_signup_role');
 
         if (!mounted) return;

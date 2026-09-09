@@ -1,16 +1,21 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import { requestAiAssistant } from '../../lib/aiAssistant';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
-interface Tip {
-  id: string;
-  title: string;
-  icon: any;
-  body: string;
-  tips: string[];
+interface Message {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface AiSession {
+  sessionId: string;
+  userId: string;
 }
 
 const naira = (price: number) => `₦${price.toLocaleString()}`;
@@ -18,8 +23,13 @@ const naira = (price: number) => `₦${price.toLocaleString()}`;
 export default function ClientHome() {
   const router = useRouter();
   const { products } = useMarketplace();
-  const [selectedTip, setSelectedTip] = useState<Tip | null>(null);
+  const [aiVisible, setAiVisible] = useState(false);
+  const [userQuery, setUserQuery] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSession, setAiSession] = useState<AiSession | null>(null);
   const [productOrderStatuses, setProductOrderStatuses] = useState<Record<string, string>>({});
+  const messagesScrollRef = useRef<ScrollView>(null);
 
   const inquireAboutProduct = async (product: (typeof products)[number]) => {
     const user = await getCurrentUser();
@@ -39,18 +49,47 @@ export default function ClientHome() {
   }, []);
 
   useEffect(() => {
+    if (!aiVisible) return;
+    let mounted = true;
+
+    const loadChatHistory = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) return;
+        const userId = normalizeUuid(user.id);
+        if (!userId) return;
+        const sessionId = `client-ai-${userId}`;
+        if (mounted) setAiSession({ sessionId, userId });
+
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('id, role, content, created_at')
+          .eq('user_id', userId)
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true });
+        if (error) {
+          console.error('Error loading chat history:', error);
+          return;
+        }
+        if (mounted && data) {
+          setMessages(data.map((msg: any) => ({ id: msg.id, role: msg.role as 'user' | 'assistant', content: msg.content })));
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      }
+    };
+
+    void loadChatHistory();
+    return () => { mounted = false; };
+  }, [aiVisible]);
+
+  useEffect(() => {
     void (async () => {
       try {
         const user = await getCurrentUser();
         if (!user) return;
-
-        const { data, error } = await supabase
-          .from('orders')
-          .select('product_id, status')
-          .eq('buyer_id', user.id);
-
+        const { data, error } = await supabase.from('orders').select('product_id, status').eq('buyer_id', user.id);
         if (error) throw error;
-
         const statusMap: Record<string, string> = {};
         for (const item of data || []) {
           if (item?.product_id) statusMap[String(item.product_id)] = item.status;
@@ -61,7 +100,6 @@ export default function ClientHome() {
       }
     })();
   }, []);
-
   const getOrderBadge = (status?: string) => {
     if (!status) return null;
     switch (status) {
@@ -79,51 +117,63 @@ export default function ClientHome() {
     }
   };
 
-  const tips: Tip[] = [
-    {
-      id: '1',
-      title: 'Vaccination',
-      icon: 'needle',
-      body: 'Regular vaccinations protect your pet from serious diseases. Puppies and kittens need a series of shots starting at 6-8 weeks of age.',
-      tips: ['Start vaccination at 6-8 weeks', 'Follow a regular schedule', 'Keep vaccination records safe', 'Booster shots every 1-3 years'],
-    },
-    {
-      id: '2',
-      title: 'Cat Age',
-      icon: 'cat',
-      body: 'Understanding your cat\'s age in human years helps you provide age-appropriate care. A 1-year-old cat is like a 15-year-old human.',
-      tips: ['First year = 15 human years', 'Second year = 10 human years', 'Each year after = 4 human years', 'Adjust care based on age'],
-    },
-    {
-      id: '3',
-      title: 'Rabies',
-      icon: 'virus-alert',
-      body: 'Rabies is a deadly virus spread through saliva. Vaccination and avoiding contact with wild animals are key prevention methods.',
-      tips: ['Vaccinate against rabies', 'Avoid wildlife contact', 'Seek help if bitten immediately', 'Report stray animals'],
-    },
-    {
-      id: '4',
-      title: 'Nutrition',
-      icon: 'apple',
-      body: 'Proper nutrition is essential for your pet\'s health. Different life stages require different nutrients and calorie amounts.',
-      tips: ['Choose quality food', 'Age-appropriate diet', 'Monitor portion sizes', 'Fresh water always available'],
-    },
-  ];
+  const askAiAssistant = async () => {
+    const prompt = userQuery.trim();
+    if (!prompt || aiLoading || !aiSession) return;
+
+    const serviceError = 'Unable to connect to MVS Assistant service. Please try again.';
+    const userMsg: Message = { role: 'user', content: prompt };
+    const conversation = [...messages, userMsg];
+
+    setMessages((prev) => [...prev, userMsg]);
+    setUserQuery('');
+    setAiLoading(true);
+
+    let assistantContent = serviceError;
+    try {
+      assistantContent = await requestAiAssistant(conversation, 'client');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('AI assistant request failed:', errorMessage);
+    }
+
+    const assistantMsg: Message = { role: 'assistant', content: assistantContent };
+    setMessages((prev) => [...prev, assistantMsg]);
+    setAiLoading(false);
+
+    void Promise.all([
+      supabase.from('chat_messages').insert({ user_id: aiSession.userId, session_id: aiSession.sessionId, role: 'user', content: userMsg.content }),
+      supabase.from('chat_messages').insert({ user_id: aiSession.userId, session_id: aiSession.sessionId, role: 'assistant', content: assistantMsg.content }),
+    ]).then(([userResult, assistantResult]) => {
+      if (userResult.error) console.error('Error saving user message:', userResult.error);
+      if (assistantResult.error) console.error('Error saving assistant message:', assistantResult.error);
+    });
+
+    setTimeout(() => {
+      messagesScrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
+
+  const openVetChat = () => {
+    setAiVisible(false);
+    router.push('/(client)/vets');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <SectionHeader title="MVS Knowledge Hub" action="View All" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowGap}>
-          {tips.map((tip) => (
-            <TouchableOpacity key={tip.id} style={styles.tipCard} onPress={() => setSelectedTip(tip)}>
-              <View style={styles.tipIcon}>
-                <MaterialCommunityIcons name={tip.icon} size={30} color="#3B82F6" />
-              </View>
-              <Text style={styles.cardTitle}>{tip.title}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
+          <View style={styles.aiIcon}>
+            <MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" />
+          </View>
+          <View style={styles.aiCardCopy}>
+            <Text style={styles.aiTitle}>Ask AI Assistant</Text>
+            <Text style={styles.aiText}>Get quick triage and animal care guidance.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        <KnowledgeHubSection />
 
         <View style={styles.banner}>
           <View style={styles.flex}>
@@ -162,43 +212,108 @@ export default function ClientHome() {
 
       </ScrollView>
 
-      <Modal visible={Boolean(selectedTip)} animationType="slide" transparent onRequestClose={() => setSelectedTip(null)}>
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <TouchableOpacity style={styles.close} onPress={() => setSelectedTip(null)}>
-              <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            {selectedTip && (
-              <ScrollView>
-                <View style={styles.modalIcon}>
-                  <MaterialCommunityIcons name={selectedTip.icon} size={34} color="#3B82F6" />
+      <Modal visible={aiVisible} animationType="slide" transparent onRequestClose={() => setAiVisible(false)}>
+        <KeyboardAvoidingView style={styles.aiOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.aiModal}>
+            <View style={styles.aiHeader}>
+              <View style={styles.aiHeaderCopy}>
+                <Text style={styles.aiModalTitle}>MVS AI Assistant</Text>
+                <Text style={styles.aiModalSubtitle}>Pet and livestock care guidance</Text>
+              </View>
+              <TouchableOpacity onPress={() => setAiVisible(false)} accessibilityLabel="Close AI assistant">
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.aiConversation}
+              ref={messagesScrollRef}
+              contentContainerStyle={styles.aiConversationContent}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
+            >
+              {messages.length === 0 && !aiLoading && (
+                <Text style={styles.aiHint}>
+                  Ask about symptoms, feeding, vaccination, hydration, or general animal care.
+                </Text>
+              )}
+              {messages.map((msg, index) => (
+                <View key={msg.id || `msg-${index}`} style={[styles.messageBubble, msg.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
+                  {msg.role === 'assistant' ? (
+                    <MarkdownResponse text={msg.content} />
+                  ) : (
+                    <Text style={styles.userMessageText}>{msg.content}</Text>
+                  )}
                 </View>
-                <Text style={styles.modalTitle}>{selectedTip.title}</Text>
-                <Text style={styles.modalBody}>{selectedTip.body}</Text>
-                <Text style={styles.modalSection}>Actionable prevention tips</Text>
-                {selectedTip.tips.map((tip) => (
-                  <View key={tip} style={styles.tipLine}>
-                    <MaterialCommunityIcons name="check-circle" size={18} color="#10B981" />
-                    <Text style={styles.modalBody}>{tip}</Text>
-                  </View>
-                ))}
-                <TouchableOpacity style={styles.primaryButton} onPress={() => setSelectedTip(null)}>
-                  <Text style={styles.primaryText}>Done</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
+              ))}
+              {aiLoading && (
+                <View style={[styles.messageBubble, styles.assistantMessage]}>
+                  <ActivityIndicator color="#10B981" />
+                  <Text style={styles.aiHint}>Thinking through your question...</Text>
+                </View>
+              )}
+            </ScrollView>
+            <TextInput
+              value={userQuery}
+              onChangeText={setUserQuery}
+              placeholder="What would you like to know?"
+              placeholderTextColor="#64748B"
+              multiline
+              style={styles.aiInput}
+              editable={!aiLoading}
+            />
+            <TouchableOpacity style={[styles.askButton, (!userQuery.trim() || aiLoading) && styles.askButtonDisabled]} onPress={() => { void askAiAssistant(); }} disabled={!userQuery.trim() || aiLoading}>
+              {aiLoading ? <ActivityIndicator color="#FFFFFF" /> : <><MaterialCommunityIcons name="send" size={18} color="#FFFFFF" /><Text style={styles.askButtonText}>Ask Assistant</Text></>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.vetCta} onPress={openVetChat}>
+              <MaterialCommunityIcons name="stethoscope" size={18} color="#10B981" />
+              <Text style={styles.vetCtaText}>Connect with a Licensed Vet Now</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
     </SafeAreaView>
   );
 }
 
-function SectionHeader({ title, action }: { title: string; action: string }) {
+function MarkdownResponse({ text }: { text: string }) {
+  return (
+    <View>
+      {text.split(/\r?\n/).map((line, index) => {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) return <View key={`space-${index}`} style={styles.markdownSpacer} />;
+
+        const heading = trimmedLine.match(/^#{1,3}\s+(.+)$/);
+        if (heading) return <Text key={`heading-${index}`} style={styles.markdownHeading}>{renderInlineMarkdown(heading[1])}</Text>;
+
+        const bullet = trimmedLine.match(/^(?:[-*])\s+(.+)$/);
+        if (bullet) {
+          return (
+            <View key={`bullet-${index}`} style={styles.markdownBullet}>
+              <Text style={styles.markdownBulletMark}>•</Text>
+              <Text style={styles.markdownBulletText}>{renderInlineMarkdown(bullet[1])}</Text>
+            </View>
+          );
+        }
+
+        return <Text key={`paragraph-${index}`} style={styles.answerText}>{renderInlineMarkdown(trimmedLine)}</Text>;
+      })}
+    </View>
+  );
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    const boldText = part.match(/^\*\*(.+)\*\*$/);
+    return boldText ? <Text key={`bold-${index}`} style={styles.markdownBold}>{boldText[1]}</Text> : part;
+  });
+}
+
+function SectionHeader({ title, action, onAction }: { title: string; action: string; onAction?: () => void }) {
   return (
     <View style={styles.headerRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <TouchableOpacity>
+      <TouchableOpacity onPress={onAction} disabled={!onAction}>
         <Text style={styles.action}>{action}</Text>
       </TouchableOpacity>
     </View>
@@ -208,13 +323,14 @@ function SectionHeader({ title, action }: { title: string; action: string }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 35 },
+  aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#FFFFFF24', alignItems: 'center', justifyContent: 'center' },
+  aiCardCopy: { flex: 1, marginHorizontal: 12 },
+  aiTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  aiText: { color: '#CFFAFE', fontSize: 12, lineHeight: 18, marginTop: 3 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 13 },
   sectionTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   action: { color: '#3B82F6', fontWeight: '600', fontSize: 13 },
-  rowGap: { gap: 12, paddingBottom: 4 },
-  tipCard: { width: 160, padding: 15, borderRadius: 12, backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, alignItems: 'center' },
-  tipIcon: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#3B82F620', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  cardTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   banner: { backgroundColor: '#10B981', borderRadius: 15, padding: 18, flexDirection: 'row', alignItems: 'center', marginVertical: 26 },
   flex: { flex: 1 },
   bannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
@@ -234,14 +350,30 @@ const styles = StyleSheet.create({
   inquireText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   backButton: { borderColor: '#3B82F6', borderWidth: 1, borderRadius: 9, padding: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 30 },
   backText: { color: '#3B82F6', fontWeight: '600' },
-  overlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'flex-end' },
-  modal: { maxHeight: '88%', backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 22 },
-  close: { alignSelf: 'flex-end' },
-  modalIcon: { width: 82, height: 82, borderRadius: 20, backgroundColor: '#3B82F620', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 20 },
-  modalTitle: { color: '#FFFFFF', fontWeight: '700', fontSize: 22, textAlign: 'center', marginBottom: 12 },
-  modalBody: { color: '#E2E8F0', lineHeight: 22, marginBottom: 10 },
-  modalSection: { color: '#94A3B8', fontSize: 13, fontWeight: '700', marginTop: 16, marginBottom: 10 },
-  tipLine: { flexDirection: 'row', gap: 9, marginBottom: 10 },
-  primaryButton: { backgroundColor: '#3B82F6', padding: 14, borderRadius: 9, alignItems: 'center', marginTop: 22 },
-  primaryText: { color: '#FFFFFF', fontWeight: '700' },
+  aiOverlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'flex-end' },
+  aiModal: { maxHeight: '85%', backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18 },
+  aiHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#334155', paddingBottom: 14 },
+  aiHeaderCopy: { flex: 1 },
+  aiModalTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  aiModalSubtitle: { color: '#94A3B8', fontSize: 12, marginTop: 3 },
+  aiConversation: { minHeight: 150, maxHeight: 360, marginVertical: 14 },
+  aiConversationContent: { flexGrow: 1, justifyContent: 'flex-end', paddingBottom: 4 },
+  messageBubble: { marginBottom: 12, borderRadius: 10, padding: 12 },
+  userMessage: { backgroundColor: '#10B98120', borderLeftWidth: 3, borderLeftColor: '#10B981', alignSelf: 'flex-end', maxWidth: '85%' },
+  assistantMessage: { backgroundColor: '#3B82F620', borderLeftWidth: 3, borderLeftColor: '#3B82F6', alignSelf: 'flex-start', maxWidth: '95%', textAlign: 'left' },
+  userMessageText: { color: '#E2E8F0', fontSize: 14, lineHeight: 21 },
+  aiHint: { color: '#94A3B8', fontSize: 14, lineHeight: 21 },
+  answerText: { color: '#E2E8F0', fontSize: 15, lineHeight: 22 },
+  markdownHeading: { color: '#FFFFFF', fontSize: 16, lineHeight: 22, fontWeight: '700', marginBottom: 10 },
+  markdownBold: { fontWeight: '700', color: '#FFFFFF' },
+  markdownBullet: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
+  markdownBulletMark: { color: '#10B981', fontSize: 15, lineHeight: 22, marginRight: 8 },
+  markdownBulletText: { flex: 1, color: '#E2E8F0', fontSize: 15, lineHeight: 22 },
+  markdownSpacer: { height: 6 },
+  aiInput: { minHeight: 52, maxHeight: 110, backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, color: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 11, fontSize: 14, textAlignVertical: 'top' },
+  askButton: { backgroundColor: '#10B981', borderRadius: 10, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 },
+  askButtonDisabled: { opacity: 0.5 },
+  askButtonText: { color: '#FFFFFF', fontWeight: '700' },
+  vetCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, marginTop: 5 },
+  vetCtaText: { color: '#10B981', fontSize: 13, fontWeight: '700' },
 });

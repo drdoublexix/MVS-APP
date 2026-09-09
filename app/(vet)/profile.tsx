@@ -2,14 +2,46 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
-type SettingsModal = 'profile' | 'password' | 'notifications' | null;
+type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
+
+const NIGERIAN_BANKS = [
+  { label: 'Access Bank', code: '044' },
+  { label: 'Ecobank Nigeria', code: '050' },
+  { label: 'FairMoney MFB', code: '51318' },
+  { label: 'FCMB (First City Monument Bank)', code: '214' },
+  { label: 'Fidelity Bank', code: '070' },
+  { label: 'First Bank of Nigeria', code: '011' },
+  { label: 'GTBank (Guaranty Trust Bank)', code: '058' },
+  { label: 'Keystone Bank', code: '082' },
+  { label: 'Kuda Bank', code: '50211' },
+  { label: 'Moniepoint Microfinance Bank', code: '50515' },
+  { label: 'OPay Digital Services (Paycom)', code: '999992' },
+  { label: 'Paga', code: '100002' },
+  { label: 'PalmPay', code: '999991' },
+  { label: 'Providus Bank', code: '101' },
+  { label: 'Stanbic IBTC Bank', code: '221' },
+  { label: 'Sterling Bank', code: '232' },
+  { label: 'Union Bank of Nigeria', code: '032' },
+  { label: 'United Bank for Africa (UBA)', code: '033' },
+  { label: 'VFD Microfinance Bank', code: '566' },
+  { label: 'Wema Bank (ALAT)', code: '035' },
+  { label: 'Zenith Bank', code: '057' },
+];
 
 export default function VetProfileScreen() {
   const router = useRouter();
   const [modal, setModal] = useState<SettingsModal>(null);
+  const [bankPickerVisible, setBankPickerVisible] = useState(false);
+  const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [locationStatePicker, setLocationStatePicker] = useState<string | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [bankSaving, setBankSaving] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [profile, setProfile] = useState({
     name: 'Dr. Veterinarian',
     email: '',
@@ -18,43 +50,115 @@ export default function VetProfileScreen() {
     clinic: '',
     licenseNumber: '',
     avatar: '',
+    bankName: '',
+    bankCode: '',
+    accountNumber: '',
+    accountName: '',
+    flutterwaveSubaccountId: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
+    city: '',
+    state: '',
   });
   const [password, setPassword] = useState({ next: '', confirm: '' });
-  const [notifications, setNotifications] = useState({ consultations: true, appointments: true, payments: true, marketing: false });
+  const [notifications, setNotifications] = useState({
+    new_consult_requests: true,
+    patient_messages: true,
+    payout_earnings: true,
+  });
+
+  const loadNotificationPreferences = async (userId: string) => {
+    const { data } = await supabase.from('profiles').select('notification_preferences').eq('id', userId).maybeSingle();
+    if (data?.notification_preferences && typeof data.notification_preferences === 'object') {
+      setNotifications(data.notification_preferences);
+    }
+  };
+
+  const saveNotificationPreferences = async (prefs: typeof notifications) => {
+    const user = await getCurrentUser();
+    if (!user) return;
+    await supabase.from('profiles').update({ notification_preferences: prefs }).eq('id', user.id);
+  };
 
   useEffect(() => {
     void getCurrentUser()
-      .then((user) => {
+      .then(async (user) => {
         if (user) {
-          setProfile({
+          const { data: profileData } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
+          const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+          setAvatarUrl(activeAvatar);
+          setProfile((current) => ({
             name: user.user_metadata?.full_name || user.user_metadata?.name || 'Dr. Veterinarian',
             email: user.email || '',
             phone: user.user_metadata?.phone || '',
             specialty: user.user_metadata?.specialty || '',
             clinic: user.user_metadata?.clinic || '',
             licenseNumber: user.user_metadata?.license_number || '',
-            avatar: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
-          });
+            avatar: activeAvatar || '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '', latitude: current.latitude, longitude: current.longitude, city: current.city, state: current.state,
+          }));
+          void supabase.from('profiles').select('phone_number, latitude, longitude, city, state').eq('id', user.id).maybeSingle().then(({ data }) => { if (data) setProfile((prev) => ({ ...prev, phone: data.phone_number || prev.phone, latitude: data.latitude ?? null, longitude: data.longitude ?? null, city: data.city || '', state: data.state || '' })); });
+          void requestDeviceLocation().then((location) => { if (location) setProfile((prev) => ({ ...prev, ...location })); }).catch((error) => console.warn('[Vet Profile] Location unavailable:', error));
+          void supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle().then(({ data }) => { if (data) setProfile((prev) => ({ ...prev, bankName: data.bank_name || '', bankCode: data.bank_code || '', accountNumber: data.account_number || '', accountName: data.account_name || '', flutterwaveSubaccountId: data.flutterwave_subaccount_id || '' })); });
+          void loadNotificationPreferences(user.id);
         }
       })
       .catch(() => undefined);
   }, []);
 
   const saveProfile = async () => {
-    setModal(null);
     const user = await getCurrentUser();
     if (!user) return;
+    const formattedPhoneNumber = profile.phone.trim().replace(/[\s()-]/g, '');
+    if (!/^\+[1-9]\d{7,14}$/.test(formattedPhoneNumber)) { Alert.alert('Invalid phone number', 'Enter a valid international number, for example +2348000000000.'); return; }
+    const { error: profileError } = await supabase.from('profiles').update({ full_name: profile.name, phone_number: formattedPhoneNumber, latitude: profile.latitude, longitude: profile.longitude, city: profile.city, state: profile.state }).eq('id', user.id);
+    if (profileError) { Alert.alert(profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile', profileError.code === '23505' ? 'This phone number is already associated with another MVS account.' : profileError.message); return; }
     await supabase.auth.updateUser({
       data: {
         ...user.user_metadata,
         full_name: profile.name,
-        phone: profile.phone,
+        phone: formattedPhoneNumber,
         specialty: profile.specialty,
         clinic: profile.clinic,
         license_number: profile.licenseNumber,
       },
     });
+    setProfile((current) => ({ ...current, phone: formattedPhoneNumber }));
+    setModal(null);
+    setSuccessMessage('Phone number updated successfully.');
+    setTimeout(() => setSuccessMessage(null), 3000);
     Alert.alert('Profile Updated', 'Your profile changes have been saved.');
+  };
+
+  const detectAndSaveLocation = async () => { console.log('[Vet Profile] Detecting location...'); setLocationLoading(true); try { const location = await requestDeviceLocation(); if (!location) throw new Error('Location permission was not granted.'); const user = await getCurrentUser(); setProfile((current) => ({ ...current, ...location })); if (user) { const { error } = await supabase.from('profiles').update(location).eq('id', user.id); if (error) throw error; } console.log('[Vet Profile] Location saved:', location); setLocationPickerVisible(false); setLocationStatePicker(null); Alert.alert('Location updated', `${location.city || 'Nearby area'}, ${location.state || 'Nigeria'}`); } catch (error) { console.log('[Vet Profile] Location error:', error); Alert.alert('Location unavailable', error instanceof Error ? error.message : 'Enable location access or choose manually.'); } finally { setLocationLoading(false); } };
+  const selectManualLocation = async (city: string, state: string) => { console.log('[Vet Profile] Saving manual location:', city, state); setProfile((current) => ({ ...current, city, state, latitude: null, longitude: null })); const user = await getCurrentUser(); if (user) { const { error } = await supabase.from('profiles').update({ city, state, latitude: null, longitude: null }).eq('id', user.id); if (error) { Alert.alert('Could not save location', error.message); return; } } setLocationPickerVisible(false); setLocationStatePicker(null); };
+
+  const handleSaveBankDetails = async () => {
+    if (bankSaving) return;
+    setBankSaving(true);
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
+      const bankCode = profile.bankCode || '221';
+      const accountNumber = profile.accountNumber || '';
+      const selectedBank = NIGERIAN_BANKS.find((bank) => bank.code === bankCode);
+      if (!selectedBank) { Alert.alert('Select a bank', 'Choose your Nigerian bank before saving.'); return; }
+      if (!/^\d{10}$/.test(accountNumber)) { Alert.alert('Invalid account number', 'Account number must contain exactly 10 digits.'); return; }
+      const { error: dbErr } = await supabase.from('profiles').update({ bank_name: selectedBank.label, bank_code: bankCode, account_number: accountNumber, account_name: profile.accountName.trim() }).eq('id', user.id);
+      if (dbErr) { Alert.alert('Database Error', dbErr.message); return; }
+      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('create-subaccount', { body: { userId: user.id, bankCode, accountNumber, businessName: user.user_metadata?.full_name || 'Emmanuel Francis', email: user.email || 'francisemmanuel303@gmail.com', phone: user.user_metadata?.phone || '08000000000' } });
+      if (edgeErr || !edgeData?.success) { console.error('Subaccount creation failed:', edgeErr || edgeData); Alert.alert('Warning', `Bank saved, but subaccount creation failed: ${edgeErr?.message || edgeData?.error || 'Unknown error'}`); return; }
+      if (edgeData.subaccount_id) {
+        const { error: subaccountProfileError } = await supabase.from('profiles').update({ flutterwave_subaccount_id: edgeData.subaccount_id }).eq('id', user.id);
+        if (subaccountProfileError) { Alert.alert('Warning', `Bank saved, but subaccount ID could not be saved: ${subaccountProfileError.message}`); return; }
+      }
+      const { data: refreshedProfile, error: refreshError } = await supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle();
+      if (refreshError) { Alert.alert('Database Error', refreshError.message); return; }
+      if (refreshedProfile) setProfile((prev) => ({ ...prev, bankName: refreshedProfile.bank_name || '', bankCode: refreshedProfile.bank_code || '', accountNumber: refreshedProfile.account_number || '', accountName: refreshedProfile.account_name || '', flutterwaveSubaccountId: refreshedProfile.flutterwave_subaccount_id || '' }));
+      Alert.alert('Success', 'Bank account & Flutterwave subaccount setup complete!');
+      setModal(null);
+    } finally {
+      setBankSaving(false);
+    }
   };
 
   const changePassword = async () => {
@@ -135,37 +239,51 @@ export default function VetProfileScreen() {
   };
 
   const pickAvatar = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setProfile((prev) => ({ ...prev, avatar: result.assets[0].uri }));
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+      if (result.canceled || !result.assets[0]) return;
+      const user = await getCurrentUser();
+      if (!user) return;
+      const asset = result.assets[0];
+      const file = await (await fetch(asset.uri)).blob();
+      const fileName = asset.fileName || asset.uri.split('/').pop() || `avatar-${Date.now()}.jpg`;
+      const fileExt = fileName.split('.').pop() || 'jpg';
+      const filePath = `${user.id}/avatar-${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true, contentType: asset.mimeType || file.type });
+      if (uploadError) throw uploadError;
+      const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const publicUrl = publicUrlData.publicUrl;
+      const { error: profileError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      if (profileError) throw profileError;
+      const { error: authError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+      if (authError) throw authError;
+      setAvatarUrl(publicUrl);
+      setProfile((prev) => ({ ...prev, avatar: publicUrl }));
+      setSuccessMessage('Profile photo updated successfully.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (error) {
+      Alert.alert('Could not update profile photo', error instanceof Error ? error.message : 'Please try again.');
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
+      {successMessage ? <View style={{ position: 'absolute', top: 14, left: 16, right: 16, zIndex: 10, backgroundColor: '#065F46', borderRadius: 9, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}><MaterialCommunityIcons name="check-circle" size={18} color="#D1FAE5" /><Text style={{ color: '#D1FAE5', fontWeight: '600' }}>{successMessage}</Text></View> : null}
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.pageTitle}>My Profile</Text>
 
         {/* Profile Header */}
-        <TouchableOpacity style={styles.profileHeader} onPress={pickAvatar}>
-          {profile.avatar ? (
-            <Image source={{ uri: profile.avatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <MaterialCommunityIcons name="stethoscope" size={36} color="#FFFFFF" />
-            </View>
-          )}
+        <View style={styles.profileHeader}>
+          <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Change profile photo">
+            {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><MaterialCommunityIcons name="stethoscope" size={36} color="#FFFFFF" /></View>}
+          </TouchableOpacity>
           <View style={styles.flex}>
             <Text style={styles.title}>{profile.name}</Text>
             <Text style={styles.muted}>{profile.email}</Text>
-            <Text style={styles.editHint}>Tap to change photo</Text>
+            <Text style={{ color: profile.phone ? '#34D399' : '#94A3B8', fontSize: 12, marginTop: 4 }}>{profile.phone ? 'Phone number saved' : 'No phone number saved'}</Text>
+            <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Tap to change photo"><Text style={styles.editHint}>Tap to change photo</Text></TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Practice Information */}
         <View style={styles.section}>
@@ -182,6 +300,7 @@ export default function VetProfileScreen() {
           <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
           <Setting label="Change Password" icon="lock" onPress={() => setModal('password')} />
           <Setting label="Notifications" icon="bell" onPress={() => setModal('notifications')} />
+          <Setting label="Bank Account" icon="bank" onPress={() => setModal('bank')} />
         </View>
 
         {/* Account Actions */}
@@ -247,6 +366,7 @@ export default function VetProfileScreen() {
                 onChangeText={(text) => setProfile((prev) => ({ ...prev, licenseNumber: text }))}
                 placeholder="Your veterinary license number"
               />
+              <View style={styles.field}><Text style={styles.label}>Location</Text><TouchableOpacity style={styles.input} onPress={() => setLocationPickerVisible(true)}><Text style={profile.city && profile.state ? styles.inputText : styles.placeholder}>{profile.city && profile.state ? `${profile.city}, ${profile.state}` : 'Select city and state'}</Text></TouchableOpacity></View>
 
               <TouchableOpacity style={styles.save} onPress={saveProfile}>
                 <Text style={styles.saveText}>Save Changes</Text>
@@ -255,6 +375,10 @@ export default function VetProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={modal === 'bank'} animationType="fade" transparent onRequestClose={() => setModal(null)}><KeyboardAvoidingView style={styles.bankModalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View style={styles.bankModalContent}><View style={styles.modalHeader}><TouchableOpacity onPress={() => setModal(null)} disabled={bankSaving}><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity><Text style={styles.modalTitle}>Bank Account</Text><View style={{ width: 24 }} /></View><ScrollView contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={true} style={styles.modalBody}><View style={styles.field}><Text style={styles.label}>Bank</Text><TouchableOpacity style={styles.input} onPress={() => setBankPickerVisible(true)} disabled={bankSaving}><Text style={profile.bankCode ? styles.inputText : styles.placeholder}>{profile.bankName || 'Select your bank'}</Text><Text style={styles.chevron}>›</Text></TouchableOpacity></View><Field label="Account Number" value={profile.accountNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, accountNumber: text.replace(/\D/g, '').slice(0, 10) }))} placeholder="10-digit account number" keyboardType="number-pad" /><Field label="Account Name" value={profile.accountName} onChangeText={(text) => setProfile((prev) => ({ ...prev, accountName: text }))} placeholder="Name on account" /><TouchableOpacity style={styles.save} onPress={() => { void handleSaveBankDetails(); }} disabled={bankSaving}><Text style={styles.saveText}>{bankSaving ? 'Saving...' : 'Save Bank Details'}</Text>{bankSaving && <ActivityIndicator color="#FFFFFF" style={styles.saveSpinner} />}</TouchableOpacity></ScrollView></View></KeyboardAvoidingView></Modal>
+      <Modal visible={locationPickerVisible} transparent animationType="slide" onRequestClose={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><View style={styles.modalOverlay}><View style={styles.locationPickerContent}><View style={styles.locationHeader}><Text style={styles.modalTitle}>Choose location</Text><TouchableOpacity onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><Text style={styles.secondaryText}>✕</Text></TouchableOpacity></View><TouchableOpacity style={styles.save} onPress={() => { void detectAndSaveLocation(); }} disabled={locationLoading}><Text style={styles.saveText}>{locationLoading ? 'Detecting location...' : 'Use My Location'}</Text></TouchableOpacity>{locationStatePicker ? <TouchableOpacity style={styles.locationBack} onPress={() => setLocationStatePicker(null)}><Text style={styles.secondaryText}>‹ Choose another state</Text></TouchableOpacity> : null}<ScrollView style={styles.locationList} contentContainerStyle={styles.locationListContent} showsVerticalScrollIndicator>{locationStatePicker ? NIGERIAN_LOCATIONS.find((location) => location.state === locationStatePicker)?.areas.map((area) => <TouchableOpacity key={area} style={styles.locationOption} onPress={() => { void selectManualLocation(area, locationStatePicker); }}><Text style={styles.primary}>{area}</Text><Text style={styles.muted}>{locationStatePicker}</Text></TouchableOpacity>) : NIGERIAN_LOCATIONS.map((location) => <TouchableOpacity key={location.state} style={styles.locationOption} onPress={() => setLocationStatePicker(location.state)}><Text style={styles.primary}>{location.state}</Text><Text style={styles.muted}>{location.city}</Text></TouchableOpacity>)}</ScrollView><TouchableOpacity style={styles.locationCancel} onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><Text style={styles.secondaryText}>Cancel</Text></TouchableOpacity></View></View></Modal>
+      <Modal visible={bankPickerVisible} animationType="slide" transparent onRequestClose={() => setBankPickerVisible(false)}><View style={styles.modalOverlay}><View style={styles.pickerContent}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={styles.modalTitle}>Select Bank</Text><TouchableOpacity onPress={() => setBankPickerVisible(false)}><Text style={styles.secondaryText}>Cancel</Text></TouchableOpacity></View><ScrollView showsVerticalScrollIndicator={true}>{NIGERIAN_BANKS.map((bank) => <TouchableOpacity key={bank.code} style={styles.bankOption} onPress={() => { setProfile((prev) => ({ ...prev, bankCode: bank.code, bankName: bank.label })); setBankPickerVisible(false); }}><Text style={styles.primary}>{bank.label}</Text><Text style={styles.bankCode}>{bank.code}</Text></TouchableOpacity>)}</ScrollView><TouchableOpacity style={styles.secondary} onPress={() => setBankPickerVisible(false)}><Text style={styles.secondaryText}>Cancel</Text></TouchableOpacity></View></View></Modal>
 
       <Modal visible={modal === 'password'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
@@ -310,24 +434,19 @@ export default function VetProfileScreen() {
 
             <ScrollView style={styles.modalBody}>
               <Toggle
-                label="Consultation Requests"
-                value={notifications.consultations}
-                onChange={(value) => setNotifications((prev) => ({ ...prev, consultations: value }))}
+                label="New Consult Requests"
+                value={notifications.new_consult_requests}
+                onChange={(value) => { const updated = { ...notifications, new_consult_requests: value }; setNotifications(updated); void saveNotificationPreferences(updated); }}
               />
               <Toggle
-                label="Appointment Reminders"
-                value={notifications.appointments}
-                onChange={(value) => setNotifications((prev) => ({ ...prev, appointments: value }))}
+                label="Patient Messages"
+                value={notifications.patient_messages}
+                onChange={(value) => { const updated = { ...notifications, patient_messages: value }; setNotifications(updated); void saveNotificationPreferences(updated); }}
               />
               <Toggle
-                label="Payment Notifications"
-                value={notifications.payments}
-                onChange={(value) => setNotifications((prev) => ({ ...prev, payments: value }))}
-              />
-              <Toggle
-                label="Marketing & Promotions"
-                value={notifications.marketing}
-                onChange={(value) => setNotifications((prev) => ({ ...prev, marketing: value }))}
+                label="Payout & Earnings"
+                value={notifications.payout_earnings}
+                onChange={(value) => { const updated = { ...notifications, payout_earnings: value }; setNotifications(updated); void saveNotificationPreferences(updated); }}
               />
 
               <TouchableOpacity style={styles.save} onPress={() => setModal(null)}>
@@ -365,7 +484,7 @@ function Setting({ label, icon, onPress }: { label: string; icon: string; onPres
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, secureTextEntry, editable = true }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; editable?: boolean }) {
+function Field({ label, value, onChangeText, placeholder, secureTextEntry, editable = true, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; editable?: boolean; keyboardType?: 'default' | 'number-pad' }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -376,6 +495,7 @@ function Field({ label, value, onChangeText, placeholder, secureTextEntry, edita
         placeholderTextColor="#64748B"
         secureTextEntry={secureTextEntry}
         editable={editable}
+        keyboardType={keyboardType}
         style={[styles.input, !editable && styles.inputDisabled]}
       />
     </View>
@@ -392,6 +512,13 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
 }
 
 const styles = StyleSheet.create({
+  locationPickerContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '85%' },
+  locationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  locationList: { flex: 1, minHeight: 0 },
+  locationListContent: { paddingBottom: 8 },
+  locationBack: { paddingVertical: 8 },
+  locationCancel: { borderTopWidth: 1, borderTopColor: '#334155', paddingTop: 12, alignItems: 'center' },
+  locationOption: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, padding: 14, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between' },
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 35 },
   pageTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '700', marginBottom: 20 },
@@ -417,6 +544,8 @@ const styles = StyleSheet.create({
   deleteButton: { borderColor: '#EF4444', borderWidth: 1.5, borderRadius: 10, padding: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10 },
   deleteText: { color: '#FCA5A5', fontWeight: '700', fontSize: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'flex-end' },
+  bankModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  bankModalContent: { backgroundColor: '#0F172A', borderRadius: 20, maxHeight: '85%', width: '90%', maxWidth: 450, overflow: 'hidden' },
   modalContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#334155' },
   modalTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
@@ -425,9 +554,15 @@ const styles = StyleSheet.create({
   field: { marginBottom: 16 },
   label: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginBottom: 8 },
   input: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, color: '#FFFFFF', padding: 12, fontSize: 14 },
+  inputText: { color: '#FFFFFF', fontSize: 14 },
+  placeholder: { color: '#64748B', fontSize: 14 },
+  pickerContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '90%' },
+  bankOption: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, padding: 14, marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  bankCode: { color: '#94A3B8', fontSize: 13 },
   inputDisabled: { backgroundColor: '#0F172A', color: '#64748B' },
   save: { backgroundColor: '#10B981', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 20, marginBottom: 10 },
   saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  saveSpinner: { marginLeft: 8 },
   secondary: { borderColor: '#3B82F6', borderWidth: 1, borderRadius: 8, padding: 14, alignItems: 'center' },
   secondaryText: { color: '#3B82F6', fontWeight: '600', fontSize: 14 },
   toggle: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

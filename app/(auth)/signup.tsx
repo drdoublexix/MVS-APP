@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { requestDeviceLocation } from '../../lib/location';
 import { supabase, type AppRole } from '../../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -14,6 +15,7 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [role, setRole] = useState<AppRole>(params.role === 'vet' || params.role === 'merchant' ? params.role : 'client');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +28,14 @@ export default function SignupScreen() {
   }, [params.role]);
 
   const handleSignup = async () => {
-    if (!email || !password || !confirmPassword || !fullName) {
+    const normalizedPhoneNumber = phoneNumber.trim().replace(/[\s()-]/g, '');
+    if (!email || !password || !confirmPassword || !fullName || !normalizedPhoneNumber) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhoneNumber)) {
+      setError('Enter a valid phone number in international format, for example +2348000000000');
       return;
     }
 
@@ -45,6 +53,17 @@ export default function SignupScreen() {
       setLoading(true);
       setError(null);
 
+      const { data: existingPhone, error: phoneLookupError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('phone_number', normalizedPhoneNumber)
+        .maybeSingle();
+      if (phoneLookupError) throw phoneLookupError;
+      if (existingPhone) {
+        setError('That phone number is already registered. Please use another number.');
+        return;
+      }
+
       let userRole: AppRole = 'client';
       if (role === 'vet') userRole = 'vet';
       if (role === 'merchant') userRole = 'merchant';
@@ -59,6 +78,7 @@ export default function SignupScreen() {
         options: {
           data: {
             full_name: fullName.trim(),
+            phone_number: normalizedPhoneNumber,
             role: userRole,
           },
         },
@@ -77,11 +97,22 @@ export default function SignupScreen() {
       if (sessionData.session?.user) {
         const user = sessionData.session.user;
         const profileName = fullName.trim() || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Merchant';
+        let location = { latitude: null as number | null, longitude: null as number | null, city: '', state: '' };
+        try {
+          location = (await requestDeviceLocation()) || location;
+        } catch (locationError) {
+          console.warn('[Signup] Location unavailable:', locationError);
+        }
         const { error: profileError } = await supabase.from('profiles').upsert(
-          { id: user.id, email: user.email, full_name: profileName, role: userRole },
+          { id: user.id, email: user.email, full_name: profileName, phone_number: normalizedPhoneNumber, role: userRole, ...location },
           { onConflict: 'id' },
         );
-        if (profileError) throw profileError;
+        if (profileError) {
+          if (profileError.code === '23505' && profileError.message.includes('phone_number')) {
+            throw new Error('That phone number is already registered. Please use another number.');
+          }
+          throw profileError;
+        }
         if (typeof window !== 'undefined') localStorage.removeItem('mvs_pending_signup_role');
         router.replace(userRole === 'merchant' ? '/(merchant)' : userRole === 'vet' ? '/(vet)' : '/(client)');
       } else {
@@ -208,6 +239,20 @@ export default function SignupScreen() {
               onChangeText={setEmail}
               editable={!loading}
               keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="+234 800 000 0000"
+              placeholderTextColor="#6F8297"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              editable={!loading}
+              keyboardType="phone-pad"
               autoCapitalize="none"
             />
           </View>

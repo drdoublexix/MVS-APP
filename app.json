@@ -52,12 +52,14 @@
           "locationAlwaysAndWhenInUsePermission": "Allow MVS to access your location."
         }
       ],
+      "expo-notifications",
       [
         "expo-router",
         {
           "origin": false
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

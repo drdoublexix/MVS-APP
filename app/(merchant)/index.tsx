@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { addMarketplaceProduct, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
@@ -121,9 +122,10 @@ export default function MerchantDashboardScreen() {
     <Text style={styles.title}>Store Dashboard</Text><Text style={styles.subtitle}>Manage your inventory and sales</Text>
     <View style={styles.stats}>
       <Stat icon="cash" label="Total Sales" value={`₦${metrics.totalSales.toLocaleString('en-NG')}`} color="#10B981" />
-      <Stat icon="shopping" label="Active Listings" value={String(metrics.activeListings)} color="#3B82F6" onPress={() => router.push('/(merchant)/inventory')} />
+      <Stat icon="package-variant" label="Active Listings" value={String(metrics.activeListings)} color="#3B82F6" onPress={() => router.push('/(merchant)/inventory')} />
       <Stat icon="clock" label="Pending Orders" value={String(metrics.pendingOrders)} color="#F59E0B" />
     </View>
+    <KnowledgeHubSection />
     <TouchableOpacity style={styles.addProduct} onPress={() => router.push('/(merchant)/add-product')}><MaterialCommunityIcons name="plus" size={21} color="#FFFFFF" /><Text style={styles.addText}>Add New Product</Text></TouchableOpacity>
     <Text style={styles.sectionTitle}>Global Marketplace Inventory</Text>
     {products.map((product) => {

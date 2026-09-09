@@ -1,24 +1,48 @@
-﻿import { MaterialCommunityIcons } from '@expo/vector-icons';
+﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { requestDeviceLocation } from '../../lib/location';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 type VetProfile = {
   id: string;
   full_name: string;
   role: string;
+  avatar_url?: string | null;
   specialty?: string;
   title?: string;
   clinic_name?: string;
   bio?: string;
   email?: string;
   created_at?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  city?: string | null;
+  state?: string | null;
+  distanceKm: number | null;
 };
 
-type Category = 'Emergency Request' | 'Vaccination' | 'Pet Checks' | 'General Inquiry' | 'Others';
+type Category = 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'General Inquiry' | 'Others';
 
-const categories: Category[] = ['Emergency Request', 'Vaccination', 'Pet Checks', 'General Inquiry', 'Others'];
+const categories: Category[] = ['Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
+const standardVetSelect = 'id, full_name, role, avatar_url, specialty, latitude, longitude, city, state';
+const coreVetSelect = 'id, full_name, role, avatar_url, specialty';
+
+const isValidCoordinate = (value: unknown, minimum: number, maximum: number): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= minimum && value <= maximum;
+
+const haversineDistanceKm = (latitudeOne: number, longitudeOne: number, latitudeTwo: number, longitudeTwo: number) => {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+  const deltaLatitude = toRadians(latitudeTwo - latitudeOne);
+  const deltaLongitude = toRadians(longitudeTwo - longitudeOne);
+  const latitudeOneRadians = toRadians(latitudeOne);
+  const latitudeTwoRadians = toRadians(latitudeTwo);
+  const haversine = Math.sin(deltaLatitude / 2) ** 2
+    + Math.cos(latitudeOneRadians) * Math.cos(latitudeTwoRadians) * Math.sin(deltaLongitude / 2) ** 2;
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(haversine));
+};
 
 export default function VetsScreen() {
   const router = useRouter();
@@ -27,23 +51,81 @@ export default function VetsScreen() {
   const [intakeVet, setIntakeVet] = useState<VetProfile | null>(null);
   const [intakeMode, setIntakeMode] = useState('Online Consultation');
   const [loading, setLoading] = useState(true);
+  const navigationKey = useRef(0);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userRating, setUserRating] = useState(0);
+  const [averageRating, setAverageRating] = useState(0);
+  const [totalReviews, setTotalReviews] = useState(0);
+  const [ratingLoading, setRatingLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     const loadVets = async () => {
       try {
-        const { data, error } = await supabase
+        const user = await getCurrentUser();
+        let clientLatitude: number | null = null;
+        let clientLongitude: number | null = null;
+        if (user) {
+          const { data: clientProfile, error: clientLocationError } = await supabase.from('profiles').select('latitude, longitude').eq('id', user.id).maybeSingle();
+          if (!clientLocationError) {
+            clientLatitude = isValidCoordinate(clientProfile?.latitude, -90, 90) ? clientProfile.latitude : null;
+            clientLongitude = isValidCoordinate(clientProfile?.longitude, -180, 180) ? clientProfile.longitude : null;
+          }
+        }
+        if (clientLatitude === null || clientLongitude === null) {
+          try {
+            const detectedLocation = await requestDeviceLocation();
+            clientLatitude = detectedLocation?.latitude ?? clientLatitude;
+            clientLongitude = detectedLocation?.longitude ?? clientLongitude;
+          } catch (locationError) {
+            console.warn('Client location unavailable for vet sorting', locationError);
+          }
+        }
+        const detailedQuery = await supabase
           .from('profiles')
-          .select('*')
-          .eq('role', 'vet')
-          .order('created_at', { ascending: false });
+          .select(standardVetSelect)
+          .in('role', ['vet', 'veterinarian'])
+          .order('full_name', { ascending: true });
+        let data = (detailedQuery.data || null) as VetProfile[] | null;
+        let error = detailedQuery.error;
+
+        if (error) {
+          console.warn('Vet location fields unavailable; loading core vet profiles instead:', error.message);
+          const fallbackQuery = await supabase
+            .from('profiles')
+            .select(coreVetSelect)
+            .in('role', ['vet', 'veterinarian'])
+            .order('full_name', { ascending: true });
+          data = (fallbackQuery.data || null) as VetProfile[] | null;
+          error = fallbackQuery.error;
+        }
 
         console.log('Vet directory raw profile rows:', data);
 
         if (!isMounted) return;
         if (error) throw error;
-        setVets((data || []) as VetProfile[]);
+        const sortedVets = ((data || []) as VetProfile[]).map((vet) => ({
+          ...vet,
+          full_name: vet.full_name || 'Veterinarian',
+          specialty: vet.specialty || vet.title || '',
+          city: vet.city || null,
+          state: vet.state || null,
+          distanceKm: clientLatitude !== null && clientLongitude !== null && isValidCoordinate(vet.latitude, -90, 90) && isValidCoordinate(vet.longitude, -180, 180)
+            ? haversineDistanceKm(clientLatitude, clientLongitude, vet.latitude, vet.longitude)
+            : null,
+        })).sort((firstVet, secondVet) => {
+          const firstHasGps = isValidCoordinate(firstVet.latitude, -90, 90) && isValidCoordinate(firstVet.longitude, -180, 180);
+          const secondHasGps = isValidCoordinate(secondVet.latitude, -90, 90) && isValidCoordinate(secondVet.longitude, -180, 180);
+          const firstHasManualLocation = Boolean(firstVet.city || firstVet.state);
+          const secondHasManualLocation = Boolean(secondVet.city || secondVet.state);
+          const firstRank = firstHasGps ? 0 : firstHasManualLocation ? 1 : 2;
+          const secondRank = secondHasGps ? 0 : secondHasManualLocation ? 1 : 2;
+          if (firstRank !== secondRank) return firstRank - secondRank;
+          if (firstRank === 0 && firstVet.distanceKm !== null && secondVet.distanceKm !== null) return firstVet.distanceKm - secondVet.distanceKm;
+          return 0;
+        });
+        setVets(sortedVets);
       } catch (error) {
         console.warn('Failed to fetch vet directory', error);
         if (isMounted) setVets([]);
@@ -62,6 +144,40 @@ export default function VetsScreen() {
     setIntakeVet(vet);
   };
 
+  const fetchVetRating = async (vet: VetProfile) => {
+    const user = await getCurrentUser();
+    const clientId = normalizeUuid(user?.id);
+    if (!clientId) return;
+    setCurrentUserId(clientId);
+    const [{ data: existingRating }, { data: summary }] = await Promise.all([
+      supabase.from('vet_ratings').select('rating').eq('vet_id', vet.id).eq('client_id', clientId).maybeSingle(),
+      supabase.rpc('get_vet_rating_summary', { target_vet_id: vet.id }),
+    ]);
+    setUserRating(existingRating?.rating || 0);
+    const ratingSummary = Array.isArray(summary) ? summary[0] : summary;
+    setAverageRating(Number(ratingSummary?.average_rating || 0));
+    setTotalReviews(Number(ratingSummary?.total_reviews || 0));
+  };
+
+  const handleRateVet = async (selectedStars: number) => {
+    if (!selectedVet || !currentUserId || ratingLoading) return;
+    setUserRating(selectedStars);
+    setRatingLoading(true);
+    const { error } = await supabase.from('vet_ratings').upsert({
+      vet_id: selectedVet.id,
+      client_id: currentUserId,
+      rating: selectedStars,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'vet_id,client_id' });
+    if (error) {
+      setUserRating(0);
+      Alert.alert('Rating failed', error.message);
+    } else {
+      await fetchVetRating(selectedVet);
+    }
+    setRatingLoading(false);
+  };
+
   const startChat = async (category: Category) => {
     if (!intakeVet) return;
     const doctorId = normalizeUuid(intakeVet.id);
@@ -70,7 +186,7 @@ export default function VetsScreen() {
     if (!doctorId || !userId) return;
     setIntakeVet(null);
     const conversationId = `conv_${[userId, doctorId].sort().join('_')}`;
-    const initialMessage = `Hello Dr. ${intakeVet.full_name}, I would like to inquire about: ${category}.`;
+    const initialMessage = `Hello Dr. ${intakeVet.full_name}, I would like to consult with you about ${category}.`;
     router.push({
       pathname: '/chat',
       params: {
@@ -80,7 +196,8 @@ export default function VetsScreen() {
         clinic: intakeVet.clinic_name || 'Veterinary Clinic',
         receiver_id: doctorId,
         vet_id: doctorId,
-        starterMessage: initialMessage,
+        initialMessage,
+        t: String(++navigationKey.current),
       },
     });
   };
@@ -93,7 +210,6 @@ export default function VetsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Nearby Veterinarians</Text>
-        <MaterialCommunityIcons name="map-marker-radius" size={24} color="#3B82F6" />
       </View>
 
       {loading ? (
@@ -116,6 +232,7 @@ export default function VetsScreen() {
                     <View style={styles.flex}>
                       <Text style={styles.doctor}>{vet.full_name}</Text>
                       <Text style={styles.clinic}>{specialty}</Text>
+                      <Text style={styles.distanceBadge}>{vet.distanceKm !== null ? `${vet.distanceKm < 10 ? vet.distanceKm.toFixed(1) : Math.round(vet.distanceKm)} km away` : vet.city || vet.state ? `${vet.city || 'Unknown city'}, ${vet.state || 'NG'}` : 'Location Pending'}</Text>
                     </View>
                   </View>
 
@@ -138,7 +255,7 @@ export default function VetsScreen() {
         </ScrollView>
       )}
 
-      <Modal visible={Boolean(selectedVet)} animationType="slide" transparent onRequestClose={() => setSelectedVet(null)}>
+      <Modal visible={Boolean(selectedVet)} animationType="slide" transparent onRequestClose={() => setSelectedVet(null)} onShow={() => { if (selectedVet) void fetchVetRating(selectedVet); }}>
         <View style={styles.overlay}>
           <View style={styles.modal}>
             {selectedVet && (
@@ -152,14 +269,21 @@ export default function VetsScreen() {
                 <Text style={styles.modalDoctor}>{selectedVet.full_name}</Text>
                 <Text style={styles.modalClinic}>{selectedVet.specialty || selectedVet.title || 'Veterinarian'}</Text>
                 <Text style={styles.modalClinic}>{selectedVet.clinic_name || 'Trusted Care Clinic'}</Text>
+                <View style={styles.ratingSection}>
+                  <View style={styles.stars}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <TouchableOpacity key={star} onPress={() => void handleRateVet(star)} disabled={ratingLoading} accessibilityLabel={`Rate ${star} stars`}>
+                        <Ionicons name={star <= userRating ? 'star' : 'star-outline'} size={28} color="#F59E0B" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.ratingSummary}>{averageRating.toFixed(1)} ★ ({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})</Text>
+                </View>
                 <Text style={styles.aboutTitle}>About Doctor</Text>
                 <Text style={styles.bio}>{selectedVet.bio || 'Compassionate veterinary care for healthy pets and peace of mind for families.'}</Text>
                 <View style={styles.actions}>
                   <TouchableOpacity style={styles.online} onPress={() => openIntake(selectedVet, 'Online Consultation')}>
                     <Text style={styles.actionText}>Online Consultation</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.chat} onPress={() => openIntake(selectedVet, 'Online Consultation')}>
-                    <Text style={styles.chatText}>Proceed to Chat</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -191,7 +315,7 @@ export default function VetsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  header: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#334155', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#334155', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' },
   title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700' },
   list: { padding: 16 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -202,6 +326,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   doctor: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   clinic: { color: '#94A3B8', fontSize: 12, marginTop: 3 },
+  distanceBadge: { color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 5 },
   bioText: { color: '#CBD5E1', marginTop: 12, lineHeight: 20 },
   actionsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 16 },
   secondaryButton: { flex: 1, backgroundColor: '#0F172A', borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
@@ -219,9 +344,10 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   online: { flex: 1, backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   actionText: { color: '#FFFFFF', fontWeight: '700' },
-  chat: { flex: 1, backgroundColor: '#3B82F6', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  chatText: { color: '#FFFFFF', fontWeight: '700' },
   intake: { maxHeight: '70%', backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   category: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 10, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#334155' },
   categoryText: { color: '#FFFFFF', fontWeight: '600' },
+  ratingSection: { alignItems: 'center', marginTop: 14 },
+  stars: { flexDirection: 'row', gap: 6 },
+  ratingSummary: { color: '#FCD34D', fontSize: 13, marginTop: 6 },
 });

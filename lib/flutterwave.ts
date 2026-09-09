@@ -2,9 +2,76 @@
 // Replace these with your actual Flutterwave credentials
 
 export const FLUTTERWAVE_CONFIG = {
-  PUBLIC_KEY: process.env.EXPO_PUBLIC_FLUTTERWAVE_KEY || 'FLWPUBK_TEST-XXXXXXXXXXXXX',
+  PUBLIC_KEY: process.env.EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY || 'FLWPUBK_TEST-9dea0cb7964dee3e0c46c18206b2cfcd-X',
   SECRET_KEY: process.env.EXPO_PUBLIC_FLUTTERWAVE_SECRET || 'FLWSECK_TEST-XXXXXXXXXXXXX',
   ENVIRONMENT: process.env.EXPO_PUBLIC_FLUTTERWAVE_ENV || 'staging',
+};
+
+type FlutterwaveWebPaymentConfig = {
+  public_key: string;
+  tx_ref: string;
+  amount: number;
+  currency: string;
+  customer: { email: string; name: string };
+  subaccounts?: Array<{ id: string; transaction_split_ratio?: number }>;
+  onSuccess: (response: unknown) => void;
+  onClose: () => void;
+};
+
+type FlutterwaveCheckout = (options: {
+  public_key: string;
+  tx_ref: string;
+  amount: number;
+  currency: string;
+  payment_options: string;
+  customer: { email: string; name: string };
+  subaccounts?: Array<{ id: string; transaction_split_ratio?: number }>;
+  callback: (response: unknown) => void;
+  onclose: () => void;
+}) => void;
+
+const triggerFlutterwaveWebModal = (config: FlutterwaveWebPaymentConfig) => {
+  const checkout = (window as Window & { FlutterwaveCheckout?: FlutterwaveCheckout }).FlutterwaveCheckout;
+  if (!checkout) {
+    console.error('Flutterwave checkout is unavailable.');
+    config.onClose();
+    return;
+  }
+
+  checkout({
+    public_key: config.public_key,
+    tx_ref: config.tx_ref,
+    amount: config.amount,
+    currency: config.currency || 'NGN',
+    payment_options: 'card, banktransfer, ussd',
+    customer: config.customer,
+    ...(config.subaccounts ? { subaccounts: config.subaccounts } : {}),
+    callback: config.onSuccess,
+    onclose: config.onClose,
+  });
+};
+
+export const handleFlutterwaveWebPayment = (config: FlutterwaveWebPaymentConfig) => {
+  if (typeof document === 'undefined') {
+    config.onClose();
+    return;
+  }
+
+  const existingScript = document.getElementById('flutterwave-js') as HTMLScriptElement | null;
+  if (existingScript) {
+    triggerFlutterwaveWebModal(config);
+    return;
+  }
+
+  const script = document.createElement('script');
+  script.src = 'https://checkout.flutterwave.com/v3.js';
+  script.id = 'flutterwave-js';
+  script.onload = () => triggerFlutterwaveWebModal(config);
+  script.onerror = () => {
+    console.error('Failed to load Flutterwave checkout.');
+    config.onClose();
+  };
+  document.body.appendChild(script);
 };
 
 export type FlutterwavePaymentPayload = {

@@ -98,11 +98,17 @@ export type AppRole = 'client' | 'vet' | 'merchant';
 export type DatabaseRole = 'client' | 'veterinarian' | 'merchant';
 export type RealtimeMessage = {
   id: string;
+  temp_id?: string;
   conversation_id: string;
   sender_id: string;
   receiver_id: string;
   content: string;
-  message_type: 'text' | 'invoice';
+  message_type: 'text' | 'invoice' | 'location_exact' | 'location_live';
+  location_data?: {
+    latitude: number;
+    longitude: number;
+    addressName?: string;
+  } | null;
   metadata?: Record<string, unknown> | null;
   media_url?: string | null;
   media_type?: 'image' | 'video' | null;
@@ -204,14 +210,62 @@ export const sendRealtimeMessage = async (message: Omit<RealtimeMessage, 'id' | 
   return data as RealtimeMessage;
 };
 
+export const deleteRealtimeMessage = async (messageId: string, userId: string) => {
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId)
+    .eq('sender_id', userId);
+  if (error) throw error;
+};
+
+export type ConsultationStatus = 'active' | 'completed';
+
+export const ensureConsultationRecord = async (conversationId: string, currentUserId: string, recipientId: string, currentUserRole: string, recipientRole: string) => {
+  const currentRole = currentUserRole === 'vet' ? 'veterinarian' : currentUserRole;
+  if (!['client', 'veterinarian'].includes(currentRole) || !['client', 'veterinarian'].includes(recipientRole)) return null;
+
+  const clientId = currentRole === 'client' ? currentUserId : recipientId;
+  const vetId = currentRole === 'veterinarian' ? currentUserId : recipientId;
+  const { data: existing, error: lookupError } = await supabase
+    .from('consultations')
+    .select('id, status')
+    .eq('conversation_id', conversationId)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing) return existing as { id: string; status: ConsultationStatus };
+
+  const { data, error } = await supabase
+    .from('consultations')
+    .insert({ conversation_id: conversationId, client_id: clientId, vet_id: vetId, status: 'active' })
+    .select('id, status')
+    .single();
+  if (error) {
+    const { data: concurrent } = await supabase
+      .from('consultations')
+      .select('id, status')
+      .eq('conversation_id', conversationId)
+      .maybeSingle();
+    if (concurrent) return concurrent as { id: string; status: ConsultationStatus };
+    throw error;
+  }
+  return data as { id: string; status: ConsultationStatus };
+};
+
 export const getConversationMessages = async (conversationId: string) => {
   const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at');
   if (error) throw error;
   return (data || []) as RealtimeMessage[];
 };
 
-export const subscribeToMessages = (conversationId: string, onMessage: (message: RealtimeMessage) => void) => {
-  const channel = supabase.channel(`messages:${conversationId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => onMessage(payload.new as RealtimeMessage)).subscribe();
+export const subscribeToMessages = (conversationId: string, onMessage: (message: RealtimeMessage) => void, onDelete?: (messageId: string) => void) => {
+  const channel = supabase
+    .channel(`messages:${conversationId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => onMessage(payload.new as RealtimeMessage))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+      if (onDelete) onDelete(String((payload.old as Partial<RealtimeMessage>).id));
+    })
+    .subscribe();
   return () => { void supabase.removeChannel(channel); };
 };
 
