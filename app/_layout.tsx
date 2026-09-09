@@ -26,9 +26,12 @@ function RootAuthGate() {
       console.log('[AUTH ROUTER] checkAuthAndRoute:', session?.user?.email);
       if (!session?.user) {
         const href = typeof window !== 'undefined' ? window.location.href : '';
+        const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+        const isAuthPage = /\/(?:signup|login|reset-password)(?:\/|$)/.test(pathname) || /\/auth\/(?:signup|login)(?:\/|$)/.test(pathname);
         const isOAuthCallback = /\/auth\/callback(?:[/?#]|$)/.test(href) && /(?:code|access_token|refresh_token)/.test(href);
-        console.log('[AUTH ROUTER] No session:', { href, isOAuthCallback });
+        console.log('[AUTH ROUTER] No session:', { href, pathname, isAuthPage, isOAuthCallback });
         if (isOAuthCallback) return;
+        if (isAuthPage) return;
         if (mounted) {
           router.replace('/(auth)/login');
         }
