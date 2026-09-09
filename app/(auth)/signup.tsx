@@ -23,10 +23,26 @@ export default function SignupScreen() {
   const googleButtonRef = useRef<View>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (params.role === 'client' || params.role === 'vet' || params.role === 'merchant') {
-      queueMicrotask(() => setRole(params.role as AppRole));
+      queueMicrotask(() => {
+        if (isMounted) setRole(params.role as AppRole);
+      });
+    } else {
+      // Defer router.setParams until after the layout component has finished mounting
+      queueMicrotask(() => {
+        if (isMounted) {
+          router.setParams({ role: 'client' });
+          setRole('client');
+        }
+      });
     }
-  }, [params.role]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [params.role, router]);
 
   const handleSignup = async () => {
     const normalizedPhoneNumber = phoneNumber.trim().replace(/[\s()-]/g, '');
