@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { addMarketplaceProduct, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -17,6 +17,49 @@ export default function MerchantDashboardScreen() {
   const [form, setForm] = useState({ title: '', category: '', price: '', stock: '' });
   const [metrics, setMetrics] = useState({ totalSales: 0, activeListings: 0, pendingOrders: 0 });
   const [productOrderStatuses, setProductOrderStatuses] = useState<Record<string, string>>({});
+
+  // WEB / PWA Android Push Notification Registration
+  useEffect(() => {
+    const registerWebNotifications = async () => {
+      if (Platform.OS !== 'web' || typeof window === 'undefined' || !('Notification' in window)) {
+        return;
+      }
+
+      try {
+        // Request browser notification permission for Web/PWA
+        if (Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+
+        if (Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          const user = await getCurrentUser();
+
+          if (user && registration.pushManager) {
+            // Subscribe the PWA client to push notifications
+            const subscription = await registration.pushManager.getSubscription() || 
+              await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                // Replace with your VAPID public key if using web push service
+                applicationServerKey: process.env.EXPO_PUBLIC_VAPID_KEY,
+              });
+
+            if (subscription) {
+              // Save web push subscription directly to Supabase profile
+              await supabase
+                .from('profiles')
+                .update({ web_push_subscription: JSON.stringify(subscription) })
+                .eq('id', user.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[PWA Notification] Failed to register web push:', error);
+      }
+    };
+
+    void registerWebNotifications();
+  }, []);
 
   useFocusEffect(useCallback(() => {
     void fetchMarketplaceProducts().catch(() => undefined);
@@ -121,6 +164,7 @@ export default function MerchantDashboardScreen() {
       console.warn('Failed to publish product', error);
     }
   };
+
   return <SafeAreaView style={styles.container}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <Text style={styles.title}>Store Dashboard</Text><Text style={styles.subtitle}>Manage your inventory and sales</Text>
     <View style={styles.stats}>
@@ -158,9 +202,11 @@ export default function MerchantDashboardScreen() {
     <TouchableOpacity style={styles.publish} onPress={publish}><MaterialCommunityIcons name="upload" size={19} color="#FFFFFF" /><Text style={styles.publishText}>Publish to Global Marketplace</Text></TouchableOpacity>
   </ScrollView></SafeAreaView></Modal></SafeAreaView>;
 }
+
 function Stat({ icon, label, value, color, onPress }: { icon: string; label: string; value: string; color: string; onPress?: () => void }) {
   const content = <View style={styles.stat}><MaterialCommunityIcons name={icon as any} size={25} color={color} /><Text style={styles.muted}>{label}</Text><Text style={styles.statValue}>{value}</Text></View>;
   if (!onPress) return content;
   return <TouchableOpacity onPress={onPress}>{content}</TouchableOpacity>;
 }
+
 const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: '#0F172A' }, content: { padding: 16, paddingBottom: 36 }, title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' }, subtitle: { color: '#94A3B8', marginTop: 4, marginBottom: 24 }, stats: { flexDirection: 'row', gap: 10, marginBottom: 24 }, stat: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#334155' }, statValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', textAlign: 'center' }, muted: { color: '#94A3B8', fontSize: 12 }, addProduct: { backgroundColor: '#3B82F6', borderRadius: 10, paddingVertical: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 28 }, addText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' }, sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 13 }, product: { backgroundColor: '#1E293B', borderRadius: 12, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 1, borderColor: '#334155', marginBottom: 10 }, productIcon: { width: 46, height: 46, borderRadius: 10, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }, productInfo: { flex: 1 }, productTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginBottom: 3 }, productMeta: { alignItems: 'flex-end', gap: 5 }, price: { color: '#10B981', fontWeight: '700', fontSize: 13 }, stock: { color: '#10B981', fontSize: 11 }, lowStock: { color: '#F87171' }, orderBadge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, alignSelf: 'flex-start', marginTop: 6 }, orderBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' }, modal: { flex: 1, backgroundColor: '#0F172A' }, modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#334155' }, modalTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' }, form: { padding: 16 }, label: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginBottom: 8, marginTop: 13 }, input: { backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155', borderRadius: 9, color: '#FFFFFF', padding: 13, fontSize: 14 }, categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, category: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#334155', backgroundColor: '#1E293B' }, selected: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }, categoryText: { color: '#94A3B8', fontSize: 13 }, selectedText: { color: '#FFFFFF', fontWeight: '700' }, publish: { backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 14, marginTop: 28, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }, publishText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 } });

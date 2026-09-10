@@ -1,10 +1,37 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
 import { router, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, sendPasswordResetLink, supabase, updatePassword } from '../../lib/supabase';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
 
@@ -36,27 +63,21 @@ export function LogoutButton() {
   const [loading, setLoading] = useState(false);
 
   const onLogout = async () => {
-    console.log('[LogoutButton] Press event fired!');
     setLoading(true);
-
     try {
       await supabase.auth.signOut();
-
       if (Platform.OS === 'web') {
         if (typeof window !== 'undefined') {
           window.localStorage.clear();
           window.sessionStorage.clear();
+          window.location.replace('/login');
         }
-        window.location.replace('/login');
       } else {
         router.replace('/(auth)/login');
       }
     } catch (err: any) {
-      console.error('[LogoutButton] Error during logout:', err);
-      if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined') {
-          window.location.replace('/login');
-        }
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.replace('/login');
       } else {
         router.replace('/(auth)/login');
       }
@@ -106,7 +127,10 @@ export default function MerchantProfileScreen() {
     location: '',
     businessNumber: '',
     avatar: '',
-    bankName: '', bankCode: '', accountNumber: '', accountName: '',
+    bankName: '',
+    bankCode: '',
+    accountNumber: '',
+    accountName: '',
     flutterwaveSubaccountId: '',
   });
   const [password, setPassword] = useState({ next: '', confirm: '' });
@@ -116,8 +140,40 @@ export default function MerchantProfileScreen() {
     payout_notifications: true,
   });
 
+  const requestNotificationPermission = async (userId: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+        await Notification.requestPermission();
+      }
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('mvs-default', {
+        name: 'MVS Notifications',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10B981',
+        sound: 'default',
+      });
+    }
+
+    const permissions = await Notifications.requestPermissionsAsync();
+    if (!permissions.granted) return;
+
+    const token = await Notifications.getExpoPushTokenAsync();
+    if (token.data) {
+      await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', userId);
+    }
+  };
+
   const loadNotificationPreferences = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('notification_preferences').eq('id', userId).maybeSingle();
+    const { data } = await supabase
+      .from('profiles')
+      .select('notification_preferences')
+      .eq('id', userId)
+      .maybeSingle();
+
     if (data?.notification_preferences && typeof data.notification_preferences === 'object') {
       setNotifications(data.notification_preferences);
     }
@@ -126,6 +182,11 @@ export default function MerchantProfileScreen() {
   const saveNotificationPreferences = async (prefs: typeof notifications) => {
     const user = await getCurrentUser();
     if (!user) return;
+    try {
+      await requestNotificationPermission(user.id);
+    } catch (error) {
+      console.warn('[Notifications] Permission or token registration failed:', error);
+    }
     await supabase.from('profiles').update({ notification_preferences: prefs }).eq('id', user.id);
   };
 
@@ -133,8 +194,18 @@ export default function MerchantProfileScreen() {
     void getCurrentUser()
       .then(async (user) => {
         if (user) {
-          const { data: profileData } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
-          const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('avatar_url')
+            .eq('id', user.id)
+            .single();
+
+          const activeAvatar =
+            profileData?.avatar_url ||
+            user.user_metadata?.avatar_url ||
+            user.user_metadata?.picture ||
+            null;
+
           setAvatarUrl(activeAvatar);
           setProfile({
             name: user.user_metadata?.full_name || user.user_metadata?.name || 'Merchant',
@@ -143,10 +214,41 @@ export default function MerchantProfileScreen() {
             business: user.user_metadata?.business || '',
             location: user.user_metadata?.location || '',
             businessNumber: user.user_metadata?.business_number || '',
-            avatar: activeAvatar || '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '',
+            avatar: activeAvatar || '',
+            bankName: '',
+            bankCode: '',
+            accountNumber: '',
+            accountName: '',
+            flutterwaveSubaccountId: '',
           });
-          void supabase.from('profiles').select('phone_number').eq('id', user.id).maybeSingle().then(({ data }) => { if (data?.phone_number) setProfile((prev) => ({ ...prev, phone: data.phone_number })); });
-          void supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle().then(({ data }) => { if (data) setProfile((prev) => ({ ...prev, bankName: data.bank_name || '', bankCode: data.bank_code || '', accountNumber: data.account_number || '', accountName: data.account_name || '', flutterwaveSubaccountId: data.flutterwave_subaccount_id || '' })); });
+
+          void supabase
+            .from('profiles')
+            .select('phone_number')
+            .eq('id', user.id)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data?.phone_number) setProfile((prev) => ({ ...prev, phone: data.phone_number }));
+            });
+
+          void supabase
+            .from('profiles')
+            .select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id')
+            .eq('id', user.id)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) {
+                setProfile((prev) => ({
+                  ...prev,
+                  bankName: data.bank_name || '',
+                  bankCode: data.bank_code || '',
+                  accountNumber: data.account_number || '',
+                  accountName: data.account_name || '',
+                  flutterwaveSubaccountId: data.flutterwave_subaccount_id || '',
+                }));
+              }
+            });
+
           void loadNotificationPreferences(user.id);
         }
       })
@@ -161,9 +263,27 @@ export default function MerchantProfileScreen() {
     const cleanLocation = sanitizeInput(profile.location);
     const cleanBusinessNumber = sanitizeInput(profile.businessNumber);
     const formattedPhoneNumber = sanitizeInput(profile.phone).replace(/[\s()-]/g, '');
-    if (!/^\+[1-9]\d{7,14}$/.test(formattedPhoneNumber)) { Alert.alert('Invalid phone number', 'Enter a valid international number, for example +2348000000000.'); return; }
-    const { error: profileError } = await supabase.from('profiles').update({ phone_number: formattedPhoneNumber }).eq('id', user.id);
-    if (profileError) { Alert.alert(profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile', profileError.code === '23505' ? 'This phone number is already associated with another MVS account.' : profileError.message); return; }
+
+    if (!/^\+[1-9]\d{7,14}$/.test(formattedPhoneNumber)) {
+      Alert.alert('Invalid phone number', 'Enter a valid international number, for example +2348000000000.');
+      return;
+    }
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ phone_number: formattedPhoneNumber })
+      .eq('id', user.id);
+
+    if (profileError) {
+      Alert.alert(
+        profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile',
+        profileError.code === '23505'
+          ? 'This phone number is already associated with another MVS account.'
+          : profileError.message
+      );
+      return;
+    }
+
     await supabase.auth.updateUser({
       data: {
         ...user.user_metadata,
@@ -174,11 +294,11 @@ export default function MerchantProfileScreen() {
         business_number: cleanBusinessNumber,
       },
     });
+
     setProfile((current) => ({ ...current, phone: formattedPhoneNumber }));
     setModal(null);
-    setSuccessMessage('Phone number updated successfully.');
+    setSuccessMessage('Profile updated successfully.');
     setTimeout(() => setSuccessMessage(null), 3000);
-    Alert.alert('Profile Updated', 'Your profile changes have been saved.');
   };
 
   const handleSaveBankDetails = async () => {
@@ -190,20 +310,56 @@ export default function MerchantProfileScreen() {
       const bankCode = profile.bankCode || '221';
       const accountNumber = profile.accountNumber || '';
       const selectedBank = NIGERIAN_BANKS.find((bank) => bank.code === bankCode);
-      if (!selectedBank) { Alert.alert('Select a bank', 'Choose your Nigerian bank before saving.'); return; }
-      if (!/^\d{10}$/.test(accountNumber)) { Alert.alert('Invalid account number', 'Account number must contain exactly 10 digits.'); return; }
-      const { error: dbErr } = await supabase.from('profiles').update({ bank_name: sanitizeInput(selectedBank.label), bank_code: sanitizeInput(bankCode), account_number: sanitizeInput(accountNumber), account_name: sanitizeInput(profile.accountName) }).eq('id', user.id);
-      if (dbErr) { Alert.alert('Database Error', dbErr.message); return; }
-      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('create-subaccount', { body: { userId: user.id, bankCode, accountNumber, businessName: user.user_metadata?.full_name || 'Emmanuel Francis', email: user.email || 'francisemmanuel303@gmail.com', phone: user.user_metadata?.phone || '08000000000' } });
-      if (edgeErr || !edgeData?.success) { console.error('Subaccount creation failed:', edgeErr || edgeData); Alert.alert('Warning', `Bank saved, but subaccount creation failed: ${edgeErr?.message || edgeData?.error || 'Unknown error'}`); return; }
-      if (edgeData.subaccount_id) {
-        const { error: subaccountProfileError } = await supabase.from('profiles').update({ flutterwave_subaccount_id: edgeData.subaccount_id }).eq('id', user.id);
-        if (subaccountProfileError) { Alert.alert('Warning', `Bank saved, but subaccount ID could not be saved: ${subaccountProfileError.message}`); return; }
+
+      if (!selectedBank) {
+        Alert.alert('Select a bank', 'Choose your Nigerian bank before saving.');
+        return;
       }
-      const { data: refreshedProfile, error: refreshError } = await supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle();
-      if (refreshError) { Alert.alert('Database Error', refreshError.message); return; }
-      if (refreshedProfile) setProfile((prev) => ({ ...prev, bankName: refreshedProfile.bank_name || '', bankCode: refreshedProfile.bank_code || '', accountNumber: refreshedProfile.account_number || '', accountName: refreshedProfile.account_name || '', flutterwaveSubaccountId: refreshedProfile.flutterwave_subaccount_id || '' }));
-      Alert.alert('Success', 'Bank account & Flutterwave subaccount setup complete!');
+      if (!/^\d{10}$/.test(accountNumber)) {
+        Alert.alert('Invalid account number', 'Account number must contain exactly 10 digits.');
+        return;
+      }
+
+      const { error: dbErr } = await supabase
+        .from('profiles')
+        .update({
+          bank_name: sanitizeInput(selectedBank.label),
+          bank_code: sanitizeInput(bankCode),
+          account_number: sanitizeInput(accountNumber),
+          account_name: sanitizeInput(profile.accountName),
+        })
+        .eq('id', user.id);
+
+      if (dbErr) {
+        Alert.alert('Database Error', dbErr.message);
+        return;
+      }
+
+      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('create-subaccount', {
+        body: {
+          userId: user.id,
+          bankCode,
+          accountNumber,
+          businessName: profile.business || user.user_metadata?.full_name || 'Merchant',
+          email: user.email,
+          phone: profile.phone,
+        },
+      });
+
+      if (edgeErr || !edgeData?.success) {
+        Alert.alert('Warning', `Bank saved, but subaccount setup failed: ${edgeErr?.message || edgeData?.error || 'Unknown error'}`);
+        return;
+      }
+
+      if (edgeData.subaccount_id) {
+        await supabase
+          .from('profiles')
+          .update({ flutterwave_subaccount_id: edgeData.subaccount_id })
+          .eq('id', user.id);
+      }
+
+      setSuccessMessage('Bank account & subaccount saved successfully.');
+      setTimeout(() => setSuccessMessage(null), 3000);
       setModal(null);
     } finally {
       setBankSaving(false);
@@ -212,7 +368,7 @@ export default function MerchantProfileScreen() {
 
   const changePassword = async () => {
     if (password.next.length < 6 || password.next !== password.confirm) {
-      Alert.alert('Invalid', 'Password must be at least 6 characters and match the confirmation.');
+      Alert.alert('Invalid', 'Password must be at least 6 characters and match confirmation.');
       return;
     }
     try {
@@ -240,7 +396,6 @@ export default function MerchantProfileScreen() {
       try {
         const { error } = await supabase.rpc('delete_user_account');
         if (error) throw error;
-
         await supabase.auth.signOut();
         router.replace('/(auth)/login');
       } catch (error) {
@@ -255,35 +410,44 @@ export default function MerchantProfileScreen() {
       return;
     }
 
-    Alert.alert(
-      'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => { void confirmDelete(); } },
-      ]
-    );
+    Alert.alert('Delete Account', 'Are you sure you want to delete your account? This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => { void confirmDelete(); } },
+    ]);
   };
 
   const pickAvatar = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
       if (result.canceled || !result.assets[0]) return;
       const user = await getCurrentUser();
       if (!user) return;
+
       const asset = result.assets[0];
       const file = await (await fetch(asset.uri)).blob();
       const fileName = asset.fileName || asset.uri.split('/').pop() || `avatar-${Date.now()}.jpg`;
       const fileExt = fileName.split('.').pop() || 'jpg';
       const filePath = `${user.id}/avatar-${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true, contentType: asset.mimeType || file.type });
+
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, {
+        upsert: true,
+        contentType: asset.mimeType || file.type,
+      });
+
       if (uploadError) throw uploadError;
+
       const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(filePath);
       const publicUrl = publicUrlData.publicUrl;
-      const { error: profileError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
-      if (profileError) throw profileError;
-      const { error: authError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
-      if (authError) throw authError;
+
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+
       setAvatarUrl(publicUrl);
       setProfile((prev) => ({ ...prev, avatar: publicUrl }));
       setSuccessMessage('Profile photo updated successfully.');
@@ -295,24 +459,38 @@ export default function MerchantProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {successMessage ? <View style={{ position: 'absolute', top: 14, left: 16, right: 16, zIndex: 10, backgroundColor: '#065F46', borderRadius: 9, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}><MaterialCommunityIcons name="check-circle" size={18} color="#D1FAE5" /><Text style={{ color: '#D1FAE5', fontWeight: '600' }}>{successMessage}</Text></View> : null}
+      {successMessage ? (
+        <View style={styles.successBanner}>
+          <MaterialCommunityIcons name="check-circle" size={18} color="#D1FAE5" />
+          <Text style={styles.successBannerText}>{successMessage}</Text>
+        </View>
+      ) : null}
+
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.pageTitle}>My Profile</Text>
 
-        {/* Profile Header */}
         <View style={styles.profileHeader}>
           <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Change profile photo">
-            {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><MaterialCommunityIcons name="storefront" size={36} color="#FFFFFF" /></View>}
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <MaterialCommunityIcons name="storefront" size={36} color="#FFFFFF" />
+              </View>
+            )}
           </TouchableOpacity>
           <View style={styles.flex}>
             <Text style={styles.title}>{profile.name}</Text>
             <Text style={styles.muted}>{profile.email}</Text>
-            <Text style={{ color: profile.phone ? '#34D399' : '#94A3B8', fontSize: 12, marginTop: 4 }}>{profile.phone ? 'Phone number saved' : 'No phone number saved'}</Text>
-            <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Tap to change photo"><Text style={styles.editHint}>Tap to change photo</Text></TouchableOpacity>
+            <Text style={{ color: profile.phone ? '#34D399' : '#94A3B8', fontSize: 12, marginTop: 4 }}>
+              {profile.phone ? 'Phone number saved' : 'No phone number saved'}
+            </Text>
+            <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Tap to change photo">
+              <Text style={styles.editHint}>Tap to change photo</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Business Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Business Information</Text>
           <InfoRow icon="storefront" label="Business Name" value={profile.business || 'Not set'} />
@@ -321,7 +499,6 @@ export default function MerchantProfileScreen() {
           <InfoRow icon="phone" label="Phone" value={profile.phone || 'Not set'} />
         </View>
 
-        {/* Account Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
           <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
@@ -330,10 +507,8 @@ export default function MerchantProfileScreen() {
           <Setting label="Bank Account" icon="bank" onPress={() => setModal('bank')} />
         </View>
 
-        {/* Account Actions */}
         <View style={styles.section}>
           <LogoutButton />
-
           <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color="#FCA5A5" />
             <Text style={styles.deleteText}>Delete account</Text>
@@ -341,7 +516,7 @@ export default function MerchantProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* Modals */}
+      {/* Edit Profile Modal */}
       <Modal visible={modal === 'profile'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -354,42 +529,12 @@ export default function MerchantProfileScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Field
-                label="Full Name"
-                value={profile.name}
-                onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))}
-                placeholder="Your Name"
-              />
-              <Field
-                label="Email"
-                value={profile.email}
-                onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))}
-                editable={false}
-              />
-              <Field
-                label="Phone"
-                value={profile.phone}
-                onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))}
-                placeholder="+234 XXX XXX XXXX"
-              />
-              <Field
-                label="Business Name"
-                value={profile.business}
-                onChangeText={(text) => setProfile((prev) => ({ ...prev, business: text }))}
-                placeholder="Your business name"
-              />
-              <Field
-                label="Location"
-                value={profile.location}
-                onChangeText={(text) => setProfile((prev) => ({ ...prev, location: text }))}
-                placeholder="Business location"
-              />
-              <Field
-                label="Business Registration Number"
-                value={profile.businessNumber}
-                onChangeText={(text) => setProfile((prev) => ({ ...prev, businessNumber: text }))}
-                placeholder="Your business registration number"
-              />
+              <Field label="Full Name" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} placeholder="Your Name" />
+              <Field label="Email" value={profile.email} onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))} editable={false} />
+              <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
+              <Field label="Business Name" value={profile.business} onChangeText={(text) => setProfile((prev) => ({ ...prev, business: text }))} placeholder="Your business name" />
+              <Field label="Location" value={profile.location} onChangeText={(text) => setProfile((prev) => ({ ...prev, location: text }))} placeholder="Business location" />
+              <Field label="Business Registration Number" value={profile.businessNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, businessNumber: text }))} placeholder="Your business registration number" />
 
               <TouchableOpacity style={styles.save} onPress={saveProfile}>
                 <Text style={styles.saveText}>Save Changes</Text>
@@ -399,9 +544,82 @@ export default function MerchantProfileScreen() {
         </View>
       </Modal>
 
-      <Modal visible={modal === 'bank'} animationType="fade" transparent onRequestClose={() => setModal(null)}><KeyboardAvoidingView style={styles.bankModalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View style={styles.bankModalContent}><View style={styles.modalHeader}><TouchableOpacity onPress={() => setModal(null)} disabled={bankSaving}><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity><Text style={styles.modalTitle}>Bank Account</Text><View style={{ width: 24 }} /></View><ScrollView contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={true} style={styles.modalBody}><View style={styles.field}><Text style={styles.label}>Bank</Text><TouchableOpacity style={styles.input} onPress={() => setBankPickerVisible(true)} disabled={bankSaving}><Text style={profile.bankCode ? styles.inputText : styles.placeholder}>{profile.bankName || 'Select your bank'}</Text><Text style={styles.chevron}>›</Text></TouchableOpacity></View><Field label="Account Number" value={profile.accountNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, accountNumber: text.replace(/\D/g, '').slice(0, 10) }))} placeholder="10-digit account number" keyboardType="number-pad" /><Field label="Account Name" value={profile.accountName} onChangeText={(text) => setProfile((prev) => ({ ...prev, accountName: text }))} placeholder="Name on account" /><TouchableOpacity style={styles.save} onPress={() => { void handleSaveBankDetails(); }} disabled={bankSaving}><Text style={styles.saveText}>{bankSaving ? 'Saving...' : 'Save Bank Details'}</Text>{bankSaving && <ActivityIndicator color="#FFFFFF" style={styles.saveSpinner} />}</TouchableOpacity></ScrollView></View></KeyboardAvoidingView></Modal>
-      <Modal visible={bankPickerVisible} animationType="slide" transparent onRequestClose={() => setBankPickerVisible(false)}><View style={styles.modalOverlay}><View style={styles.pickerContent}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={styles.modalTitle}>Select Bank</Text><TouchableOpacity onPress={() => setBankPickerVisible(false)}><Text style={styles.secondaryText}>Cancel</Text></TouchableOpacity></View><ScrollView showsVerticalScrollIndicator={true}>{NIGERIAN_BANKS.map((bank) => <TouchableOpacity key={bank.code} style={styles.bankOption} onPress={() => { setProfile((prev) => ({ ...prev, bankCode: bank.code, bankName: bank.label })); setBankPickerVisible(false); }}><Text style={styles.primary}>{bank.label}</Text><Text style={styles.bankCode}>{bank.code}</Text></TouchableOpacity>)}</ScrollView><TouchableOpacity style={styles.secondary} onPress={() => setBankPickerVisible(false)}><Text style={styles.secondaryText}>Cancel</Text></TouchableOpacity></View></View></Modal>
+      {/* Bank Details Modal */}
+      <Modal visible={modal === 'bank'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={styles.bankModalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.bankModalContent}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setModal(null)} disabled={bankSaving}>
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Bank Account</Text>
+              <View style={{ width: 24 }} />
+            </View>
 
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={true} style={styles.modalBody}>
+              <View style={styles.field}>
+                <Text style={styles.label}>Bank</Text>
+                <TouchableOpacity style={styles.input} onPress={() => setBankPickerVisible(true)} disabled={bankSaving}>
+                  <Text style={profile.bankCode ? styles.inputText : styles.placeholder}>
+                    {profile.bankName || 'Select your bank'}
+                  </Text>
+                  <Text style={styles.chevron}>›</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Field
+                label="Account Number"
+                value={profile.accountNumber}
+                onChangeText={(text) => setProfile((prev) => ({ ...prev, accountNumber: text.replace(/\D/g, '').slice(0, 10) }))}
+                placeholder="10-digit account number"
+                keyboardType="number-pad"
+              />
+              <Field
+                label="Account Name"
+                value={profile.accountName}
+                onChangeText={(text) => setProfile((prev) => ({ ...prev, accountName: text }))}
+                placeholder="Name on account"
+              />
+
+              <TouchableOpacity style={styles.save} onPress={() => { void handleSaveBankDetails(); }} disabled={bankSaving}>
+                <Text style={styles.saveText}>{bankSaving ? 'Saving...' : 'Save Bank Details'}</Text>
+                {bankSaving && <ActivityIndicator color="#FFFFFF" style={styles.saveSpinner} />}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Bank Selection Modal */}
+      <Modal visible={bankPickerVisible} animationType="slide" transparent onRequestClose={() => setBankPickerVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerContent}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.modalTitle}>Select Bank</Text>
+              <TouchableOpacity onPress={() => setBankPickerVisible(false)}>
+                <Text style={styles.secondaryText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={true}>
+              {NIGERIAN_BANKS.map((bank) => (
+                <TouchableOpacity
+                  key={bank.code}
+                  style={styles.bankOption}
+                  onPress={() => {
+                    setProfile((prev) => ({ ...prev, bankCode: bank.code, bankName: bank.label }));
+                    setBankPickerVisible(false);
+                  }}
+                >
+                  <Text style={styles.primary}>{bank.label}</Text>
+                  <Text style={styles.bankCode}>{bank.code}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Password Modal */}
       <Modal visible={modal === 'password'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -415,21 +633,8 @@ export default function MerchantProfileScreen() {
 
             <ScrollView style={styles.modalBody}>
               <Text style={styles.info}>Or use the button below to send yourself a password reset link.</Text>
-
-              <Field
-                label="New Password"
-                value={password.next}
-                onChangeText={(text) => setPassword((prev) => ({ ...prev, next: text }))}
-                placeholder="Minimum 6 characters"
-                secureTextEntry
-              />
-              <Field
-                label="Confirm Password"
-                value={password.confirm}
-                onChangeText={(text) => setPassword((prev) => ({ ...prev, confirm: text }))}
-                placeholder="Re-enter your password"
-                secureTextEntry
-              />
+              <Field label="New Password" value={password.next} onChangeText={(text) => setPassword((prev) => ({ ...prev, next: text }))} placeholder="Minimum 6 characters" secureTextEntry />
+              <Field label="Confirm Password" value={password.confirm} onChangeText={(text) => setPassword((prev) => ({ ...prev, confirm: text }))} placeholder="Re-enter your password" secureTextEntry />
 
               <TouchableOpacity style={styles.save} onPress={changePassword}>
                 <Text style={styles.saveText}>Update Password</Text>
@@ -443,6 +648,7 @@ export default function MerchantProfileScreen() {
         </View>
       </Modal>
 
+      {/* Notification Preferences Modal */}
       <Modal visible={modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -458,17 +664,29 @@ export default function MerchantProfileScreen() {
               <Toggle
                 label="New Orders"
                 value={notifications.new_orders}
-                onChange={(value) => { const updated = { ...notifications, new_orders: value }; setNotifications(updated); void saveNotificationPreferences(updated); }}
+                onChange={(value) => {
+                  const updated = { ...notifications, new_orders: value };
+                  setNotifications(updated);
+                  void saveNotificationPreferences(updated);
+                }}
               />
               <Toggle
                 label="Customer Inquiries"
                 value={notifications.customer_inquiries}
-                onChange={(value) => { const updated = { ...notifications, customer_inquiries: value }; setNotifications(updated); void saveNotificationPreferences(updated); }}
+                onChange={(value) => {
+                  const updated = { ...notifications, customer_inquiries: value };
+                  setNotifications(updated);
+                  void saveNotificationPreferences(updated);
+                }}
               />
               <Toggle
                 label="Payout Notifications"
                 value={notifications.payout_notifications}
-                onChange={(value) => { const updated = { ...notifications, payout_notifications: value }; setNotifications(updated); void saveNotificationPreferences(updated); }}
+                onChange={(value) => {
+                  const updated = { ...notifications, payout_notifications: value };
+                  setNotifications(updated);
+                  void saveNotificationPreferences(updated);
+                }}
               />
 
               <TouchableOpacity style={styles.save} onPress={() => setModal(null)}>
@@ -506,7 +724,23 @@ function Setting({ label, icon, onPress }: { label: string; icon: string; onPres
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, secureTextEntry, editable = true, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; editable?: boolean; keyboardType?: 'default' | 'number-pad' }) {
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  editable = true,
+  keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  secureTextEntry?: boolean;
+  editable?: boolean;
+  keyboardType?: 'default' | 'number-pad';
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -554,9 +788,7 @@ const styles = StyleSheet.create({
   settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   primary: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   chevron: { color: '#64748B', fontSize: 22 },
-  logout: { backgroundColor: '#EF4444', borderRadius: 10, padding: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 10 },
-  logoutText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
-  deleteButton: { borderColor: '#EF4444', borderWidth: 1.5, borderRadius: 10, padding: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  deleteButton: { borderColor: '#EF4444', borderWidth: 1.5, borderRadius: 10, padding: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 12 },
   deleteText: { color: '#FCA5A5', fontWeight: '700', fontSize: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'flex-end' },
   bankModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
@@ -568,17 +800,19 @@ const styles = StyleSheet.create({
   info: { color: '#94A3B8', fontSize: 13, marginBottom: 16 },
   field: { marginBottom: 16 },
   label: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginBottom: 8 },
-  input: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, color: '#FFFFFF', padding: 12, fontSize: 14 },
+  input: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, color: '#FFFFFF', padding: 12, fontSize: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   inputText: { color: '#FFFFFF', fontSize: 14 },
   placeholder: { color: '#64748B', fontSize: 14 },
   pickerContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '90%' },
   bankOption: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, padding: 14, marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bankCode: { color: '#94A3B8', fontSize: 13 },
   inputDisabled: { backgroundColor: '#0F172A', color: '#64748B' },
-  save: { backgroundColor: '#45B7D1', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 20, marginBottom: 10 },
+  save: { backgroundColor: '#45B7D1', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 20, marginBottom: 10, flexDirection: 'row', justifyContent: 'center' },
   saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   saveSpinner: { marginLeft: 8 },
   secondary: { borderColor: '#45B7D1', borderWidth: 1, borderRadius: 8, padding: 14, alignItems: 'center' },
   secondaryText: { color: '#45B7D1', fontWeight: '600', fontSize: 14 },
-  toggle: { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  toggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 8, padding: 14, marginBottom: 12 },
+  successBanner: { position: 'absolute', top: 14, left: 16, right: 16, zIndex: 10, backgroundColor: '#065F46', borderRadius: 9, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  successBannerText: { color: '#D1FAE5', fontWeight: '600' },
 });

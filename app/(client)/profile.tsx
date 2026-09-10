@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -9,6 +10,16 @@ import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { calculatePetAgeInWeeks } from '../../lib/petAge';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 type Pet = EditablePet & { owner_id: string };
 type SettingsModal = 'profile' | 'password' | 'notifications' | null;
@@ -57,8 +68,75 @@ export default function ProfileScreen() {
   const saveNotificationPreferences = async (prefs: typeof notifications) => {
     const user = await getCurrentUser();
     if (!user) return;
+    try {
+      await requestNotificationPermission(user.id);
+    } catch (error) {
+      console.warn('[Notifications] Permission or token registration failed:', error);
+    }
     await supabase.from('profiles').update({ notification_preferences: prefs }).eq('id', user.id);
   };
+
+  const requestNotificationPermission = async (userId: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+      if (permission !== 'granted' || !('serviceWorker' in navigator)) return;
+
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration.pushManager) return;
+
+      const vapidKey = process.env.EXPO_PUBLIC_VAPID_KEY;
+      const subscription =
+        (await registration.pushManager.getSubscription()) ||
+        (vapidKey
+          ? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey })
+          : null);
+
+      if (subscription) {
+        await supabase
+          .from('profiles')
+          .update({ web_push_subscription: JSON.stringify(subscription) })
+          .eq('id', userId);
+      }
+      return;
+    }
+
+    const permissions = await Notifications.requestPermissionsAsync();
+    if (!permissions.granted) return;
+
+    const token = await Notifications.getExpoPushTokenAsync();
+    if (token.data) {
+      await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', userId);
+    }
+  };
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      void Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+      });
+    }
+
+    if (Platform.OS === 'web') return undefined;
+
+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+      console.log('[Notifications] Received notification:', notification.request.identifier);
+    });
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log('[Notifications] Notification response:', response.notification.request.identifier);
+    });
+
+    return () => {
+      receivedSubscription.remove();
+      responseSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     void (async () => {

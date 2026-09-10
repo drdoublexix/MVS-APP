@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { supabase } from './supabase';
 
 export type ProfileLocation = {
   latitude: number | null;
@@ -20,6 +21,7 @@ export const NIGERIAN_LOCATIONS = [
 export const requestDeviceLocation = async (): Promise<ProfileLocation | null> => {
   let latitude: number;
   let longitude: number;
+
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status !== Location.PermissionStatus.GRANTED) throw new Error('Location permission was not granted.');
@@ -27,17 +29,26 @@ export const requestDeviceLocation = async (): Promise<ProfileLocation | null> =
     latitude = position.coords.latitude;
     longitude = position.coords.longitude;
   } catch (nativeError) {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) throw nativeError;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      console.warn('[Location] Geolocation not available');
+      return null;
+    }
     console.log('[Location] Falling back to browser geolocation');
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 }));
-    latitude = position.coords.latitude;
-    longitude = position.coords.longitude;
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
+      );
+      latitude = position.coords.latitude;
+      longitude = position.coords.longitude;
+    } catch (browserError) {
+      console.warn('[Location] Browser geolocation error:', browserError);
+      return null;
+    }
   }
 
   let city = '';
   let state = '';
   try {
-    // Use OpenStreetMap Nominatim API for reverse geocoding (replaces deprecated Expo geocoding)
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
     if (response.ok) {
       const data = await response.json();
@@ -48,5 +59,26 @@ export const requestDeviceLocation = async (): Promise<ProfileLocation | null> =
     console.log('[Location] OpenStreetMap reverse geocoding failed:', nominatimError);
   }
 
-  return { latitude, longitude, city, state };
+  const result = { latitude, longitude, city, state };
+
+  // Automatically update Supabase profile so "Location Pending" disappears
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await supabase
+        .from('profiles')
+        .update({
+          latitude,
+          longitude,
+          city: city || 'Local Area',
+          state: state || 'Nigeria',
+        })
+        .eq('id', session.user.id);
+      console.log('[Location] Successfully updated profile coordinates in database');
+    }
+  } catch (dbError) {
+    console.error('[Location] Failed to save location to database:', dbError);
+  }
+
+  return result;
 };

@@ -1,7 +1,7 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
@@ -28,6 +28,12 @@ type Category = 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'Genera
 const categories: Category[] = ['Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
 const standardVetSelect = 'id, full_name, role, avatar_url, specialty, latitude, longitude, city, state';
 const coreVetSelect = 'id, full_name, role, avatar_url, specialty';
+
+const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
+  if (!avatarPath) return null;
+  if (/^https?:\/\//i.test(avatarPath)) return avatarPath;
+  return supabase.storage.from('avatars').getPublicUrl(avatarPath).data.publicUrl || null;
+};
 
 const isValidCoordinate = (value: unknown, minimum: number, maximum: number): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= minimum && value <= maximum;
@@ -57,6 +63,7 @@ export default function VetsScreen() {
   const [averageRating, setAverageRating] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
   const [ratingLoading, setRatingLoading] = useState(false);
+  const [failedAvatarIds, setFailedAvatarIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let isMounted = true;
@@ -82,23 +89,18 @@ export default function VetsScreen() {
             console.warn('Client location unavailable for vet sorting', locationError);
           }
         }
-        const detailedQuery = await supabase
+        // Replace lines 85–104 with this resilient fallback query logic:
+        let detailedQuery = await supabase
           .from('profiles')
-          .select(standardVetSelect)
-          .in('role', ['vet', 'veterinarian'])
+          .select('*')
+          .eq('role', 'vet')
           .order('full_name', { ascending: true });
+
         let data = (detailedQuery.data || null) as VetProfile[] | null;
         let error = detailedQuery.error;
 
         if (error) {
-          console.warn('Vet location fields unavailable; loading core vet profiles instead:', error.message);
-          const fallbackQuery = await supabase
-            .from('profiles')
-            .select(coreVetSelect)
-            .in('role', ['vet', 'veterinarian'])
-            .order('full_name', { ascending: true });
-          data = (fallbackQuery.data || null) as VetProfile[] | null;
-          error = fallbackQuery.error;
+          console.warn('Query error fetching vet profiles:', error.message);
         }
 
         console.log('Vet directory raw profile rows:', data);
@@ -223,11 +225,20 @@ export default function VetsScreen() {
           ) : (
             vets.map((vet) => {
               const specialty = vet.specialty || vet.title || 'Veterinarian';
+              const resolvedAvatarUrl = getPublicAvatarUrl(vet.avatar_url);
               return (
                 <View key={vet.id} style={styles.card}>
                   <View style={styles.cardTop}>
                     <View style={styles.avatar}>
-                      <MaterialCommunityIcons name="doctor" size={28} color="#FFFFFF" />
+                      {resolvedAvatarUrl && !failedAvatarIds[vet.id] ? (
+                        <Image
+                          source={{ uri: resolvedAvatarUrl }}
+                          style={styles.avatarImage}
+                          onError={() => setFailedAvatarIds((current) => ({ ...current, [vet.id]: true }))}
+                        />
+                      ) : (
+                        <MaterialCommunityIcons name="doctor" size={28} color="#FFFFFF" />
+                      )}
                     </View>
                     <View style={styles.flex}>
                       <Text style={styles.doctor}>{vet.full_name}</Text>
@@ -264,7 +275,18 @@ export default function VetsScreen() {
                   <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={styles.profileAvatar}>
-                  <MaterialCommunityIcons name="doctor" size={52} color="#FFFFFF" />
+                  {(() => {
+                    const resolvedAvatarUrl = getPublicAvatarUrl(selectedVet.avatar_url);
+                    return resolvedAvatarUrl && !failedAvatarIds[selectedVet.id] ? (
+                      <Image
+                        source={{ uri: resolvedAvatarUrl }}
+                        style={styles.profileAvatarImage}
+                        onError={() => setFailedAvatarIds((current) => ({ ...current, [selectedVet.id]: true }))}
+                      />
+                    ) : (
+                      <MaterialCommunityIcons name="doctor" size={52} color="#FFFFFF" />
+                    );
+                  })()}
                 </View>
                 <Text style={styles.modalDoctor}>{selectedVet.full_name}</Text>
                 <Text style={styles.modalClinic}>{selectedVet.specialty || selectedVet.title || 'Veterinarian'}</Text>
@@ -323,6 +345,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#1E293B', borderRadius: 14, padding: 15, borderWidth: 1, borderColor: '#334155', marginBottom: 12 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   avatar: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center' },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 14 },
   flex: { flex: 1 },
   doctor: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   clinic: { color: '#94A3B8', fontSize: 12, marginTop: 3 },
@@ -337,6 +360,7 @@ const styles = StyleSheet.create({
   modal: { maxHeight: '88%', backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 22 },
   close: { alignSelf: 'flex-end' },
   profileAvatar: { width: 92, height: 92, borderRadius: 28, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginTop: 6 },
+  profileAvatarImage: { width: '100%', height: '100%', borderRadius: 28 },
   modalDoctor: { color: '#FFFFFF', fontWeight: '700', fontSize: 23, textAlign: 'center', marginTop: 14 },
   modalClinic: { color: '#94A3B8', textAlign: 'center', marginTop: 4 },
   aboutTitle: { color: '#FFFFFF', fontWeight: '700', marginTop: 22 },

@@ -1,9 +1,11 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
+import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
@@ -46,7 +48,38 @@ export default function ClientHome() {
   );
 
   useEffect(() => {
+    // 1. Fetch marketplace products
     void fetchMarketplaceProducts().catch(() => undefined);
+
+    // 2. Automatically prompt location permission on initial load
+    void requestDeviceLocation().catch((err) => {
+      console.warn('[Client Home] Location request skipped or denied:', err);
+    });
+
+    // 3. Register the authenticated user for platform notifications
+    void (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) return;
+
+        if (Platform.OS === 'ios' || Platform.OS === 'android') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status !== 'granted') return;
+
+          const token = await Notifications.getExpoPushTokenAsync();
+          await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', user.id);
+          return;
+        }
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'default') {
+            await Notification.requestPermission();
+          }
+        }
+      } catch {
+        // Notification registration must not block the rest of the screen startup.
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -101,6 +134,7 @@ export default function ClientHome() {
       }
     })();
   }, []);
+
   const getOrderBadge = (status?: string) => {
     if (!status) return null;
     switch (status) {
@@ -124,7 +158,6 @@ export default function ClientHome() {
 
     const serviceError = 'Unable to connect to MVS Assistant service. Please try again.';
     const userMsg: Message = { role: 'user', content: prompt };
-    const conversation = [...messages, userMsg];
 
     setMessages((prev) => [...prev, userMsg]);
     setUserQuery('');
@@ -132,7 +165,7 @@ export default function ClientHome() {
 
     let assistantContent = serviceError;
     try {
-      assistantContent = await requestAiAssistant(conversation, 'client');
+      assistantContent = await requestAiAssistant([...messages, userMsg], 'client');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('AI assistant request failed:', errorMessage);
@@ -341,7 +374,12 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   product: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12 },
   productImage: { height: 96, backgroundColor: '#0F172A', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  productPhoto: { width: '100%', height: '100%', borderRadius: 8 },
+  productPhoto: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    resizeMode: 'cover',
+  },
   productName: { color: '#FFFFFF', fontWeight: '600', fontSize: 13, marginBottom: 7 },
   productPrice: { color: '#3B82F6', fontWeight: '700', fontSize: 14 },
   muted: { color: '#94A3B8', fontSize: 11 },
@@ -361,7 +399,14 @@ const styles = StyleSheet.create({
   aiConversationContent: { flexGrow: 1, justifyContent: 'flex-end', paddingBottom: 4 },
   messageBubble: { marginBottom: 12, borderRadius: 10, padding: 12 },
   userMessage: { backgroundColor: '#10B98120', borderLeftWidth: 3, borderLeftColor: '#10B981', alignSelf: 'flex-end', maxWidth: '85%' },
-  assistantMessage: { backgroundColor: '#3B82F620', borderLeftWidth: 3, borderLeftColor: '#3B82F6', alignSelf: 'flex-start', maxWidth: '95%', textAlign: 'left' },
+  assistantMessage: {
+    backgroundColor: '#3B82F620',
+    borderLeftWidth: 3,
+    borderLeftColor: '#3B82F6',
+    alignSelf: 'flex-start', // <-- Updated from 'start'
+    maxWidth: '95%',
+    textAlign: 'left',
+  },
   userMessageText: { color: '#E2E8F0', fontSize: 14, lineHeight: 21 },
   aiHint: { color: '#94A3B8', fontSize: 14, lineHeight: 21 },
   answerText: { color: '#E2E8F0', fontSize: 15, lineHeight: 22 },

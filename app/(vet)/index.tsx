@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
+import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
@@ -35,7 +36,18 @@ export default function VetDashboardScreen() {
   const messagesScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
+    // 1. Fetch marketplace products
     void fetchMarketplaceProducts().catch(() => undefined);
+
+    // 2. Prompt device location permission on initial load
+    void requestDeviceLocation().catch((err) => {
+      console.warn('[Vet Dashboard] Location request skipped or denied:', err);
+    });
+
+    // 3. Prompt web notification permission if available
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      void Notification.requestPermission();
+    }
   }, []);
 
   // Load AI chat history when modal opens
@@ -49,6 +61,8 @@ export default function VetDashboardScreen() {
         if (!user) return;
 
         const userId = normalizeUuid(user.id);
+        if (!userId) return; // <-- Add this check
+
         const sessionId = `vet-ai-${userId}`;
 
         if (mounted) {
@@ -273,7 +287,7 @@ function MarkdownResponse({ text }: { text: string }) {
         if (bullet) {
           return (
             <View key={`bullet-${index}`} style={styles.markdownBullet}>
-              <Text style={styles.markdownBulletMark}>-</Text>
+              <Text style={styles.markdownBulletMark}>•</Text>
               <Text style={styles.markdownBulletText}>{renderInlineMarkdown(bullet[1])}</Text>
             </View>
           );
@@ -326,11 +340,23 @@ const styles = StyleSheet.create({
   aiError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#451A1A', borderRadius: 10, padding: 12, marginBottom: 12 },
   aiErrorText: { flex: 1, color: '#FCA5A5', fontSize: 13, marginRight: 12 },
   retryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-    aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-    aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#FFFFFF24', alignItems: 'center', justifyContent: 'center' },
-    aiCardCopy: { flex: 1, marginHorizontal: 12 },
-    aiTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-    aiText: { color: '#CFFAFE', fontSize: 12, lineHeight: 18, marginTop: 3 },
-  container: { flex: 1, backgroundColor: '#0F172A' }, content: { padding: 16, paddingBottom: 36 }, title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' }, subtitle: { color: '#94A3B8', marginTop: 4, marginBottom: 24 }, metrics: { flexDirection: 'row', gap: 10, marginBottom: 28 }, metric: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155' }, metricIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }, muted: { color: '#94A3B8', fontSize: 12 }, metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 5, textAlign: 'center' }, sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 12 }, invoiceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#334155' }, invoiceRight: { flexDirection: 'row', alignItems: 'center', gap: 10 }, price: { color: '#3B82F6', fontWeight: '700' }, formRow: { flexDirection: 'row', gap: 8, marginVertical: 16 }, input: { backgroundColor: '#0F172A', borderColor: '#334155', borderWidth: 1, borderRadius: 8, color: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 10, fontSize: 12 }, serviceInput: { flex: 2 }, amountInput: { flex: 1 }, addButton: { width: 40, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }, summary: { backgroundColor: '#0F172A', borderRadius: 10, padding: 12, marginBottom: 14 }, summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }, divider: { height: 1, backgroundColor: '#334155', marginVertical: 3 }, strongLabel: { color: '#10B981', fontWeight: '700', fontSize: 13 }, strongValue: { color: '#10B981', fontWeight: '700', fontSize: 15 }, sendButton: { backgroundColor: '#10B981', borderRadius: 9, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }, sendText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
-  marketplace: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, marketProduct: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 12 }, marketName: { color: '#FFFFFF', fontWeight: '600', fontSize: 12, marginTop: 8 }, marketPrice: { color: '#3B82F6', fontWeight: '700', fontSize: 14, marginTop: 4 },
+  aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#FFFFFF24', alignItems: 'center', justifyContent: 'center' },
+  aiCardCopy: { flex: 1, marginHorizontal: 12 },
+  aiTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  aiText: { color: '#CFFAFE', fontSize: 12, lineHeight: 18, marginTop: 3 },
+  container: { flex: 1, backgroundColor: '#0F172A' },
+  content: { padding: 16, paddingBottom: 36 },
+  title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' },
+  subtitle: { color: '#94A3B8', marginTop: 4, marginBottom: 24 },
+  metrics: { flexDirection: 'row', gap: 10, marginBottom: 28 },
+  metric: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
+  metricIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  muted: { color: '#94A3B8', fontSize: 12 },
+  metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 5, textAlign: 'center' },
+  sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  marketplace: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  marketProduct: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 12 },
+  marketName: { color: '#FFFFFF', fontWeight: '600', fontSize: 12, marginTop: 8 },
+  marketPrice: { color: '#3B82F6', fontWeight: '700', fontSize: 14, marginTop: 4 },
 });

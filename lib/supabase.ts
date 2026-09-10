@@ -95,7 +95,7 @@ export const loginUser = async (email: string, password: string) => {
 };
 
 export type AppRole = 'client' | 'vet' | 'merchant';
-export type DatabaseRole = 'client' | 'veterinarian' | 'merchant';
+export type DatabaseRole = 'client' | 'vet' | 'merchant';
 export type RealtimeMessage = {
   id: string;
   temp_id?: string;
@@ -159,17 +159,16 @@ export const uploadChatAttachment = async (chatId: string, asset: ImagePickerAss
   return { publicUrl, mediaType: asset.type === 'video' ? 'video' as const : 'image' as const };
 };
 
-// Normalize role from UI ('vet', 'client', 'merchant') to database ('veterinarian', 'client', 'merchant')
+// Normalize role from UI or legacy database values to the current database enum.
 export const normalizeRole = (role: string | AppRole | DatabaseRole): DatabaseRole => {
-  if (role === 'vet') return 'veterinarian';
-  if (role === 'veterinarian') return 'veterinarian';
+  if (role === 'vet' || role === 'veterinarian') return 'vet';
   if (role === 'merchant') return 'merchant';
   return 'client';
 };
 
 // Get the app role from database role
 export const denormalizeRole = (dbRole: DatabaseRole | string): AppRole => {
-  if (dbRole === 'veterinarian') return 'vet';
+  if (dbRole === 'vet' || dbRole === 'veterinarian') return 'vet';
   if (dbRole === 'merchant') return 'merchant';
   return 'client';
 };
@@ -177,7 +176,7 @@ export const denormalizeRole = (dbRole: DatabaseRole | string): AppRole => {
 // Get navigation path from normalized role
 export const getRoleNavPath = (role: DatabaseRole | AppRole | string): string => {
   const normalized = normalizeRole(role);
-  if (normalized === 'veterinarian') return '/(vet)';
+  if (normalized === 'vet') return '/(vet)';
   if (normalized === 'merchant') return '/(merchant)';
   return '/(client)';
 };
@@ -222,11 +221,12 @@ export const deleteRealtimeMessage = async (messageId: string, userId: string) =
 export type ConsultationStatus = 'active' | 'completed';
 
 export const ensureConsultationRecord = async (conversationId: string, currentUserId: string, recipientId: string, currentUserRole: string, recipientRole: string) => {
-  const currentRole = currentUserRole === 'vet' ? 'veterinarian' : currentUserRole;
-  if (!['client', 'veterinarian'].includes(currentRole) || !['client', 'veterinarian'].includes(recipientRole)) return null;
+  const currentRole = normalizeRole(currentUserRole);
+  const normalizedRecipientRole = normalizeRole(recipientRole);
+  if (!['client', 'vet'].includes(currentRole) || !['client', 'vet'].includes(normalizedRecipientRole)) return null;
 
   const clientId = currentRole === 'client' ? currentUserId : recipientId;
-  const vetId = currentRole === 'veterinarian' ? currentUserId : recipientId;
+  const vetId = currentRole === 'vet' ? currentUserId : recipientId;
   const { data: existing, error: lookupError } = await supabase
     .from('consultations')
     .select('id, status')
@@ -313,5 +313,23 @@ export const finishGoogleLogin = async (callbackUrl: string) => {
   if (!accessToken || !refreshToken) throw new Error('Google login did not return a session.');
   const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
   if (error) throw error;
-  return data;
+ return data;
+};
+
+// Helper function to invoke the send-push-notification edge function
+export const sendPushNotification = async (
+  recipientId: string,
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+) => {
+  try {
+    const { data: res, error } = await supabase.functions.invoke('send-push-notification', {
+      body: { recipientId, title, body, data },
+    });
+    if (error) console.error('Error invoking send-push-notification function:', error);
+    return res;
+  } catch (err) {
+    console.error('Push notification trigger failed:', err);
+  }
 };

@@ -117,6 +117,7 @@ export default function AddProductScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g., Premium Dog Collar"
+              placeholderTextColor="#64748B"
               value={productName}
               onChangeText={setProductName}
               editable={!loading}
@@ -128,6 +129,7 @@ export default function AddProductScreen() {
             <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="Describe your product..."
+              placeholderTextColor="#64748B"
               value={description}
               onChangeText={setDescription}
               editable={!loading}
@@ -142,6 +144,7 @@ export default function AddProductScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="0.00"
+                placeholderTextColor="#64748B"
                 value={price}
                 onChangeText={setPrice}
                 editable={!loading}
@@ -153,6 +156,7 @@ export default function AddProductScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="0"
+                placeholderTextColor="#64748B"
                 value={quantity}
                 onChangeText={setQuantity}
                 editable={!loading}
@@ -209,11 +213,12 @@ export default function AddProductScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#0F172A',
   },
   scrollView: {
     flex: 1,
     padding: 20,
+    backgroundColor: '#0F172A',
   },
   header: {
     marginBottom: 24,
@@ -221,12 +226,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: '#999',
+    color: '#94A3B8',
   },
   errorText: {
     color: '#B91C1C',
@@ -246,10 +251,10 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   imageUpload: {
-    backgroundColor: '#fff',
+    backgroundColor: '#1E293B',
     borderStyle: 'dashed',
     borderWidth: 2,
-    borderColor: '#ddd',
+    borderColor: '#334155',
     borderRadius: 12,
     height: 180,
     justifyContent: 'center',
@@ -258,7 +263,7 @@ const styles = StyleSheet.create({
   },
   uploadText: {
     fontSize: 14,
-    color: '#999',
+    color: '#94A3B8',
   },
   preview: { width: '100%', height: 140, borderRadius: 10 },
   inputGroup: {
@@ -267,15 +272,16 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#FFFFFF',
   },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#334155',
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
+    color: '#FFFFFF',
   },
   textArea: {
     textAlignVertical: 'top',
@@ -297,9 +303,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
-    backgroundColor: '#fff',
+    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#334155',
   },
   categoryBadgeActive: {
     backgroundColor: '#45B7D1',
@@ -307,7 +313,7 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 12,
-    color: '#666',
+    color: '#CBD5E1',
   },
   categoryTextActive: {
     color: 'white',

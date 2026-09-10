@@ -53,12 +53,17 @@ function RootAuthGate() {
         console.log('[AUTH ROUTER] Profile query result:', { profile, error });
 
         const pendingRole = typeof window !== 'undefined' ? window.localStorage.getItem('mvs_pending_signup_role') : null;
-        let userRole = pendingRole || profile?.role || session.user.user_metadata?.role || 'client';
-        const fullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Pet Parent';
 
-        await supabase
-          .from('profiles')
-          .upsert({ id: session.user.id, email: session.user.email, full_name: fullName, role: userRole }, { onConflict: 'id' });
+        // CRITICAL FIX: NEVER overwrite an existing database role with 'client' fallback!
+        let userRole = profile?.role || session.user.user_metadata?.role || pendingRole || 'client';
+        const fullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+
+        // Only update if role is missing or needs initializing
+        if (!profile?.role) {
+          await supabase
+            .from('profiles')
+            .upsert({ id: session.user.id, email: session.user.email, full_name: fullName, role: userRole }, { onConflict: 'id' });
+        }
 
         void registerForPushNotifications(session.user.id).catch((error) => {
           console.warn('[Notifications] Push registration failed:', error);
@@ -78,7 +83,7 @@ function RootAuthGate() {
         }
       } catch (err) {
         console.error('[Auth Layout] Error in auth layout guard:', err);
-        if (mounted) router.replace('/(client)');
+        if (mounted) router.replace('/(auth)/login');
       }
     };
 
