@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
-    "scheme": "mvs",
+    "scheme": "mvsapp",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -16,7 +16,13 @@
     "ios": {
       "bundleIdentifier": "com.mvs.app",
       "supportsTablet": true,
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSLocationWhenInUseUsageDescription": "MVS needs access to your location to find nearby veterinarians.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "MVS needs access to your location to find nearby veterinarians.",
         "UIRequiredDeviceCapabilities": [
@@ -30,12 +36,36 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "CAMERA",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "mvsapp.com.ng",
+              "pathPrefix": "/auth"
+            },
+            {
+              "scheme": "https",
+              "host": "mvsapp.com.ng",
+              "pathPrefix": "/reset-password"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.jpeg"
@@ -55,7 +85,13 @@
           "locationAlwaysAndWhenInUsePermission": "Allow MVS to access your location."
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#10b981"
+        }
+      ],
       [
         "expo-router",
         {

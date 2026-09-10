@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { makeRedirectUri } from 'expo-auth-session';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
@@ -32,9 +33,6 @@ export default function LoginScreen() {
     try {
       const { user } = await loginUser(sanitizeInput(email), password);
       if (!user) throw new Error('Login did not return a user.');
-
-      // Don't manually route - let the root layout auth listener handle it
-      // The onAuthStateChange will fire and trigger proper routing
       console.log('Login successful, waiting for auth state update...');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
@@ -53,7 +51,11 @@ export default function LoginScreen() {
     setError('');
     setResetMessage('');
     try {
-      await sendPasswordResetLink(sanitizeInput(email), 'http://localhost:8081/reset-password');
+      const redirectUrl = Platform.OS === 'web' 
+        ? 'https://mvsapp.com.ng/reset-password'
+        : makeRedirectUri({ scheme: 'mvsapp', path: 'reset-password' });
+
+      await sendPasswordResetLink(sanitizeInput(email), redirectUrl);
       setResetMessage('A reset password link has been sent to your email.');
     } catch (err: any) {
       setError(err.message || 'We could not send the reset password link.');
@@ -68,12 +70,13 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      // Normalize role string for OAuth
       let userRole: AppRole = 'client';
       if (selectedRole === 'vet') userRole = 'vet';
       if (selectedRole === 'merchant') userRole = 'merchant';
 
-      const redirectUrl = `http://localhost:8081/auth/callback?role=${encodeURIComponent(userRole)}`;
+      const redirectUrl = Platform.OS === 'web'
+        ? `https://mvsapp.com.ng/auth/callback?role=${encodeURIComponent(userRole)}`
+        : makeRedirectUri({ scheme: 'mvsapp', path: `auth/callback?role=${encodeURIComponent(userRole)}` });
 
       console.log('Initiating Google login with role:', userRole, 'redirect:', redirectUrl);
 
@@ -94,9 +97,18 @@ export default function LoginScreen() {
         return;
       }
 
-      if (data?.url && typeof window !== 'undefined') {
+      if (Platform.OS === 'web' && data?.url && typeof window !== 'undefined') {
         console.log('Redirecting to Google OAuth URL:', data.url);
         window.location.href = data.url;
+      } else if (Platform.OS !== 'web' && data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        if (result.type === 'success' && result.url) {
+          const parsedUrl = new URL(result.url);
+          const code = parsedUrl.searchParams.get('code');
+          if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
+          }
+        }
       } else {
         console.warn('No OAuth URL returned from Supabase');
         setError('Failed to initiate Google Sign-In. Please try again.');

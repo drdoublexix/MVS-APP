@@ -34,6 +34,7 @@ export default function AuthCallbackScreen() {
           || user.user_metadata?.display_name
           || user.email?.split('@')[0]
           || 'Pet Parent';
+
         const { error: upsertError } = await supabase
           .from('profiles')
           .upsert({ id: user.id, email: user.email, full_name: fullName, role: finalRole }, { onConflict: 'id' });
@@ -55,10 +56,13 @@ export default function AuthCallbackScreen() {
       try {
         const href = typeof window !== 'undefined' ? window.location.href : '';
         const url = href ? new URL(href) : null;
-        const values = new URLSearchParams(`${url?.search.slice(1) || ''}&${url?.hash.slice(1) || ''}`);
+        const search = url?.search ? url.search.slice(1) : '';
+        const hash = url?.hash ? url.hash.slice(1) : '';
+        const values = new URLSearchParams(`${search}&${hash}`);
+
         const urlRole = values.get('role');
         const callbackRole = urlRole || queryRole || savedRole || 'client';
-        console.log('[Auth Callback] Processing OAuth return URL:', href, 'role:', callbackRole || 'client');
+        console.log('[Auth Callback] Processing OAuth return URL:', href, 'role:', callbackRole);
 
         const code = values.get('code');
         const accessToken = values.get('access_token');

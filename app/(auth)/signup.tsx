@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { makeRedirectUri } from 'expo-auth-session';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
@@ -158,7 +159,9 @@ export default function SignupScreen() {
         localStorage.setItem('mvs_selected_role', userRole);
       }
 
-      const redirectUrl = `http://localhost:8081/auth/callback?role=${encodeURIComponent(userRole)}`;
+      const redirectUrl = Platform.OS === 'web'
+        ? `https://mvsapp.com.ng/auth/callback?role=${encodeURIComponent(userRole)}`
+        : makeRedirectUri({ scheme: 'mvsapp', path: `auth/callback?role=${encodeURIComponent(userRole)}` });
 
       console.log('Initiating Google OAuth with role:', userRole, 'redirect:', redirectUrl);
 
@@ -179,9 +182,18 @@ export default function SignupScreen() {
         return;
       }
 
-      if (data?.url && typeof window !== 'undefined') {
+      if (Platform.OS === 'web' && data?.url && typeof window !== 'undefined') {
         console.log('Redirecting to Google OAuth URL:', data.url);
         window.location.href = data.url;
+      } else if (Platform.OS !== 'web' && data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        if (result.type === 'success' && result.url) {
+          const parsedUrl = new URL(result.url);
+          const code = parsedUrl.searchParams.get('code');
+          if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
+          }
+        }
       } else {
         console.warn('No OAuth URL returned from Supabase');
         setError('Failed to initiate Google Sign-In. Please try again.');
