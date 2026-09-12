@@ -351,6 +351,8 @@ export default function VetProfileScreen() {
   const handleLogout = async () => {
     try {
       await signOutUser();
+      setProfile((current) => ({ ...current, name: '', email: '', phone: '', specialty: '', clinic: '', licenseNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '', latitude: null, longitude: null, city: '', state: '' }));
+      setAvatarUrl(null);
       router.replace('/(auth)/login');
     } catch (error) {
       Alert.alert('Logout failed', error instanceof Error ? error.message : 'Could not log out.');
@@ -375,7 +377,7 @@ export default function VetProfileScreen() {
         const { error } = await supabase.rpc('delete_user_account');
         if (error) throw error;
 
-        await supabase.auth.signOut();
+        await signOutUser();
         router.replace('/(auth)/login');
       } catch (error) {
         Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');

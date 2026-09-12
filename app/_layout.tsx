@@ -8,6 +8,8 @@ import { supabase } from '../lib/supabase';
 
 function RootAuthGate() {
   const [loading, setLoading] = useState(true);
+  const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
+  const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null } | null>(null);
   const isAuthInitialized = useRef(false);
   const router = useRouter();
   const segments = useSegments();
@@ -31,6 +33,7 @@ function RootAuthGate() {
       }
 
       console.log('[AUTH ROUTER] checkAuthAndRoute event:', event, 'email:', session?.user?.email);
+      if (mounted) setAuthUser(session?.user || null);
 
       const href = typeof window !== 'undefined' ? window.location.href : '';
       const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -63,27 +66,15 @@ function RootAuthGate() {
           .maybeSingle();
 
         console.log('[AUTH ROUTER] Profile query result:', { profile, error });
+        if (mounted) setProfile(profile || null);
 
         const pendingRole = typeof window !== 'undefined' ? window.localStorage.getItem('mvs_pending_signup_role') : null;
-        const fullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
-
         // STRICT ROLE RESOLUTION: Prioritize database role first
         let userRole = profile?.role;
 
         if (!userRole) {
-          // If no role in DB, fall back to metadata or pending signup role
+          // If no role exists yet, use metadata only. Profile creation belongs to signup.
           userRole = session.user.user_metadata?.role || pendingRole || 'client';
-
-          await supabase
-            .from('profiles')
-            .upsert({
-              id: session.user.id,
-              email: session.user.email,
-              full_name: fullName,
-              role: userRole,
-              specialty: userRole === 'vet' || userRole === 'veterinarian' ? 'General Veterinary Practitioner' : null,
-              title: userRole === 'vet' || userRole === 'veterinarian' ? 'Dr.' : null,
-            }, { onConflict: 'id' });
         }
 
         // Always clean up pending signup role after role determination
@@ -135,6 +126,10 @@ function RootAuthGate() {
       console.log('[Auth Layout] onAuthStateChange fired:', event, 'session:', session?.user?.id);
 
       if (event === 'SIGNED_OUT') {
+        if (mounted) {
+          setAuthUser(null);
+          setProfile(null);
+        }
         if (typeof window !== 'undefined') {
           window.localStorage.setItem('mvs_logout_requested', '1');
         }
@@ -149,7 +144,18 @@ function RootAuthGate() {
         return;
       }
 
-      if (event !== 'INITIAL_SESSION' && event !== 'SIGNED_IN') {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        void supabase
+          .from('profiles')
+          .select('role, full_name, email')
+          .eq('id', session.user.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (mounted) setProfile(data || null);
+          });
+      }
+
+      if (event !== 'INITIAL_SESSION' && event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED') {
         return;
       }
 

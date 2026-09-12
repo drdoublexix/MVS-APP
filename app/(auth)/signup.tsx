@@ -231,14 +231,14 @@ export default function SignupScreen() {
           </View>
           <Text style={styles.eyebrow}>MOBILE VETERINARY SERVICES</Text>
           <Text style={styles.title}>Your farm animals/pet care circle starts here.</Text>
-          <Text style={styles.subtitle}>Create an account for trusted veterinary care, products, and support.</Text>
+          <Text style={styles.subtitle}>Create an account to access trusted animal care and supplies, or join us as a certified veterinary professional or merchant to serve our growing ecosystem.</Text>
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
-            <Text style={styles.sectionLabel}>I am joining as</Text>
+            <Text style={styles.roleHeading}>Please select your registration type to proceed:</Text>
             <View style={styles.roleRow}>
               {(['client', 'vet', 'merchant'] as AppRole[]).map((option) => {
                 const label = option === 'vet' ? 'Veterinarian' : option === 'client' ? 'Pet parent' : 'Merchant';
@@ -423,7 +423,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: '#9BAEC2',
-    maxWidth: 340,
+    width: '90%',
+    maxWidth: 680,
     textAlign: 'center',
   },
   form: {
@@ -437,6 +438,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#DCE6F1',
     marginBottom: 2,
+  },
+  roleHeading: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#F8FAFC',
+    marginTop: 4,
+    marginBottom: 8,
   },
   label: {
     fontSize: 14,

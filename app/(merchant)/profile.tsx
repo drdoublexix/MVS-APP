@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, sendPasswordResetLink, supabase, updatePassword } from '../../lib/supabase';
+import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -66,7 +66,7 @@ export function LogoutButton() {
   const onLogout = async () => {
     setLoading(true);
     try {
-      await supabase.auth.signOut();
+      await signOutUser();
       if (Platform.OS === 'web') {
         if (typeof window !== 'undefined') {
           window.localStorage.clear();
@@ -381,7 +381,9 @@ export default function MerchantProfileScreen() {
       try {
         const { error } = await supabase.rpc('delete_user_account');
         if (error) throw error;
-        await supabase.auth.signOut();
+        await signOutUser();
+        setProfile((current) => ({ ...current, name: '', email: '', phone: '', business: '', location: '', businessNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '' }));
+        setAvatarUrl(null);
         router.replace('/(auth)/login');
       } catch (error) {
         Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');

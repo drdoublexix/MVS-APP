@@ -41,8 +41,7 @@ export default function ClientLayout() {
         name="community"
         options={{
           title: 'Community',
-          headerShown: true,
-          headerTitle: 'MVS Community Hub',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-group" color={color} size={size} />
           ),

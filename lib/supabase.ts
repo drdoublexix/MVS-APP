@@ -35,6 +35,10 @@ export const signOutUser = async () => {
 
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+  await AsyncStorage.clear();
+  if (typeof window !== 'undefined') {
+    window.localStorage.clear();
+  }
 };
 
 export const signOutAndRedirect = async (router?: { replace: (path: string) => void }) => {

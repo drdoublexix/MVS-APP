@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
@@ -23,8 +24,11 @@ Notifications.setNotificationHandler({
 });
 
 type Pet = EditablePet & { owner_id: string };
+type FarmRecord = { id: string; species: string; breed: string | null; flock_size: number | null; location: string | null; restock_date: string | null };
+type FarmDraft = { species: string; customSpecies: string; breed: string; flockSize: string; location: string; restockDate: string };
 type SettingsModal = 'profile' | 'password' | 'notifications' | null;
 const emptyPet: EditablePet = { id: '', name: '', type: '', breed: '', dob: '', vaccination_status: 'Not Vaccinated', medical_notes: '', photos: [] };
+const farmSpecies = ['Caprine', 'Laprine', 'Avian/Poultry', 'Ovine', 'Bovine'] as const;
 const petAge = calculatePetAgeInWeeks;
 
 export default function ProfileScreen() {
@@ -41,6 +45,12 @@ export default function ProfileScreen() {
   const profile = { name: profileState?.name || '', phone: profileState?.phone || '', email: profileState?.email || '', avatar_url: profileState?.avatar_url, latitude: profileState?.latitude ?? null, longitude: profileState?.longitude ?? null, city: profileState?.city || '', state: profileState?.state || '' };
   const [currentUserId, setCurrentUserId] = useState('');
   const [pets, setPets] = useState<Pet[]>([]);
+  const [farmRecords, setFarmRecords] = useState<FarmRecord[]>([]);
+  const [farmModalVisible, setFarmModalVisible] = useState(false);
+  const [farmDatePickerVisible, setFarmDatePickerVisible] = useState(false);
+  const [farmSaving, setFarmSaving] = useState(false);
+  const [editingFarmId, setEditingFarmId] = useState<string | null>(null);
+  const [farmDraft, setFarmDraft] = useState<FarmDraft>({ species: farmSpecies[0], customSpecies: '', breed: '', flockSize: '', location: '', restockDate: '' });
   const [editingPet, setEditingPet] = useState<EditablePet>(emptyPet);
   const [password, setPassword] = useState({ next: '', confirm: '' });
   const [notifications, setNotifications] = useState({
@@ -53,6 +63,11 @@ export default function ProfileScreen() {
   const loadPets = async (ownerId: string) => {
     const { data } = await supabase.from('pets').select('*').eq('owner_id', ownerId).order('created_at', { ascending: true });
     setPets((data || []) as Pet[]);
+  };
+
+  const loadFarmRecords = async (clientId: string) => {
+    const { data } = await supabase.from('farm_records').select('id, species, breed, flock_size, location, restock_date').eq('client_id', clientId).order('created_at', { ascending: false });
+    setFarmRecords((data || []) as FarmRecord[]);
   };
 
   const loadNotificationPreferences = async (userId: string) => {
@@ -130,6 +145,7 @@ export default function ProfileScreen() {
       }));
 
       await loadPets(currentUser.id);
+      await loadFarmRecords(currentUser.id);
       await loadNotificationPreferences(currentUser.id);
     })().catch(() => undefined);
   }, []);
@@ -151,14 +167,99 @@ export default function ProfileScreen() {
     setPets((current) => current.some((pet) => pet.id === data.id) ? current.map((pet) => pet.id === data.id ? data as Pet : pet) : [...current, data as Pet]);
   };
 
+  const resetFarmDraft = () => {
+    setEditingFarmId(null);
+    setFarmDraft({ species: farmSpecies[0], customSpecies: '', breed: '', flockSize: '', location: '', restockDate: '' });
+  };
+
+  const openAddFarmModal = () => {
+    resetFarmDraft();
+    setFarmModalVisible(true);
+  };
+
+  const openEditFarmModal = (farm: FarmRecord) => {
+    const isPreset = farmSpecies.includes(farm.species as (typeof farmSpecies)[number]);
+    setEditingFarmId(farm.id);
+    setFarmDraft({
+      species: isPreset ? farm.species : 'Custom',
+      customSpecies: isPreset ? '' : farm.species,
+      breed: farm.breed || '',
+      flockSize: String(farm.flock_size ?? 0),
+      location: farm.location || '',
+      restockDate: farm.restock_date || '',
+    });
+    setFarmModalVisible(true);
+  };
+
+  const closeFarmModal = () => {
+    setFarmModalVisible(false);
+    setFarmDatePickerVisible(false);
+    resetFarmDraft();
+  };
+
+  const saveFarmRecord = async () => {
+    if (!currentUserId || farmSaving) return;
+    const species = sanitizeInput(farmDraft.species === 'Custom' ? farmDraft.customSpecies : farmDraft.species);
+    const breed = sanitizeInput(farmDraft.breed);
+    const location = sanitizeInput(farmDraft.location);
+    const flockSize = Number.parseInt(farmDraft.flockSize, 10);
+    if (!species || !Number.isInteger(flockSize) || flockSize < 0) {
+      Alert.alert('Incomplete farm record', 'Select a species and enter a valid flock or herd size.');
+      return;
+    }
+    setFarmSaving(true);
+    const payload = { species, breed: breed || null, flock_size: flockSize, location: location || null, restock_date: farmDraft.restockDate || null };
+    const query = editingFarmId
+      ? supabase.from('farm_records').update(payload).eq('id', editingFarmId).eq('client_id', currentUserId).select('id, species, breed, flock_size, location, restock_date').single()
+      : supabase.from('farm_records').insert({ ...payload, client_id: currentUserId }).select('id, species, breed, flock_size, location, restock_date').single();
+    const { data, error } = await query;
+    setFarmSaving(false);
+    if (error) {
+      Alert.alert('Could not save farm record', error.message);
+      return;
+    }
+    const savedFarm = data as FarmRecord;
+    setFarmRecords((current) => editingFarmId ? current.map((farm) => farm.id === editingFarmId ? savedFarm : farm) : [savedFarm, ...current]);
+    closeFarmModal();
+  };
+
+  const deleteFarmRecord = () => {
+    if (!editingFarmId || farmSaving) return;
+    Alert.alert('Delete farm record?', 'This record and its farm details will be removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => {
+        void (async () => {
+          setFarmSaving(true);
+          const { error } = await supabase.from('farm_records').delete().eq('id', editingFarmId).eq('client_id', currentUserId);
+          setFarmSaving(false);
+          if (error) {
+            Alert.alert('Could not delete farm record', error.message);
+            return;
+          }
+          setFarmRecords((current) => current.filter((farm) => farm.id !== editingFarmId));
+          closeFarmModal();
+        })();
+      } },
+    ]);
+  };
+
   const saveProfile = async () => { const user = await getCurrentUser(); if (!user || !profile) return; const cleanName = sanitizeInput(profile.name); const cleanCity = sanitizeInput(profile.city); const cleanState = sanitizeInput(profile.state); const formattedPhoneNumber = sanitizeInput(profile.phone).replace(/[\s()-]/g, ''); if (!/^\+[1-9]\d{7,14}$/.test(formattedPhoneNumber)) { Alert.alert('Invalid phone number', 'Enter a valid international number, for example +2348000000000.'); return; } const { error } = await supabase.from('profiles').update({ full_name: cleanName, phone_number: formattedPhoneNumber, latitude: profile.latitude, longitude: profile.longitude, city: cleanCity, state: cleanState }).eq('id', user.id); if (error) { Alert.alert(error.code === '23505' ? 'Phone number unavailable' : 'Could not save profile', error.code === '23505' ? 'This phone number is already associated with another MVS account.' : error.message); return; } await supabase.auth.updateUser({ data: { ...user.user_metadata, full_name: cleanName, phone: formattedPhoneNumber } }); setProfile((current) => ({ ...current, name: cleanName, phone: formattedPhoneNumber, city: cleanCity, state: cleanState })); setModal(null); setSuccessMessage('Phone number updated successfully.'); setTimeout(() => setSuccessMessage(null), 3000); };
   const detectAndSaveLocation = async () => { console.log('[Client Profile] Detecting location...'); setLocationLoading(true); try { const location = await requestDeviceLocation(); if (!location) throw new Error('Location permission was not granted.'); const user = await getCurrentUser(); setProfile((current) => ({ ...current, ...location })); if (user) { const { error } = await supabase.from('profiles').update(location).eq('id', user.id); if (error) throw error; } console.log('[Client Profile] Location saved:', location); setLocationPickerVisible(false); setLocationStatePicker(null); Alert.alert('Location updated', `${location.city || 'Nearby area'}, ${location.state || 'Nigeria'}`); } catch (error) { console.log('[Client Profile] Location error:', error); Alert.alert('Location unavailable', error instanceof Error ? error.message : 'Enable location access or choose manually.'); } finally { setLocationLoading(false); } };
   const selectManualLocation = async (city: string, state: string) => { console.log('[Client Profile] Saving manual location:', city, state); setProfile((current) => ({ ...current, city, state, latitude: null, longitude: null })); const user = await getCurrentUser(); if (user) { const { error } = await supabase.from('profiles').update({ city, state, latitude: null, longitude: null }).eq('id', user.id); if (error) { Alert.alert('Could not save location', error.message); return; } } setLocationPickerVisible(false); setLocationStatePicker(null); };
   const changePassword = async () => { if (password.next.length < 6 || password.next !== password.confirm) return; await updatePassword(password.next); setPassword({ next: '', confirm: '' }); setModal(null); Alert.alert('Password updated', 'Your password has been changed.'); };
   const sendResetLink = async () => { if (!profile?.email) return; await sendPasswordResetLink(profile.email); Alert.alert('Reset link sent', 'Check your email to choose a new password.'); };
-  const handleLogout = async () => { await signOutUser(); router.replace('/'); };
+  const handleLogout = async () => {
+    await signOutUser();
+    setUser(null);
+    setProfile(null);
+    setAvatarUrl(null);
+    setCurrentUserId('');
+    setPets([]);
+    setFarmRecords([]);
+    router.replace('/(auth)/login');
+  };
   const handleDeleteAccount = () => {
-    const confirmDelete = async () => { try { const { error } = await supabase.rpc('delete_user_account'); if (error) throw error; await supabase.auth.signOut(); router.replace('/(auth)/login'); } catch (error) { Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.'); } };
+    const confirmDelete = async () => { try { const { error } = await supabase.rpc('delete_user_account'); if (error) throw error; await signOutUser(); setUser(null); setProfile(null); setAvatarUrl(null); setCurrentUserId(''); setPets([]); setFarmRecords([]); router.replace('/(auth)/login'); } catch (error) { Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.'); } };
     if (Platform.OS === 'web' && window.confirm('Are you sure you want to delete your account?')) { void confirmDelete(); return; }
     Alert.alert('Delete Account', 'This action cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { void confirmDelete(); } }]);
   };
@@ -250,9 +351,30 @@ export default function ProfileScreen() {
           {vipDaysRemaining > 0 ? <View style={{ backgroundColor: '#065F46', borderRadius: 8, padding: 10, marginTop: 12 }}><Text style={{ color: '#D1FAE5', fontSize: 12, fontWeight: '700' }}>🔥 30% VIP Discount Active (Expires in {vipDaysRemaining} Days)</Text></View> : null}
         </View>
         <View style={styles.section}><View style={styles.rowHeader}><Text style={styles.sectionTitle}>My Pets</Text><TouchableOpacity onPress={() => openPet()}><Text style={styles.add}>+</Text></TouchableOpacity></View>{pets.length === 0 ? <Text style={styles.muted}>Add your first pet to keep their details close.</Text> : pets.map((pet) => <View key={pet.id}><TouchableOpacity style={styles.pet} onPress={() => openPet(pet)}>{pet.photos?.[0] ? <Image source={{ uri: pet.photos[0] }} style={styles.petThumb} /> : <View style={styles.paw}><Text style={styles.pawText}>+</Text></View>}<View style={styles.flex}><Text style={styles.primary}>{pet.name}</Text><Text style={styles.muted}>{pet.type} · {pet.breed || 'Breed unknown'} · {petAge(pet.dob)}</Text><Text style={styles.status}>{pet.vaccination_status} · {(pet.photos || []).length}/3 photos</Text></View></TouchableOpacity><PetMedicalHistory petId={pet.id} /></View>)}</View>
+        <View style={styles.section}>
+          <View style={styles.rowHeader}><Text style={styles.sectionTitle}>Farm & Livestock Records</Text><TouchableOpacity onPress={openAddFarmModal}><Text style={{ color: '#3B82F6', fontWeight: '700', fontSize: 12 }}>Add Farm Record</Text></TouchableOpacity></View>
+          {farmRecords.length === 0 ? <Text style={styles.muted}>Add a farm record to track your livestock.</Text> : farmRecords.map((farm) => <TouchableOpacity key={farm.id} style={{ backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 13, marginBottom: 9, gap: 4 }} onPress={() => openEditFarmModal(farm)}><Text style={styles.primary}>{farm.species}</Text><Text style={styles.muted}>Breed: {farm.breed || 'Not specified'}</Text><Text style={styles.muted}>Flock/Herd Size: {farm.flock_size ?? 0}</Text><Text style={styles.muted}>Location: {farm.location || 'Not specified'}</Text><Text style={styles.muted}>Restock Date: {farm.restock_date || 'Not specified'}</Text></TouchableOpacity>)}
+        </View>
         <View style={styles.section}><Text style={styles.sectionTitle}>Account Settings</Text><Setting label="Edit Profile" onPress={() => setModal('profile')} /><Setting label="Change Password" onPress={() => setModal('password')} /><Setting label="Notifications" onPress={() => setModal('notifications')} /></View>
         <TouchableOpacity style={styles.logout} onPress={() => { void handleLogout(); }}><Text style={styles.logoutText}>Log out</Text></TouchableOpacity><TouchableOpacity style={styles.deleteAccount} onPress={handleDeleteAccount}><Text style={styles.deleteText}>Delete account</Text></TouchableOpacity>
       </ScrollView>
+      <Modal visible={farmModalVisible} animationType="slide" transparent onRequestClose={closeFarmModal}>
+        <View style={styles.overlay}><View style={styles.modal}>
+          <TouchableOpacity style={styles.close} onPress={closeFarmModal}><Text style={styles.closeText}>Close</Text></TouchableOpacity>
+          <Text style={styles.modalTitle}>{editingFarmId ? 'Edit Farm Record' : 'Add Farm Record'}</Text>
+          <Text style={styles.label}>Species</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>{[...farmSpecies, 'Custom'].map((species) => <TouchableOpacity key={species} style={[{ backgroundColor: '#0F172A', borderColor: '#334155', borderWidth: 1, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 7 }, farmDraft.species === species && { backgroundColor: '#065F46', borderColor: '#10B981' }]} onPress={() => setFarmDraft((current) => ({ ...current, species }))}><Text style={farmDraft.species === species ? { color: '#FFFFFF', fontSize: 12, fontWeight: '700' } : styles.muted}>{species}</Text></TouchableOpacity>)}</View>
+          {farmDraft.species === 'Custom' ? <Field label="Custom Species" value={farmDraft.customSpecies} onChangeText={(customSpecies) => setFarmDraft((current) => ({ ...current, customSpecies }))} /> : null}
+          <Field label="Breed" value={farmDraft.breed} onChangeText={(breed) => setFarmDraft((current) => ({ ...current, breed }))} />
+          <Field label="Flock/Herd Size" value={farmDraft.flockSize} onChangeText={(flockSize) => setFarmDraft((current) => ({ ...current, flockSize }))} keyboardType="number-pad" />
+          <Field label="Location/Address" value={farmDraft.location} onChangeText={(location) => setFarmDraft((current) => ({ ...current, location }))} />
+          <Text style={styles.label}>Estimated Restock Date</Text>
+          {Platform.OS === 'web' ? <TextInput value={farmDraft.restockDate} onChangeText={(restockDate) => setFarmDraft((current) => ({ ...current, restockDate }))} placeholder="YYYY-MM-DD" placeholderTextColor="#64748B" style={styles.input} /> : <TouchableOpacity style={styles.input} onPress={() => setFarmDatePickerVisible(true)}><Text style={farmDraft.restockDate ? styles.primary : styles.muted}>{farmDraft.restockDate || 'Select date'}</Text></TouchableOpacity>}
+          {farmDatePickerVisible ? <DateTimePicker value={farmDraft.restockDate ? new Date(`${farmDraft.restockDate}T00:00:00`) : new Date()} mode="date" onChange={(_event: DateTimePickerEvent, date?: Date) => { setFarmDatePickerVisible(false); if (date) setFarmDraft((current) => ({ ...current, restockDate: date.toISOString().slice(0, 10) })); }} /> : null}
+          <TouchableOpacity style={styles.save} onPress={() => { void saveFarmRecord(); }} disabled={farmSaving}><Text style={styles.saveText}>{farmSaving ? 'Saving...' : editingFarmId ? 'Update Farm Record' : 'Save Farm Record'}</Text></TouchableOpacity>
+          {editingFarmId ? <TouchableOpacity onPress={deleteFarmRecord} disabled={farmSaving} style={{ alignItems: 'center', padding: 10, marginTop: 8 }}><Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Delete Record</Text></TouchableOpacity> : null}
+        </View></View>
+      </Modal>
       <EditPetModal isVisible={petEditorVisible} onClose={() => setPetEditorVisible(false)} pet={editingPet} userId={currentUserId} onSave={savePet} />
       <Modal visible={modal === 'profile' || modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}><View style={styles.overlay}><View style={styles.modal}><TouchableOpacity style={styles.close} onPress={() => setModal(null)}><Text style={styles.closeText}>Close</Text></TouchableOpacity>{modal === 'profile' ? <Form title="Edit Profile" onSave={() => { void saveProfile(); }}><Field label="Full Name" value={profile.name} onChangeText={(name) => setProfile({ ...profile, name })} /><Field label="Phone Number" value={profile.phone} onChangeText={(phone) => setProfile({ ...profile, phone })} /><Text style={styles.label}>Location</Text><TouchableOpacity style={styles.input} onPress={() => setLocationPickerVisible(true)}><Text style={profile.city && profile.state ? styles.primary : styles.muted}>{profile.city && profile.state ? `${profile.city}, ${profile.state}` : 'Select city and state'}</Text></TouchableOpacity></Form> : modal === 'notifications' ? <View style={{ flex: 1, maxHeight: '85%' }}><View style={styles.notificationHeader}><Text style={styles.modalTitle}>Notifications</Text></View><ScrollView style={{ flex: 1 }}><View style={styles.notificationContent}><Toggle label="Consultation Updates" value={notifications.consultation_updates} onChange={(consultation_updates) => { const updated = { ...notifications, consultation_updates }; setNotifications(updated); void saveNotificationPreferences(updated); }} /><Toggle label="Chat Messages" value={notifications.chat_messages} onChange={(chat_messages) => { const updated = { ...notifications, chat_messages }; setNotifications(updated); void saveNotificationPreferences(updated); }} /><Toggle label="Vaccine & Health Reminders" value={notifications.vaccine_health_reminders} onChange={(vaccine_health_reminders) => { const updated = { ...notifications, vaccine_health_reminders }; setNotifications(updated); void saveNotificationPreferences(updated); }} /><Toggle label="Order Updates" value={notifications.order_updates} onChange={(order_updates) => { const updated = { ...notifications, order_updates }; setNotifications(updated); void saveNotificationPreferences(updated); }} /></View></ScrollView><TouchableOpacity style={styles.save} onPress={() => setModal(null)}><Text style={styles.saveText}>Save Preferences</Text></TouchableOpacity></View> : null}</View></View></Modal>
       <Modal visible={locationPickerVisible} transparent animationType="slide" onRequestClose={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><View style={styles.overlay}><View style={styles.locationModal}><View style={locationStyles.locationHeader}><Text style={styles.modalTitle}>Choose location</Text><TouchableOpacity onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><Text style={styles.closeText}>✕</Text></TouchableOpacity></View><TouchableOpacity style={styles.save} onPress={() => { void detectAndSaveLocation(); }} disabled={locationLoading}><Text style={styles.saveText}>{locationLoading ? 'Detecting location...' : 'Use My Location'}</Text></TouchableOpacity>{locationStatePicker ? <TouchableOpacity style={locationStyles.locationBack} onPress={() => setLocationStatePicker(null)}><Text style={styles.resetText}>‹ Choose another state</Text></TouchableOpacity> : null}<ScrollView style={locationStyles.locationList} contentContainerStyle={locationStyles.locationListContent} showsVerticalScrollIndicator>{locationStatePicker ? NIGERIAN_LOCATIONS.find((location) => location.state === locationStatePicker)?.areas.map((area) => <TouchableOpacity key={area} style={styles.locationOption} onPress={() => { void selectManualLocation(area, locationStatePicker); }}><Text style={styles.primary}>{area}</Text><Text style={styles.muted}>{locationStatePicker}</Text></TouchableOpacity>) : NIGERIAN_LOCATIONS.map((location) => <TouchableOpacity key={location.state} style={styles.locationOption} onPress={() => setLocationStatePicker(location.state)}><Text style={styles.primary}>{location.state}</Text><Text style={styles.muted}>{location.city}</Text></TouchableOpacity>)}</ScrollView><TouchableOpacity style={locationStyles.locationCancel} onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity></View></View></Modal>
@@ -282,7 +404,7 @@ export default function ProfileScreen() {
 }
 
 function Setting({ label, onPress }: { label: string; onPress: () => void }) { return <TouchableOpacity style={styles.setting} onPress={onPress}><Text style={styles.primary}>{label}</Text><Text style={styles.chevron}>›</Text></TouchableOpacity>; }
-function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; keyboardType?: 'default' | 'phone-pad' }) { return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#64748B" secureTextEntry={secureTextEntry} keyboardType={keyboardType} style={styles.input} /></View>; }
+function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; secureTextEntry?: boolean; keyboardType?: 'default' | 'phone-pad' | 'number-pad' }) { return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#64748B" secureTextEntry={secureTextEntry} keyboardType={keyboardType} style={styles.input} /></View>; }
 function Form({ title, onSave, children }: { title: string; onSave: () => void; children: React.ReactNode }) { return <ScrollView><Text style={styles.modalTitle}>{title}</Text>{children}<TouchableOpacity style={styles.save} onPress={onSave}><Text style={styles.saveText}>Save Changes</Text></TouchableOpacity></ScrollView>; }
 const locationStyles = StyleSheet.create({ locationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, locationList: { flex: 1, minHeight: 0 }, locationListContent: { paddingBottom: 8 }, locationBack: { paddingVertical: 8 }, locationCancel: { borderTopWidth: 1, borderTopColor: '#334155', paddingTop: 12, alignItems: 'center' } });
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) { return <View style={styles.toggle}><Text style={styles.primary}>{label}</Text><Switch value={value} onValueChange={onChange} trackColor={{ false: '#334155', true: '#10B981' }} /></View>; }

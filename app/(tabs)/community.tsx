@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, RefreshControl, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
@@ -199,8 +199,9 @@ export default function CommunityScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-      <View style={styles.banner}><Text style={styles.kicker}>MVS COMMUNITY</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
+    <SafeAreaView style={styles.screen}>
+      <KeyboardAvoidingView style={styles.keyboardRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      <View style={styles.banner}><Text style={styles.heroTitle}>MVS Community Hub</Text><Text style={styles.kicker}>MVS COMMUNITY</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
       <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={() => { if (messages.length) listRef.current?.scrollToEnd({ animated: false }); }} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <Text style={styles.empty}>Be the first to say hello.</Text>} />
       {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
       <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><TextInput value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={styles.input} editable={!sending} multiline maxLength={2000} /><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
@@ -216,13 +217,16 @@ export default function CommunityScreen() {
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0F172A' },
-  banner: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 15, backgroundColor: '#1E293B', borderBottomWidth: 1, borderBottomColor: '#334155' },
+  keyboardRoot: { flex: 1, backgroundColor: '#0F172A' },
+  banner: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 20, backgroundColor: '#0D1527', borderBottomWidth: 1, borderBottomColor: '#334155', borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
+  heroTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 10 },
   kicker: { color: '#10B981', fontSize: 11, fontWeight: '900', letterSpacing: 1.4 },
   heading: { color: '#FFFFFF', fontSize: 20, lineHeight: 26, fontWeight: '800', marginTop: 5 },
   list: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12, flexGrow: 1 },

@@ -32,7 +32,10 @@ export default function ClientHome() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSession, setAiSession] = useState<AiSession | null>(null);
   const [productOrderStatuses, setProductOrderStatuses] = useState<Record<string, string>>({});
+  const [user, setUser] = useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
+
+  const firstName = user?.user_metadata?.full_name?.split(' ')[0] || user?.user_metadata?.first_name || 'there';
 
   const inquireAboutProduct = async (product: (typeof products)[number]) => {
     const user = await getCurrentUser();
@@ -46,6 +49,10 @@ export default function ClientHome() {
       void fetchMarketplaceProducts().catch(() => undefined);
     }, [])
   );
+
+  useEffect(() => {
+    void getCurrentUser().then(setUser).catch(() => setUser(null));
+  }, []);
 
   useEffect(() => {
     // 1. Fetch marketplace products
@@ -197,6 +204,10 @@ export default function ClientHome() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.greeting}>
+          <Text style={styles.greetingTitle}>Hello, {firstName}! 👋</Text>
+          <Text style={styles.greetingSubtitle}>How are your furry buddies doing today?</Text>
+        </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>
             <MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" />
@@ -392,6 +403,9 @@ function SupportFab({ role }: { role: string }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 35 },
+  greeting: { marginBottom: 18 },
+  greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
+  greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
   aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#FFFFFF24', alignItems: 'center', justifyContent: 'center' },
   aiCardCopy: { flex: 1, marginHorizontal: 12 },

@@ -188,7 +188,6 @@ export default function VetsScreen() {
     if (!doctorId || !userId) return;
     setIntakeVet(null);
     const conversationId = `conv_${[userId, doctorId].sort().join('_')}`;
-    const initialMessage = `Hello Dr. ${intakeVet.full_name}, I would like to consult with you about ${category}.`;
     router.push({
       pathname: '/chat',
       params: {
@@ -198,7 +197,6 @@ export default function VetsScreen() {
         clinic: intakeVet.clinic_name || 'Veterinary Clinic',
         receiver_id: doctorId,
         vet_id: doctorId,
-        initialMessage,
         t: String(++navigationKey.current),
       },
     });
