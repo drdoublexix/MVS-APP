@@ -285,6 +285,35 @@ function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean;
     </Modal>
   );
 }
+
+function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.profileModalBackdrop}>
+        <View style={styles.protectionModal}>
+          <View style={styles.profileModalHeader}>
+            <Text style={styles.protectionModalTitle}>🛡️ MVS Buyer Protection & 48-Hour Refund Policy</Text>
+            <TouchableOpacity onPress={onClose} accessibilityLabel="Close buyer protection">
+              <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.protectionHeading}>48-Hour Guarantee</Text>
+          <Text style={styles.protectionText}>Refunds or replacements apply strictly to items paid via official MVS In-Chat Invoices.</Text>
+          <Text style={styles.protectionHeading}>Scam Warning</Text>
+          <Text style={styles.protectionText}>Never make an off-platform bank transfer or off-app payment to a seller.</Text>
+          <Text style={styles.protectionHeading}>Non-Liability Disclaimer</Text>
+          <Text style={styles.protectionText}>MVS will not mediate, resolve disputes, or refund any off-platform transaction.</Text>
+          <Text style={styles.protectionHeading}>VIP Loyalty Perks</Text>
+          <Text style={styles.protectionText}>Paying through official invoices builds real MVS CarePass points toward a 30-Day 30% VIP discount.</Text>
+          <TouchableOpacity style={styles.protectionCloseButton} onPress={onClose}>
+            <Text style={styles.completeButtonText}>Understood</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = {
   container: { flex: 1, backgroundColor: "#0F172A" },
   chatRoot: { flex: 1, position: "relative" },
@@ -364,8 +393,14 @@ const styles = {
   orderStatusBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1C2541", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
   viewProfileButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  buyerProtectionButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#92400E", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   profileModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099", padding: 20 },
   profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
+  protectionModal: { width: "100%", maxWidth: 420, maxHeight: "88%", backgroundColor: "#1E293B", borderColor: "#92400E", borderWidth: 1, borderRadius: 14, padding: 20 },
+  protectionModalTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700", flex: 1, marginRight: 12 },
+  protectionHeading: { color: "#FBBF24", fontSize: 13, fontWeight: "700", marginTop: 14 },
+  protectionText: { color: "#CBD5E1", fontSize: 14, lineHeight: 21, marginTop: 5 },
+  protectionCloseButton: { backgroundColor: "#B45309", borderRadius: 8, padding: 11, alignItems: "center", marginTop: 20 },
   profileModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   profileModalTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700" },
   profileModalLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "600", marginTop: 10 },
@@ -1777,6 +1812,14 @@ export default function ChatScreen() {
       Alert.alert("Payment failed", "This invoice is no longer pending.");
       return;
     }
+    const { error: loyaltyError } = await supabase.rpc("award_mvs_loyalty_points", {
+      p_user_id: currentUserId,
+      p_invoice_id: orderId,
+      p_points: 100,
+    });
+    if (loyaltyError) {
+      console.error("[Loyalty] Failed to award CarePass points:", loyaltyError);
+    }
     setMessages((current) => current.map((item) => item.metadata && item.metadata.order_id === orderId ? { ...item, metadata: { ...item.metadata, status: "paid" } } : item));
       setActiveOrder((current) => (current?.id === orderId ? { ...current, status: "pending" } : current));
     Alert.alert("Payment Successful!", "Your invoice has been marked as paid.");
@@ -2307,6 +2350,7 @@ function ChatRoom({
 }) {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
+  const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   useEffect(
     () => () => {
       if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -2470,8 +2514,14 @@ function ChatRoom({
             ) : null}
           </>
         ) : null}
+        {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
+          <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
+            <Text style={styles.completeButtonText}>🛡️ Buyer Protection</Text>
+          </TouchableOpacity>
+        ) : null}
         </ScrollView>
       </View>
+      <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
       {isVetClientThread && consultationStatus ? (
         <View
           style={[
@@ -3161,6 +3211,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
+  const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const isConsultActive = consultation.status === "active";
   const isPetParent =
     currentUserId === consultation.client_id || userRole === "client";
@@ -3258,8 +3309,14 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               ) : null}
             </>
           ) : null}
+          {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
+            <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
+              <Text style={styles.completeButtonText}>🛡️ Buyer Protection</Text>
+            </TouchableOpacity>
+          ) : null}
         </ScrollView>
       </View>
+      <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
       {isVetClientThread ? (
         <View
           style={[

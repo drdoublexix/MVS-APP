@@ -35,7 +35,7 @@ export default function ProfileScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [petEditorVisible, setPetEditorVisible] = useState(false);
-  const [profileState, setProfile] = useState<{ name?: string; phone?: string; email?: string; avatar_url?: string; latitude?: number | null; longitude?: number | null; city?: string; state?: string } | null>(null);
+  const [profileState, setProfile] = useState<{ name?: string; phone?: string; email?: string; avatar_url?: string; latitude?: number | null; longitude?: number | null; city?: string; state?: string; loyalty_points?: number | null; vip_discount_active_until?: string | null } | null>(null);
   const [storedAvatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const profile = { name: profileState?.name || '', phone: profileState?.phone || '', email: profileState?.email || '', avatar_url: profileState?.avatar_url, latitude: profileState?.latitude ?? null, longitude: profileState?.longitude ?? null, city: profileState?.city || '', state: profileState?.state || '' };
@@ -113,7 +113,7 @@ export default function ProfileScreen() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('avatar_url, phone_number')
+        .select('avatar_url, phone_number, loyalty_points, vip_discount_active_until')
         .eq('id', currentUser.id)
         .single();
       const activeAvatar = profileData?.avatar_url || currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || null;
@@ -125,6 +125,8 @@ export default function ProfileScreen() {
         phone: profileData?.phone_number || currentUser.user_metadata?.phone || '',
         email: currentUser.email || '',
         avatar_url: profileData?.avatar_url || currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
+        loyalty_points: Number(profileData?.loyalty_points) || 0,
+        vip_discount_active_until: profileData?.vip_discount_active_until || null,
       }));
 
       await loadPets(currentUser.id);
@@ -207,6 +209,10 @@ export default function ProfileScreen() {
 
   const profileData = { ...(profileState || {}), avatar_url: storedAvatarUrl || profileState?.avatar_url };
   const avatarUrl = profileData?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
+  const loyaltyPoints = Math.max(0, Math.min(1000, Number(profileState?.loyalty_points) || 0));
+  const loyaltyProgress = `${(loyaltyPoints / 1000) * 100}%` as `${number}%`;
+  const vipExpiry = profileState?.vip_discount_active_until ? new Date(profileState.vip_discount_active_until) : null;
+  const vipDaysRemaining = vipExpiry && vipExpiry.getTime() > Date.now() ? Math.ceil((vipExpiry.getTime() - Date.now()) / 86400000) : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -228,6 +234,20 @@ export default function ProfileScreen() {
               <Text style={{ color: '#64748B', fontSize: 11, marginTop: 5 }}>Tap to change photo</Text>
             </TouchableOpacity>
           </View>
+        </View>
+        <View style={{ backgroundColor: '#1E293B', borderColor: '#92400E', borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 25 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={styles.flex}>
+              <Text style={{ color: '#FBBF24', fontSize: 17, fontWeight: '700' }}>MVS CarePass Loyalty</Text>
+              <Text style={{ color: '#CBD5E1', fontSize: 12, marginTop: 4 }}>Earn points from official invoice payments.</Text>
+            </View>
+            <MaterialCommunityIcons name="star-circle" size={28} color="#FBBF24" />
+          </View>
+          <View style={{ height: 10, backgroundColor: '#334155', borderRadius: 5, overflow: 'hidden', marginTop: 16 }}>
+            <View style={{ height: '100%', width: loyaltyProgress, backgroundColor: '#F59E0B', borderRadius: 5 }} />
+          </View>
+          <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginTop: 9 }}>{loyaltyPoints} / 1000 PTS to VIP Status</Text>
+          {vipDaysRemaining > 0 ? <View style={{ backgroundColor: '#065F46', borderRadius: 8, padding: 10, marginTop: 12 }}><Text style={{ color: '#D1FAE5', fontSize: 12, fontWeight: '700' }}>🔥 30% VIP Discount Active (Expires in {vipDaysRemaining} Days)</Text></View> : null}
         </View>
         <View style={styles.section}><View style={styles.rowHeader}><Text style={styles.sectionTitle}>My Pets</Text><TouchableOpacity onPress={() => openPet()}><Text style={styles.add}>+</Text></TouchableOpacity></View>{pets.length === 0 ? <Text style={styles.muted}>Add your first pet to keep their details close.</Text> : pets.map((pet) => <View key={pet.id}><TouchableOpacity style={styles.pet} onPress={() => openPet(pet)}>{pet.photos?.[0] ? <Image source={{ uri: pet.photos[0] }} style={styles.petThumb} /> : <View style={styles.paw}><Text style={styles.pawText}>+</Text></View>}<View style={styles.flex}><Text style={styles.primary}>{pet.name}</Text><Text style={styles.muted}>{pet.type} · {pet.breed || 'Breed unknown'} · {petAge(pet.dob)}</Text><Text style={styles.status}>{pet.vaccination_status} · {(pet.photos || []).length}/3 photos</Text></View></TouchableOpacity><PetMedicalHistory petId={pet.id} /></View>)}</View>
         <View style={styles.section}><Text style={styles.sectionTitle}>Account Settings</Text><Setting label="Edit Profile" onPress={() => setModal('profile')} /><Setting label="Change Password" onPress={() => setModal('password')} /><Setting label="Notifications" onPress={() => setModal('notifications')} /></View>
