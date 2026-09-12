@@ -174,7 +174,7 @@ export default function MerchantProfileScreen() {
         if (user) {
           const { data: profileData } = await supabase
             .from('profiles')
-            .select('avatar_url')
+            .select('avatar_url, business_name, location, business_number, phone_number')
             .eq('id', user.id)
             .single();
 
@@ -188,10 +188,10 @@ export default function MerchantProfileScreen() {
           setProfile({
             name: user.user_metadata?.full_name || user.user_metadata?.name || 'Merchant',
             email: user.email || '',
-            phone: user.user_metadata?.phone || '',
-            business: user.user_metadata?.business || '',
-            location: user.user_metadata?.location || '',
-            businessNumber: user.user_metadata?.business_number || '',
+            phone: profileData?.phone_number || user.user_metadata?.phone || '',
+            business: profileData?.business_name || user.user_metadata?.business || '',
+            location: profileData?.location || user.user_metadata?.location || '',
+            businessNumber: profileData?.business_number || user.user_metadata?.business_number || '',
             avatar: activeAvatar || '',
             bankName: '',
             bankCode: '',
@@ -249,10 +249,16 @@ export default function MerchantProfileScreen() {
 
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ phone_number: formattedPhoneNumber })
+      .update({
+        business_name: cleanBusiness,
+        location: cleanLocation,
+        business_number: cleanBusinessNumber,
+        phone_number: formattedPhoneNumber,
+      })
       .eq('id', user.id);
 
     if (profileError) {
+      console.error('[Merchant Profile] Failed to update profile:', profileError.message);
       Alert.alert(
         profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile',
         profileError.code === '23505'
@@ -277,6 +283,7 @@ export default function MerchantProfileScreen() {
     setModal(null);
     setSuccessMessage('Profile updated successfully.');
     setTimeout(() => setSuccessMessage(null), 3000);
+    Alert.alert('Profile Updated', 'Your business information has been saved.');
   };
 
   const handleSaveBankDetails = async () => {

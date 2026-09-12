@@ -66,6 +66,15 @@ type Thread = {
   consultation_status?: ConsultationStatus;
   productName?: string;
   messages: RealtimeMessage[];
+  recipientProfile?: RecipientProfile;
+};
+
+type RecipientProfile = {
+  role?: string | null;
+  business_name?: string | null;
+  location?: string | null;
+  business_number?: string | null;
+  phone_number?: string | null;
 };
 
 type PatientPet = {
@@ -194,7 +203,9 @@ const openSafeExternalUrl = (url: string) => {
 
 const orderStatusSequence: OrderStatus[] = ["pending", "processing", "dispatched", "delivered"];
 
-function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate }: { order: ActiveOrder | null; canUpdate: boolean; canCreate: boolean; onUpdate: (status: OrderStatus | "completed") => Promise<void>; onCreate: () => Promise<void> }) {
+function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, recipientProfile }: { order: ActiveOrder | null; canUpdate: boolean; canCreate: boolean; onUpdate: (status: OrderStatus | "completed") => Promise<void>; onCreate: () => Promise<void>; recipientProfile?: RecipientProfile | null }) {
+  const isMerchant = recipientProfile?.role === "merchant";
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
   if (!order) {
     return (
       <View style={styles.orderStatusGroup}>
@@ -205,6 +216,19 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate }: {
           </TouchableOpacity>
         ) : null}
         <Text style={styles.idleBadge}>No Active Order</Text>
+        {isMerchant ? (
+          <TouchableOpacity style={styles.viewProfileButton} onPress={() => setIsProfileModalVisible(true)}>
+            <MaterialCommunityIcons name="account-card-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.completeButtonText}>View Profile</Text>
+          </TouchableOpacity>
+        ) : null}
+        {isMerchant ? (
+          <MerchantProfileModal
+            visible={isProfileModalVisible}
+            profile={recipientProfile}
+            onClose={() => setIsProfileModalVisible(false)}
+          />
+        ) : null}
       </View>
     );
   }
@@ -234,6 +258,31 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate }: {
       <MaterialCommunityIcons name="package-variant" size={16} color="#FFFFFF" />
       <Text style={styles.completeButtonText}>Order: {label}{canUpdate && (nextStatus || isCompleteAction) ? (isCompleteAction ? " (Complete)" : " →") : ""}</Text>
     </TouchableOpacity>
+  );
+}
+
+function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean; profile?: RecipientProfile; onClose: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.profileModalBackdrop}>
+        <View style={styles.profileModal}>
+          <View style={styles.profileModalHeader}>
+            <Text style={styles.profileModalTitle}>Merchant Profile</Text>
+            <TouchableOpacity onPress={onClose} accessibilityLabel="Close merchant profile">
+              <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.profileModalLabel}>Business Name</Text>
+          <Text style={styles.profileModalValue}>{profile?.business_name || "N/A"}</Text>
+          <Text style={styles.profileModalLabel}>Location</Text>
+          <Text style={styles.profileModalValue}>{profile?.location || "N/A"}</Text>
+          <Text style={styles.profileModalLabel}>Business Number</Text>
+          <Text style={styles.profileModalValue}>{profile?.business_number || "N/A"}</Text>
+          <Text style={styles.profileModalLabel}>Phone Number</Text>
+          <Text style={styles.profileModalValue}>{profile?.phone_number || "N/A"}</Text>
+        </View>
+      </View>
+    </Modal>
   );
 }
 const styles = {
@@ -313,6 +362,13 @@ const styles = {
   patientButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1C2541", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
+  viewProfileButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  profileModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099", padding: 20 },
+  profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
+  profileModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  profileModalTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700" },
+  profileModalLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "600", marginTop: 10 },
+  profileModalValue: { color: "#FFFFFF", fontSize: 15, marginTop: 3 },
   idleBadge: { color: "#94A3B8", fontSize: 12, fontWeight: "600" },
   completeButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   completedBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#14532D" },
@@ -458,6 +514,7 @@ export default function ChatScreen() {
   const [userRole, setUserRole] = useState("client");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [active, setActive] = useState<Thread | null>(null);
+  const [recipientProfile, setRecipientProfile] = useState<RecipientProfile | null>(null);
   const [messages, setMessages] = useState<RealtimeMessage[]>([]);
   const [message, setMessage] = useState(
     initialMessageParam || starterMessageParam || ""
@@ -662,7 +719,7 @@ export default function ChatScreen() {
           allParticipantIds.length > 0
             ? await supabase
                 .from("profiles")
-                .select("id, full_name, email, role")
+                .select("id, full_name, email, role, business_name, location, business_number, phone_number")
                 .in("id", allParticipantIds)
             : { data: [], error: null };
         if (profiles.error) throw profiles.error;
@@ -714,6 +771,7 @@ export default function ChatScreen() {
             participantId,
             participantName: profile?.full_name || profile?.email || "Contact",
             participantRole: profile?.role || "user",
+            recipientProfile: profile as RecipientProfile,
             consultation_status: consultationStatusMap.get(conversationId),
             deleted_by_user_ids:
               participantMessages.length > 0
@@ -837,6 +895,25 @@ export default function ChatScreen() {
     initialMessageParam,
     starterMessageParam,
   ]);
+
+  useEffect(() => {
+    if (!active?.participantId) {
+      setRecipientProfile(null);
+      return;
+    }
+    let mounted = true;
+    void supabase
+      .from("profiles")
+      .select("role, business_name, location, business_number, phone_number")
+      .eq("id", active.participantId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (mounted) setRecipientProfile((data as RecipientProfile | null) || null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [active?.participantId]);
 
   useEffect(() => {
     if (
@@ -1921,6 +1998,7 @@ export default function ChatScreen() {
         setMessage={setMessage}
         selectedImageUri={selectedImage?.uri || null}
         onRemoveImage={() => setSelectedImage(null)}
+        recipientProfile={recipientProfile || active.recipientProfile || null}
         onBack={handleBack}
         onSend={sendMessage}
         onAttach={() => setAttachmentVisible(true)}
@@ -2150,6 +2228,7 @@ function ChatRoom({
   activeOrder,
   onUpdateOrderStatus,
   onCreateOrder,
+  recipientProfile,
   onOpenPatientFile,
   patientFileVisible,
   patientPets,
@@ -2203,6 +2282,7 @@ function ChatRoom({
   activeOrder: ActiveOrder | null;
   onUpdateOrderStatus: (status: OrderStatus | "completed") => Promise<void>;
   onCreateOrder: () => Promise<void>;
+  recipientProfile: RecipientProfile | null;
   onOpenPatientFile: () => void;
   patientFileVisible: boolean;
   patientPets: PatientPet[];
@@ -2289,6 +2369,7 @@ function ChatRoom({
         activeOrder={activeOrder}
         onUpdateOrderStatus={onUpdateOrderStatus}
         onCreateOrder={onCreateOrder}
+        recipientProfile={recipientProfile}
         onOpenPatientFile={onOpenPatientFile}
         patientFileVisible={patientFileVisible}
         patientPets={patientPets}
@@ -2340,7 +2421,7 @@ function ChatRoom({
           style={styles.headerActions}
           contentContainerStyle={styles.headerActionsContent}
         >
-        {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} /> : null}
+        {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} /> : null}
         {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
           <TouchableOpacity
             style={styles.patientButton}
@@ -2996,6 +3077,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   activeOrder,
   onUpdateOrderStatus,
   onCreateOrder,
+    recipientProfile,
   onOpenPatientFile,
   patientFileVisible,
   patientPets,
@@ -3049,6 +3131,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   activeOrder: ActiveOrder | null;
   onUpdateOrderStatus: (status: OrderStatus | "completed") => Promise<void>;
   onCreateOrder: () => Promise<void>;
+  recipientProfile: RecipientProfile | null;
   onOpenPatientFile: () => void;
   patientFileVisible: boolean;
   patientPets: PatientPet[];
@@ -3108,7 +3191,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           style={styles.headerActions}
           contentContainerStyle={styles.headerActionsContent}
         >
-          {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} /> : null}
+          {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} /> : null}
           {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
             <TouchableOpacity
               style={styles.patientButton}

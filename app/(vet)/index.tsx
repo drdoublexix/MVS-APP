@@ -104,16 +104,28 @@ export default function VetDashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
-      const loadPatientCount = async () => {
+      let currentUserId: string | null = null;
+
+      const refreshDashboardMetrics = async () => {
         const user = await getCurrentUser();
-        const currentUserId = normalizeUuid(user?.id);
+        currentUserId = normalizeUuid(user?.id);
         if (!currentUserId) return;
-        const { count, error } = await supabase
+        if (mounted) setTotalPatients(0);
+        const { data: activeConsultations, error } = await supabase
           .from('consultations')
-          .select('*', { count: 'exact', head: true })
+          .select('id, client_id')
           .eq('vet_id', currentUserId)
           .eq('status', 'active');
-        if (!error && mounted) setTotalPatients(count || 0);
+        if (error) {
+          console.error('[Vet Dashboard] Failed to load active patient count:', error.message);
+        } else if (mounted) {
+          const activePatientIds = new Set(
+            (activeConsultations || [])
+              .map((consultation) => consultation.client_id)
+              .filter((clientId): clientId is string => Boolean(clientId))
+          );
+          setTotalPatients(activePatientIds.size);
+        }
         const { data: earningsData, error: earningsError } = await supabase
           .from('orders')
           .select('amount')
@@ -128,8 +140,27 @@ export default function VetDashboardScreen() {
           setOverallRating(Number(ratingSummary?.average_rating || 0));
         }
       };
-      void loadPatientCount();
-      return () => { mounted = false; };
+
+      void refreshDashboardMetrics();
+      const consultationChannel = supabase
+        .channel('vet-dashboard-consultations')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'consultations' },
+          (payload) => {
+            const changedConsultation = payload.eventType === 'DELETE'
+              ? payload.old as { vet_id?: string }
+              : payload.new as { vet_id?: string };
+            if (!currentUserId || changedConsultation.vet_id !== currentUserId) return;
+            void refreshDashboardMetrics();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        mounted = false;
+        void supabase.removeChannel(consultationChannel);
+      };
     }, [])
   );
 
