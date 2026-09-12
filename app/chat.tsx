@@ -6,19 +6,19 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
@@ -26,17 +26,17 @@ import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterw
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-  deleteRealtimeMessage,
-  ensureConsultationRecord,
-  getCurrentUser,
-  isUuid,
-  normalizeUuid,
-  sendRealtimeMessage,
-  subscribeToMessages,
-  supabase,
-  uploadChatAttachment,
-  type ConsultationStatus,
-  type RealtimeMessage,
+    deleteRealtimeMessage,
+    ensureConsultationRecord,
+    getCurrentUser,
+    isUuid,
+    normalizeUuid,
+    sendRealtimeMessage,
+    subscribeToMessages,
+    supabase,
+    uploadChatAttachment,
+    type ConsultationStatus,
+    type RealtimeMessage,
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 
@@ -138,7 +138,7 @@ type InvoiceProps = {
   initialItems?: InvoiceItem[];
 };
 
-type InvoiceItem = { description: string; amount: number };
+type InvoiceItem = { id: string; description: string; amount: number };
 
 type OrderStatus = "pending" | "processing" | "dispatched" | "delivered";
 type ActiveOrder = {
@@ -339,9 +339,10 @@ const styles = {
   closeText: { color: "#94A3B8", fontSize: 13 },
   invoiceLabel: { color: "#94A3B8", fontSize: 12, marginBottom: 6, marginTop: 10 },
   invoiceForm: { paddingBottom: 10 },
-  invoiceItemRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
-  invoiceDescriptionInput: { flex: 1.5 },
-  invoiceAmountInput: { flex: 0.8 },
+  invoiceItemRow: { flexDirection: "row", alignItems: "center", gap: 7, width: "100%", marginBottom: 8 },
+  invoiceDescriptionInput: { flex: 2, minWidth: 0 },
+  invoiceAmountInput: { flex: 1, minWidth: 0 },
+  invoiceDeleteButton: { width: 32, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   addInvoiceItem: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 9 },
   addInvoiceItemText: { color: "#60A5FA", fontSize: 13, fontWeight: "700" },
   invoiceTotal: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", marginTop: 8, marginBottom: 4 },
@@ -2621,7 +2622,7 @@ function ChatRoom({
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
-      <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} />
+      {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
   );
@@ -3013,14 +3014,19 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 }
 
 const defaultInvoiceItems: InvoiceItem[] = [
-  { description: "Consultation", amount: 2000 },
-  { description: "Examination", amount: 1000 },
+  { id: "1", description: "Item 1", amount: 1000 },
+  { id: "2", description: "Item 2", amount: 1000 },
 ];
 
+const normalizeInvoiceItems = (items: InvoiceItem[]) => items.map((item, index) => ({
+  ...item,
+  id: item.id || String(index + 1),
+}));
+
 function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: InvoiceProps) {
-  const draftItems = initialItems && initialItems.length > 0 ? initialItems : defaultInvoiceItems;
-  const [items, setItems] = useState<InvoiceItem[]>(draftItems);
-  const [note, setNote] = useState(initialItems && initialItems.length > 0 ? initialItems.map((item) => `${item.description}: NGN ${item.amount.toLocaleString("en-NG")}`).join("; ") : "");
+  const draftItems = initialItems && initialItems.length > 0 ? normalizeInvoiceItems(initialItems) : defaultInvoiceItems;
+  const [items, setItems] = useState<InvoiceItem[]>(() => draftItems.map((item) => ({ ...item })));
+  const [note, setNote] = useState(initialItems && initialItems.length > 0 ? draftItems.map((item) => `${item.description}: NGN ${item.amount.toLocaleString("en-NG")}`).join("; ") : "");
 
   const subtotal = items.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
   const updateItem = (index: number, field: keyof InvoiceItem, value: string) => {
@@ -3034,6 +3040,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       return;
     }
     const normalizedItems = validItems.map((item) => ({
+      id: item.id,
       description: item.description.trim(),
       amount: item.amount,
     }));
@@ -3041,7 +3048,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     void onSubmit(total, note.trim() || itemNote, normalizedItems);
   };
 
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={`${index}-${item.description}`} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => [...current, { description: "", amount: 0 }])}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Total: NGN {subtotal.toLocaleString("en-NG")}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={item.id} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity style={styles.invoiceDeleteButton} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => { const nextItemNumber = current.reduce((max, currentItem) => Math.max(max, Number(currentItem.id) || 0), 0) + 1; return [...current, { id: String(nextItemNumber), description: `Item ${nextItemNumber}`, amount: 1000 }]; })}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Total: NGN {subtotal.toLocaleString("en-NG")}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
  function ConsultationChatRoom({
@@ -3415,7 +3422,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
-      <InvoiceModal key={invoiceItems.map((item) => `${item.description}:${item.amount}`).join("|")} visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} initialItems={invoiceItems} />
+      {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} initialItems={invoiceItems} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
   );

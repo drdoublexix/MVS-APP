@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   dateButton: { backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', borderRadius: 7, padding: 9, marginBottom: 8 },
   dateText: { color: '#FFFFFF', fontSize: 12 },
   calculatedDate: { color: '#6EE7B7', backgroundColor: '#064E3B', borderRadius: 7, padding: 9, marginBottom: 8, fontSize: 12 },
-  webDate: { backgroundColor: '#0F172A', border: '1px solid #334155', borderRadius: 7, color: '#FFFFFF', padding: 9, width: '100%', marginBottom: 8 },
+  webDate: { backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', borderRadius: 7, color: '#FFFFFF', padding: 9, width: '100%', marginBottom: 8 },
   picker: { alignItems: 'flex-start', marginBottom: 8 },
   save: { backgroundColor: '#10B981', borderRadius: 8, padding: 11, alignItems: 'center', marginTop: 4 },
   saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },

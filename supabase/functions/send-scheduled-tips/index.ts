@@ -138,8 +138,8 @@ Deno.serve(async () => {
   }
 
   const messages = profiles
-    .filter((p) => p.expo_push_token)
-    .map((p) => ({
+    .filter((p: { expo_push_token: string | null }) => p.expo_push_token)
+    .map((p: { expo_push_token: string | null }) => ({
       to: p.expo_push_token,
       sound: 'default',
       title: 'MVS Pet Care Tip 🐾',
