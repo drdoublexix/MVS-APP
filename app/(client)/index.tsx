@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
@@ -66,7 +66,8 @@ export default function ClientHome() {
           const { status } = await Notifications.requestPermissionsAsync();
           if (status !== 'granted') return;
 
-          const token = await Notifications.getExpoPushTokenAsync();
+          const token = await Notifications.getExpoPushTokenAsync({ projectId: 'YOUR_EXPO_PROJECT_ID' });
+          console.log('Generated Push Token:', token.data);
           await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', user.id);
           return;
         }
@@ -305,6 +306,7 @@ export default function ClientHome() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <SupportFab role="client" />
 
     </SafeAreaView>
   );
@@ -354,6 +356,39 @@ function SectionHeader({ title, action, onAction }: { title: string; action: str
   );
 }
 
+function SupportFab({ role }: { role: string }) {
+  const [offsetY, setOffsetY] = useState(0);
+  const openSupport = async () => {
+    const message = `Hello MVS Support, I need assistance with my account. Role: ${role}`;
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `whatsapp://send?phone=2349074874395&text=${encodedMessage}`;
+    const webUrl = `https://wa.me/2349074874395?text=${encodedMessage}`;
+    try {
+      if (await Linking.canOpenURL(whatsappUrl)) await Linking.openURL(whatsappUrl);
+      else await Linking.openURL(webUrl);
+    } catch {
+      await Linking.openURL(webUrl);
+    }
+  };
+  const [panResponder] = useState(() => {
+    let currentOffset = 0;
+    let startOffset = 0;
+    let moved = false;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { startOffset = currentOffset; moved = false; },
+      onPanResponderMove: (_, gesture) => {
+        if (Math.abs(gesture.dy) > 6) moved = true;
+        currentOffset = Math.max(-300, Math.min(300, startOffset + gesture.dy));
+        setOffsetY(currentOffset);
+      },
+      onPanResponderRelease: () => { if (!moved) void openSupport(); },
+      onPanResponderTerminate: () => { moved = true; },
+    });
+  });
+  return <View {...panResponder.panHandlers} style={[styles.supportFab, { transform: [{ translateY: offsetY }] }]}><MaterialCommunityIcons name="whatsapp" size={29} color="#FFFFFF" /></View>;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 35 },
@@ -387,6 +422,7 @@ const styles = StyleSheet.create({
   orderBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   inquireButton: { backgroundColor: '#10B981', borderRadius: 8, paddingVertical: 9, alignItems: 'center', marginTop: 10 },
   inquireText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  supportFab: { position: 'absolute', bottom: 24, right: 20, zIndex: 9999, width: 56, height: 56, borderRadius: 28, backgroundColor: '#005F53', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   backButton: { borderColor: '#3B82F6', borderWidth: 1, borderRadius: 9, padding: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 30 },
   backText: { color: '#3B82F6', fontWeight: '600' },
   aiOverlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'flex-end' },

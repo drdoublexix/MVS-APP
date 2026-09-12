@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { useUnreadMessages } from '../../lib/unreadMessages';
 
 export default function ClientLayout() {
   const { totalUnreadCount } = useUnreadMessages();
+  const router = useRouter();
 
   return (
     <Tabs
@@ -37,7 +38,19 @@ export default function ClientLayout() {
         }}
       />
       <Tabs.Screen
+        name="community"
+        options={{
+          title: 'Community',
+          headerShown: true,
+          headerTitle: 'MVS Community Hub',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-group" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="chat"
+        listeners={{ tabPress: () => router.navigate({ pathname: '/chat', params: { resetThread: String(Date.now()) } }) }}
         options={{
           title: 'Chat',
           tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined,

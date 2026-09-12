@@ -37,7 +37,14 @@ export default function AuthCallbackScreen() {
 
         const { error: upsertError } = await supabase
           .from('profiles')
-          .upsert({ id: user.id, email: user.email, full_name: fullName, role: finalRole }, { onConflict: 'id' });
+          .upsert({
+            id: user.id,
+            email: user.email,
+            full_name: fullName,
+            role: finalRole,
+            specialty: finalRole === 'vet' ? 'General Veterinary Practitioner' : null,
+            title: finalRole === 'vet' ? 'Dr.' : null,
+          }, { onConflict: 'id' });
         if (upsertError) throw upsertError;
 
         if (typeof window !== 'undefined') localStorage.removeItem('mvs_selected_role');

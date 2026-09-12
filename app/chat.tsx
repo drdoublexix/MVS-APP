@@ -1,4 +1,5 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -11,13 +12,14 @@ import {
     Linking,
     Modal,
     Platform,
+    Pressable,
     SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
 } from "react-native";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
@@ -53,6 +55,7 @@ type ChatParams = {
   productName?: string;
   productPrice?: string;
   starterMessage?: string;
+  resetThread?: string;
 };
 
 type Thread = {
@@ -76,17 +79,42 @@ type PatientPet = {
   photos: string[] | null;
 };
 
+type MedicalRecord = {
+  id: string;
+  created_at: string;
+  pet_id: string;
+  weight_kg: number | null;
+  temperature_c: number | null;
+  heart_rate_bpm: number | null;
+  subjective: string;
+  objective: string | null;
+  assessment: string;
+  plan: string;
+};
+
+type SoapDraft = {
+  weightKg: string;
+  temperatureC: string;
+  heartRateBpm: string;
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+};
+
 type ConsultationRecord = {
   id: string;
   conversation_id: string;
   client_id: string;
   vet_id: string;
+  merchant_id?: string | null;
   status: ConsultationStatus;
 };
 
 type InvoiceMetadata = {
   order_id: string;
   amount: number;
+  items?: InvoiceItem[];
   note?: string;
   seller_name: string;
   status: "pending" | "paid" | "completed";
@@ -96,41 +124,46 @@ type InvoiceMetadata = {
 type InvoiceProps = {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (amount: number, note: string) => Promise<void>;
+  onSubmit: (amount: number, note: string, items: InvoiceItem[]) => Promise<void>;
   submitting: boolean;
   initialItems?: InvoiceItem[];
 };
 
 type InvoiceItem = { description: string; amount: number };
 
-const formatPatientAge = calculatePetAgeInWeeks;
-
-const parseInvoiceItems = (answer: string): InvoiceItem[] => {
-  const jsonMatch = answer.match(/\[\s*\{[\s\S]*\}\s*\]/);
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) {
-        const items = parsed
-          .map((item) => ({ description: String(item.description || item.name || "").trim(), amount: Number(item.amount) }))
-          .filter((item) => item.description && Number.isFinite(item.amount) && item.amount > 0);
-        if (items.length > 0) return items;
-      }
-    } catch {
-      // Fall back to parsing readable itemized lines.
-    }
-  }
-
-  const items: InvoiceItem[] = [];
-  const linePattern = /^\s*(?:[-*•]\s*)?(.+?)\s*[:|-]\s*(?:NGN|₦)\s*([\d,]+(?:\.\d+)?)/gim;
-  for (const match of answer.matchAll(linePattern)) {
-    const amount = Number(match[2].replace(/,/g, ""));
-    if (match[1].trim() && Number.isFinite(amount) && amount > 0) {
-      items.push({ description: match[1].trim(), amount });
-    }
-  }
-  return items;
+type OrderStatus = "pending" | "processing" | "dispatched" | "delivered";
+type ActiveOrder = {
+  id: string;
+  conversation_id: string;
+  buyer_id: string;
+  merchant_id: string;
+  status: OrderStatus;
+  tracking_number?: string | null;
+  delivery_notes?: string | null;
 };
+
+type PrescriptionDraft = {
+  medicationName: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  refills: string;
+  instructions: string;
+};
+
+type PrescriptionMetadata = PrescriptionDraft & {
+  prescription_id: string;
+};
+
+type VoiceNoteControls = {
+  recording: boolean;
+  recordingSeconds: number;
+  onStartRecording: () => Promise<void>;
+  onCancelRecording: () => Promise<void>;
+  onSendRecording: () => Promise<void>;
+};
+
+const formatPatientAge = calculatePetAgeInWeeks;
 
 const firstParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -139,6 +172,56 @@ const conversationIdFor = (firstId: string, secondId: string) => {
   const ids = [firstId, secondId].sort();
   return `conv_${ids[0]}_${ids[1]}`;
 };
+
+const openSafeExternalUrl = (url: string) => {
+  if (!/^https?:\/\//i.test(url)) return;
+  void Linking.openURL(url);
+};
+
+const orderStatusSequence: OrderStatus[] = ["pending", "processing", "dispatched", "delivered"];
+
+function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate }: { order: ActiveOrder | null; canUpdate: boolean; canCreate: boolean; onUpdate: (status: OrderStatus | "completed") => Promise<void>; onCreate: () => Promise<void> }) {
+  if (!order) {
+    return (
+      <View style={styles.orderStatusGroup}>
+        {canUpdate ? (
+          <TouchableOpacity style={styles.orderStatusBadge} onPress={() => void onCreate()}>
+            <MaterialCommunityIcons name="plus" size={16} color="#FFFFFF" />
+            <Text style={styles.completeButtonText}>Create Order</Text>
+          </TouchableOpacity>
+        ) : null}
+        <Text style={styles.idleBadge}>No Active Order</Text>
+      </View>
+    );
+  }
+  const statusIndex = orderStatusSequence.indexOf(order.status);
+  const nextStatus = statusIndex >= 0 && statusIndex < orderStatusSequence.length - 1
+    ? orderStatusSequence[statusIndex + 1]
+    : null;
+  const label = order.status.charAt(0).toUpperCase() + order.status.slice(1);
+  const isCompleteAction = order.status === "delivered";
+  if (!canUpdate) {
+    return (
+      <View style={styles.orderStatusBadge}>
+        <MaterialCommunityIcons name="package-variant" size={16} color="#FFFFFF" />
+        <Text style={styles.completeButtonText}>Order: {label}</Text>
+      </View>
+    );
+  }
+  return (
+    <TouchableOpacity
+      style={styles.orderStatusBadge}
+      disabled={!canUpdate || (!nextStatus && !isCompleteAction)}
+      onPress={() => {
+        if (isCompleteAction) void onUpdate("completed");
+        else if (nextStatus) void onUpdate(nextStatus);
+      }}
+    >
+      <MaterialCommunityIcons name="package-variant" size={16} color="#FFFFFF" />
+      <Text style={styles.completeButtonText}>Order: {label}{canUpdate && (nextStatus || isCompleteAction) ? (isCompleteAction ? " (Complete)" : " →") : ""}</Text>
+    </TouchableOpacity>
+  );
+}
 
 const appendUniqueMessage = (
   messages: RealtimeMessage[],
@@ -192,6 +275,7 @@ export default function ChatScreen() {
   const productNameParam = firstParam(params.productName);
   const initialMessageParam = firstParam(params.initialMessage);
   const starterMessageParam = firstParam(params.starterMessage);
+  const resetThreadParam = firstParam(params.resetThread);
   const [currentUserId, setCurrentUserId] = useState("");
   const [userRole, setUserRole] = useState("client");
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -205,24 +289,130 @@ export default function ChatScreen() {
   const [attachmentVisible, setAttachmentVisible] = useState(false);
   const [locationVisible, setLocationVisible] = useState(false);
   const [liveLocationActive, setLiveLocationActive] = useState(false);
-  const [activeLiveMessageId, setActiveLiveMessageId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] =
     useState<RealtimeMessage | null>(null);
+  const [threadDeleteCandidate, setThreadDeleteCandidate] = useState<Thread | null>(null);
   const [consultation, setConsultation] = useState<ConsultationRecord | null>(
     null
   );
   const [invoiceVisible, setInvoiceVisible] = useState(false);
   const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
-  const [aiInvoiceLoading, setAiInvoiceLoading] = useState(false);
+  const [prescriptionVisible, setPrescriptionVisible] = useState(false);
+  const [prescriptionSubmitting, setPrescriptionSubmitting] = useState(false);
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
   const [patientFileVisible, setPatientFileVisible] = useState(false);
   const [patientPets, setPatientPets] = useState<PatientPet[]>([]);
   const [patientFileLoading, setPatientFileLoading] = useState(false);
+  const [activePetId, setActivePetId] = useState<string | null>(null);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [soapVisible, setSoapVisible] = useState(false);
+  const [soapSubmitting, setSoapSubmitting] = useState(false);
+  const [isLongPressActive, setIsLongPressActive] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const openedRoute = useRef<string | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveLocationSubscription = useRef<Location.LocationSubscription | null>(null);
   const activeLiveMessageIdRef = useRef<string | null>(null);
-  const stoppedLiveMessageIds = useRef<Set<string>>(new Set());
   const { counts: unreadCounts, refreshUnreadCounts } = useUnreadMessages();
+
+  const stopRecordingTimer = () => {
+    if (recordingTimer.current) clearInterval(recordingTimer.current);
+    recordingTimer.current = null;
+  };
+
+  const startRecording = async () => {
+    if (recording) return;
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Microphone permission required", "Allow MVS to record a voice note.");
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const result = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(result.recording);
+      recordingRef.current = result.recording;
+      setRecordingSeconds(0);
+      recordingTimer.current = setInterval(() => {
+        setRecordingSeconds((seconds) => seconds + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("[Voice Note] Failed to start recording:", error);
+      Alert.alert("Recording failed", "Could not access the microphone.");
+    }
+  };
+
+  const cancelRecording = async () => {
+    const activeRecording = recording;
+    stopRecordingTimer();
+    setRecording(null);
+    recordingRef.current = null;
+    setRecordingSeconds(0);
+    if (activeRecording) {
+      try {
+        await activeRecording.stopAndUnloadAsync();
+      } catch (error) {
+        console.warn("[Voice Note] Failed to discard recording:", error);
+      }
+    }
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+  };
+
+  const sendRecording = async () => {
+    const activeRecording = recording;
+    const cleanSenderId = normalizeUuid(currentUserId);
+    const cleanReceiverId = normalizeUuid(active?.participantId);
+    if (!activeRecording || !active || !cleanSenderId || !cleanReceiverId) return;
+    stopRecordingTimer();
+    setRecording(null);
+    recordingRef.current = null;
+    setRecordingSeconds(0);
+    try {
+      await activeRecording.stopAndUnloadAsync();
+      const uri = activeRecording.getURI();
+      if (!uri) throw new Error("The recording file is unavailable.");
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const filePath = `${cleanSenderId}/${Date.now()}.m4a`;
+      const { error: uploadError } = await supabase.storage
+        .from("voice-notes")
+        .upload(filePath, blob, {
+          cacheControl: "3600",
+          contentType: blob.type || "audio/m4a",
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("voice-notes").getPublicUrl(filePath);
+      const voiceMessage = await sendRealtimeMessage({
+        conversation_id: conversationIdFor(cleanSenderId, cleanReceiverId),
+        sender_id: cleanSenderId,
+        receiver_id: cleanReceiverId,
+        content: "Voice note",
+        message_type: "voice_note" as RealtimeMessage["message_type"],
+        media_url: data.publicUrl,
+        media_type: null,
+      });
+      setMessages((current) => appendUniqueMessage(current, voiceMessage));
+    } catch (error) {
+      console.error("[Voice Note] Failed to send recording:", error);
+      Alert.alert("Voice note failed", "Could not upload the recording.");
+    } finally {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    }
+  };
+
+  useEffect(() => () => {
+    stopRecordingTimer();
+    if (recordingRef.current) {
+      void recordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+      recordingRef.current = null;
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -262,12 +452,39 @@ export default function ChatScreen() {
               .filter((id): id is string => Boolean(id))
           ),
         ];
+        const consultations = roleResult.data?.role === "merchant"
+          ? { data: [], error: null }
+          : await supabase
+              .from("consultations")
+              .select(
+                "conversation_id, client_id, vet_id, merchant_id, status, deleted_by_user_ids"
+              )
+              .or(
+                `client_id.eq.${cleanUserId},vet_id.eq.${cleanUserId},merchant_id.eq.${cleanUserId}`
+              );
+        if (consultations.error) throw consultations.error;
+        const consultationRows = (consultations.data || []) as {
+          conversation_id: string;
+          client_id: string | null;
+          vet_id: string | null;
+          merchant_id: string | null;
+          status: ConsultationStatus;
+          deleted_by_user_ids: string[] | null;
+        }[];
+        const consultationParticipantIds = consultationRows.flatMap((row) =>
+          [row.client_id, row.vet_id, row.merchant_id]
+            .map((id) => normalizeUuid(id))
+            .filter((id): id is string => Boolean(id) && id !== cleanUserId)
+        );
+        const allParticipantIds = [
+          ...new Set([...participantIds, ...consultationParticipantIds]),
+        ];
         const profiles =
-          participantIds.length > 0
+          allParticipantIds.length > 0
             ? await supabase
                 .from("profiles")
                 .select("id, full_name, email, role")
-                .in("id", participantIds)
+                .in("id", allParticipantIds)
             : { data: [], error: null };
         if (profiles.error) throw profiles.error;
         const profileMap = new Map(
@@ -278,60 +495,71 @@ export default function ChatScreen() {
           const participantId = normalizeUuid(
             row.sender_id === cleanUserId ? row.receiver_id : row.sender_id
           );
-          if (!participantId) continue;
+          if (!participantId || !profileMap.has(participantId)) continue;
           grouped.set(participantId, [
             ...(grouped.get(participantId) || []),
             row,
           ]);
         }
-        const conversationIds = [...grouped.keys()].map((participantId) =>
-          conversationIdFor(cleanUserId, participantId)
-        );
-        const consultations =
-          conversationIds.length > 0
-            ? await supabase
-                .from("consultations")
-                .select("conversation_id, status")
-                .in("conversation_id", conversationIds)
-            : { data: [], error: null };
-        if (consultations.error) throw consultations.error;
         const consultationStatusMap = new Map(
-          (consultations.data || []).map((consultation) => [
+          consultationRows.map((consultation) => [
             consultation.conversation_id,
             consultation.status as ConsultationStatus,
+          ])
+        );
+        const deletedByUserMap = new Map(
+          consultationRows.map((consultation) => [
+            consultation.conversation_id,
+            Array.isArray(consultation.deleted_by_user_ids)
+              ? consultation.deleted_by_user_ids
+              : [],
           ])
         );
         if (!mounted) return;
         setCurrentUserId(cleanUserId);
         setUserRole(roleResult.data?.role || "client");
-        setThreads(
-          Array.from(grouped.entries())
-            .map(([participantId, participantMessages]) => {
-              const profile = profileMap.get(participantId);
-              const conversationId = conversationIdFor(
-                cleanUserId,
-                participantId
-              );
-              return {
-                id: conversationId,
-                participantId,
-                participantName:
-                  profile?.full_name || profile?.email || "Contact",
-                participantRole: profile?.role || "user",
-                consultation_status: consultationStatusMap.get(conversationId),
-                messages: [...participantMessages].sort((first, second) =>
-                  first.created_at.localeCompare(second.created_at)
-                ),
-              };
-            })
-            .sort(
-              (first, second) =>
-                Number(second.consultation_status === "active") -
-                Number(first.consultation_status === "active")
-            )
-        );
+        const rawThreads = allParticipantIds.map((participantId) => {
+          const profile = profileMap.get(participantId);
+          const conversationId = conversationIdFor(cleanUserId, participantId);
+          const participantMessages = grouped.get(participantId) || [];
+          const latestMessage = [...participantMessages].sort((first, second) =>
+            second.created_at.localeCompare(first.created_at)
+          )[0];
+          const messageDeletedByUserIds = latestMessage
+            ? (latestMessage as RealtimeMessage & {
+                deleted_by_user_ids?: string[] | null;
+              }).deleted_by_user_ids
+            : undefined;
+          return {
+            id: conversationId,
+            participantId,
+            participantName: profile?.full_name || profile?.email || "Contact",
+            participantRole: profile?.role || "user",
+            consultation_status: consultationStatusMap.get(conversationId),
+            deleted_by_user_ids:
+              participantMessages.length > 0
+                ? Array.isArray(messageDeletedByUserIds)
+                  ? messageDeletedByUserIds
+                  : []
+                : deletedByUserMap.get(conversationId) || [],
+            messages: [...participantMessages].sort((first, second) =>
+              first.created_at.localeCompare(second.created_at)
+            ),
+          };
+        });
+        const activeThreads = rawThreads
+          .filter((thread) => !thread.deleted_by_user_ids.includes(cleanUserId))
+          .sort(
+            (first, second) =>
+              Number(second.consultation_status === "active") -
+              Number(first.consultation_status === "active")
+          );
+        setThreads(activeThreads);
       } catch (error) {
         console.error("[Chat] Failed to load conversations:", error);
+        if (mounted) {
+          setThreads([]);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -352,8 +580,9 @@ export default function ChatScreen() {
       !routeRecipient ||
       !conversationIdParam ||
       openedRoute.current === routeKey
-    )
+    ) {
       return;
+    }
     openedRoute.current = routeKey;
     let cancelled = false;
     const participantName = merchantNameParam || vetParam || "Merchant";
@@ -399,33 +628,100 @@ export default function ChatScreen() {
     let mounted = true;
     const loadConsultation = async () => {
       try {
-        const ensured = await ensureConsultationRecord(
-          active.id,
-          currentUserId,
-          active.participantId,
-          userRole,
-          active.participantRole
-        );
-        if (!ensured) {
-          if (mounted) setConsultation(null);
-          return;
-        }
-        const { data, error } = await supabase
+        const { data: activeConsultations, error: lookupError } = await supabase
           .from("consultations")
           .select("id, conversation_id, client_id, vet_id, status")
-          .eq("id", ensured.id)
-          .single();
-        if (error) throw error;
-        if (mounted) setConsultation(data as ConsultationRecord);
+          .eq("conversation_id", active.id)
+          .not("status", "in", '("completed")')
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (lookupError) throw lookupError;
+
+        const existingConsultation = activeConsultations?.[0];
+        if (existingConsultation) {
+          if (mounted) setConsultation(existingConsultation as ConsultationRecord);
+          return;
+        }
+        if (mounted) setConsultation(null);
       } catch (error) {
         console.error("[Consultation] Failed to ensure consultation:", error);
       }
     };
     void loadConsultation();
+    const consultationChannel = supabase
+      .channel(`consultations:${active.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "consultations", filter: `conversation_id=eq.${active.id}` },
+        (payload) => {
+          if (mounted) setConsultation(payload.new as ConsultationRecord);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "consultations", filter: `conversation_id=eq.${active.id}` },
+        (payload) => {
+          if (mounted) setConsultation(payload.new as ConsultationRecord);
+        }
+      )
+      .subscribe();
+    return () => {
+      mounted = false;
+      void supabase.removeChannel(consultationChannel);
+    };
+  }, [active, currentUserId, userRole]);
+
+  useEffect(() => {
+    if (!active) {
+      setActiveOrder(null);
+      return;
+    }
+    let mounted = true;
+    const loadActiveOrder = async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("conversation_id", active.id)
+        .not("status", "in", '("completed","cancelled")')
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (error) {
+        console.error("[Chat Order] Failed to load active order:", error);
+        if (mounted) setActiveOrder(null);
+        return;
+      }
+      const currentOrder = data && data.length > 0 ? data[0] : null;
+      if (mounted) setActiveOrder(currentOrder as ActiveOrder | null);
+    };
+    void loadActiveOrder();
     return () => {
       mounted = false;
     };
-  }, [active, currentUserId, userRole]);
+  }, [active, userRole]);
+
+  useEffect(() => {
+    if (!active) return;
+    const orderChannel = supabase
+      .channel(`orders:${active.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders", filter: `conversation_id=eq.${active.id}` },
+        (payload) => setActiveOrder(payload.new as ActiveOrder)
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders", filter: `conversation_id=eq.${active.id}` },
+        (payload) => {
+          const order = payload.new as ActiveOrder;
+          const status: string = order.status as string;
+          setActiveOrder(status === "completed" || status === "cancelled" ? null : order);
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(orderChannel);
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!initialMessageParam) return;
@@ -456,7 +752,8 @@ export default function ChatScreen() {
         .filter((item) => item.message_type === "invoice")
         .map((item) => (item.metadata as Partial<InvoiceMetadata> | null)?.order_id)
         .filter((orderId): orderId is string => Boolean(orderId));
-      if (orderIds.length === 0) {
+      const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
+      if (orderIds.length === 0 || !isMerchantConversation) {
         setMessages(loadedMessages);
         return;
       }
@@ -494,7 +791,7 @@ export default function ChatScreen() {
       mounted = false;
       unsubscribe();
     };
-  }, [active, currentUserId]);
+  }, [active, currentUserId, userRole]);
 
   useEffect(() => {
     if (!active || !currentUserId) return;
@@ -513,16 +810,13 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!active) return;
-    const stoppedMessageIds = stoppedLiveMessageIds.current;
     return () => {
       liveLocationSubscription.current?.remove();
       liveLocationSubscription.current = null;
       setLiveLocationActive(false);
       activeLiveMessageIdRef.current = null;
-      setActiveLiveMessageId(null);
-      stoppedMessageIds.clear();
     };
-  }, [active]);
+  }, [active, currentUserId, userRole]);
 
   const requestLocationPermission = async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -536,7 +830,7 @@ export default function ChatScreen() {
     return true;
   };
 
-  const getLocationData = async (location: Location.LocationObject) => {
+  const getLocationData = useCallback(async (location: Location.LocationObject) => {
     let addressName = "";
     try {
       const [address] = await Location.reverseGeocodeAsync({
@@ -549,14 +843,16 @@ export default function ChatScreen() {
     }
 
     return {
+      lat: location.coords.latitude,
+      lng: location.coords.longitude,
       latitude: location.coords.latitude,
       longitude: location.coords.longitude,
       addressName,
     };
-  };
+  }, []);
 
   const sendLocationMessage = async (
-    messageType: "location_exact" | "location_live",
+    messageType: "location_static" | "location_live",
     location: Location.LocationObject
   ) => {
     const cleanSenderId = normalizeUuid(currentUserId);
@@ -570,18 +866,18 @@ export default function ChatScreen() {
       sender_id: cleanSenderId,
       receiver_id: cleanReceiverId,
       content: messageType === "location_live" ? "Live Location" : "Shared Location",
-      message_type: messageType,
+      message_type: messageType as RealtimeMessage["message_type"],
       location_data: locationData,
+      metadata: messageType === "location_live" ? { location_session_active: "true" } : undefined,
     });
 
     if (messageType === "location_live") {
       activeLiveMessageIdRef.current = liveMessage.id;
-      setActiveLiveMessageId(liveMessage.id);
       setMessages((current) => appendUniqueMessage(current, liveMessage));
     }
   };
 
-  const updateLiveLocationMessage = async (location: Location.LocationObject) => {
+  const updateLiveLocationMessage = useCallback(async (location: Location.LocationObject) => {
     const messageId = activeLiveMessageIdRef.current;
     if (!messageId || !active) return;
 
@@ -596,13 +892,60 @@ export default function ChatScreen() {
     setMessages((current) =>
       current.map((item) => (item.id === messageId ? (data as RealtimeMessage) : item))
     );
-  };
+  }, [active, getLocationData]);
+
+  const watchLiveLocation = useCallback(async () => {
+    if (liveLocationSubscription.current) return;
+    liveLocationSubscription.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 30000,
+        distanceInterval: 0,
+      },
+      (location) => {
+        void updateLiveLocationMessage(location).catch((error) =>
+          console.error("[Chat] Failed to update live location:", error)
+        );
+      }
+    );
+  }, [updateLiveLocationMessage]);
+
+  useEffect(() => {
+    if (!active || !isUuid(currentUserId)) return;
+    let mounted = true;
+
+    const restoreLiveLocationSession = async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, metadata, created_at")
+        .eq("conversation_id", active.id)
+        .eq("sender_id", currentUserId)
+        .eq("message_type", "location_live")
+        .eq("metadata->>location_session_active", "true")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error || !mounted || !data) return;
+
+      activeLiveMessageIdRef.current = data.id;
+      setLiveLocationActive(true);
+
+      const permission = await Location.getForegroundPermissionsAsync();
+      if (!mounted || !permission.granted || liveLocationSubscription.current) return;
+      await watchLiveLocation();
+    };
+
+    void restoreLiveLocationSession();
+    return () => {
+      mounted = false;
+    };
+  }, [active, currentUserId, watchLiveLocation]);
 
   const sendCurrentLocation = async () => {
     if (!(await requestLocationPermission())) return;
     try {
       const location = await Location.getCurrentPositionAsync({});
-      await sendLocationMessage("location_exact", location);
+      await sendLocationMessage("location_static", location);
       setLocationVisible(false);
       setAttachmentVisible(false);
     } catch (error) {
@@ -620,58 +963,9 @@ export default function ChatScreen() {
       const cleanReceiverId = normalizeUuid(active.participantId);
       if (!cleanSenderId || !cleanReceiverId) return;
 
-      let existingLiveMessageId = activeLiveMessageId || activeLiveMessageIdRef.current;
-      if (!existingLiveMessageId) {
-        const stateMessage = [...messages]
-          .reverse()
-          .find(
-            (item) =>
-              item.message_type === "location_live" &&
-              item.sender_id === cleanSenderId &&
-              !stoppedLiveMessageIds.current.has(item.id)
-          );
-        existingLiveMessageId = stateMessage?.id || null;
-      }
-      if (!existingLiveMessageId) {
-        const { data: liveMessages, error: lookupError } = await supabase
-          .from("messages")
-          .select("id")
-          .eq("conversation_id", active.id)
-          .eq("sender_id", cleanSenderId)
-          .eq("receiver_id", cleanReceiverId)
-          .eq("message_type", "location_live")
-          .order("created_at", { ascending: false });
-        if (lookupError) throw lookupError;
-        existingLiveMessageId =
-          (liveMessages || []).find(
-            (item) => !stoppedLiveMessageIds.current.has(item.id)
-          )?.id || null;
-      }
-
-      if (existingLiveMessageId) {
-        activeLiveMessageIdRef.current = existingLiveMessageId;
-        setActiveLiveMessageId(existingLiveMessageId);
-      }
-
       const initialLocation = await Location.getCurrentPositionAsync({});
-      if (activeLiveMessageIdRef.current) {
-        await updateLiveLocationMessage(initialLocation);
-      } else {
-        await sendLocationMessage("location_live", initialLocation);
-      }
-      const subscription = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 30000,
-          distanceInterval: 0,
-        },
-        (location) => {
-          void updateLiveLocationMessage(location).catch((error) =>
-            console.error("[Chat] Failed to update live location:", error)
-          );
-        }
-      );
-      liveLocationSubscription.current = subscription;
+      await sendLocationMessage("location_live", initialLocation);
+      await watchLiveLocation();
       setLiveLocationActive(true);
       setLocationVisible(false);
       setAttachmentVisible(false);
@@ -684,13 +978,25 @@ export default function ChatScreen() {
   };
 
   const stopLiveLocation = () => {
+    const messageId = activeLiveMessageIdRef.current;
+    if (messageId && isUuid(currentUserId)) {
+      void supabase
+        .from("messages")
+        .update({
+          metadata: {
+            location_session_active: "false",
+            stopped_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", messageId)
+        .eq("sender_id", currentUserId)
+        .then(({ error }) => {
+          if (error) console.error("[Chat] Failed to persist stopped live location:", error);
+        });
+    }
     liveLocationSubscription.current?.remove();
     liveLocationSubscription.current = null;
-    if (activeLiveMessageIdRef.current) {
-      stoppedLiveMessageIds.current.add(activeLiveMessageIdRef.current);
-    }
     activeLiveMessageIdRef.current = null;
-    setActiveLiveMessageId(null);
     setLiveLocationActive(false);
   };
 
@@ -700,6 +1006,113 @@ export default function ChatScreen() {
     setMessage("");
   };
 
+  const handleThreadPress = (thread: Thread) => {
+    if (isLongPressActive) {
+      setIsLongPressActive(false);
+      return;
+    }
+    openThread(thread);
+  };
+
+  const handleRequestDelete = (thread: Thread) => {
+    setIsLongPressActive(true);
+    setThreadDeleteCandidate(thread);
+    setTimeout(() => {
+      setIsLongPressActive(false);
+    }, 750);
+  };
+
+  const deleteThread = async (thread: Thread) => {
+    setThreads((current) => current.filter((item) => item.id !== thread.id));
+    setThreadDeleteCandidate(null);
+
+    try {
+      const { data: consultation, error: consultationLookupError } =
+        userRole === "merchant" || thread.participantRole === "merchant"
+          ? { data: null, error: null }
+          : await supabase
+              .from("consultations")
+              .select("id, deleted_by_user_ids")
+              .eq("conversation_id", thread.id)
+              .maybeSingle();
+
+      if (!consultationLookupError && consultation) {
+        const deletedByUserIds = Array.isArray(consultation.deleted_by_user_ids)
+          ? consultation.deleted_by_user_ids
+          : [];
+        const { error: rpcError } = await supabase.rpc("soft_delete_consultation", {
+          p_consultation_id: consultation.id,
+          p_user_id: currentUserId,
+        });
+
+        if (rpcError) {
+          await supabase
+            .from("consultations")
+            .update({
+              deleted_by_user_ids: deletedByUserIds.includes(currentUserId)
+                ? deletedByUserIds
+                : [...deletedByUserIds, currentUserId],
+            })
+            .eq("id", consultation.id);
+        }
+
+        try {
+          const { data: messages } = await supabase
+            .from("messages")
+            .select("id, deleted_by_user_ids")
+            .eq("conversation_id", thread.id);
+          await Promise.all(
+            (messages || []).map((message) => {
+              const messageDeletedByUserIds = Array.isArray(message.deleted_by_user_ids)
+                ? message.deleted_by_user_ids
+                : [];
+              return supabase
+                .from("messages")
+                .update({
+                  deleted_by_user_ids: messageDeletedByUserIds.includes(currentUserId)
+                    ? messageDeletedByUserIds
+                    : [...messageDeletedByUserIds, currentUserId],
+                })
+                .eq("id", message.id);
+            })
+          );
+        } catch (messageUpdateError) {
+          console.error("Failed to soft-delete consultation messages:", messageUpdateError);
+        }
+        return;
+      }
+
+      try {
+        const { data: messages, error: messagesLookupError } = await supabase
+          .from("messages")
+          .select("id, deleted_by_user_ids")
+          .eq("conversation_id", thread.id);
+
+        if (messagesLookupError) return;
+
+        await Promise.all(
+          (messages || []).map(async (message) => {
+            const deletedByUserIds = Array.isArray(message.deleted_by_user_ids)
+              ? message.deleted_by_user_ids
+              : [];
+            await supabase
+              .from("messages")
+              .update({
+                deleted_by_user_ids: deletedByUserIds.includes(currentUserId)
+                  ? deletedByUserIds
+                  : [...deletedByUserIds, currentUserId],
+              })
+              .eq("id", message.id);
+          })
+        );
+      } catch (messagesError) {
+        console.error("Failed to soft-delete message-backed thread:", messagesError);
+      }
+    } catch (error) {
+      console.error("Failed to delete thread:", error);
+    }
+  };
+
   const handleBack = () => {
     setActive(null);
     setMessages([]);
@@ -707,6 +1120,9 @@ export default function ChatScreen() {
     setConsultation(null);
     setPatientFileVisible(false);
     setPatientPets([]);
+    setActivePetId(null);
+    setMedicalRecords([]);
+    setSoapVisible(false);
     router.setParams({
       conversationId: undefined,
       recipientId: undefined,
@@ -721,19 +1137,52 @@ export default function ChatScreen() {
     router.replace("/chat");
   };
 
-  const openPatientFile = async () => {
+  useEffect(() => {
+    if (!resetThreadParam) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setActive(null);
+      setMessages([]);
+      setMessage("");
+      setConsultation(null);
+      setPatientFileVisible(false);
+      setPatientPets([]);
+      setActivePetId(null);
+      setMedicalRecords([]);
+      setSoapVisible(false);
+      router.setParams({
+        resetThread: undefined,
+        conversationId: undefined,
+        recipientId: undefined,
+        merchantId: undefined,
+        vet_id: undefined,
+        receiver_id: undefined,
+        productId: undefined,
+        productName: undefined,
+        productPrice: undefined,
+        starterMessage: undefined,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resetThreadParam, router]);
+
+  const openPatientFile = async (): Promise<string | null> => {
     setPatientFileVisible(true);
     setPatientFileLoading(true);
     setPatientPets([]);
+    setMedicalRecords([]);
     try {
       if (!active || !["vet", "veterinarian"].includes(userRole)) {
         console.warn("[Patient File] No active vet conversation available");
-        return;
+        return null;
       }
       const targetClientId = consultation?.client_id || active.participantId;
       if (!targetClientId) {
         console.warn("[Patient File] No client ID available");
-        return;
+        return null;
       }
       const { data, error } = await supabase
         .from("pets")
@@ -741,52 +1190,183 @@ export default function ChatScreen() {
         .eq("owner_id", targetClientId)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      setPatientPets((data || []) as PatientPet[]);
+      const pets = (data || []) as PatientPet[];
+      const selectedPetId = pets[0]?.id || null;
+      setPatientPets(pets);
+      setActivePetId(selectedPetId);
+      if (selectedPetId) {
+        const { data: records, error: recordsError } = await supabase
+          .from("medical_records")
+          .select("id, created_at, pet_id, weight_kg, temperature_c, heart_rate_bpm, subjective, objective, assessment, plan")
+          .eq("pet_id", selectedPetId)
+          .order("created_at", { ascending: false });
+        if (recordsError) throw recordsError;
+        setMedicalRecords((records || []) as MedicalRecord[]);
+      }
+      return selectedPetId;
     } catch (error) {
       console.error("[Patient File] Failed to load pets:", error);
       setPatientPets([]);
+      setMedicalRecords([]);
+      return null;
     } finally {
       setPatientFileLoading(false);
     }
   };
 
-  const updateConsultation = async (
-    status: ConsultationStatus,
-    completedAt: string | null
-  ) => {
-    if (!consultation) return;
-    const { error } = await supabase
-      .from("consultations")
-      .update({ status, completed_at: completedAt })
-      .eq("id", consultation.id)
-      .eq("conversation_id", consultation.conversation_id)
-      .eq("status", consultation.status);
+  const selectPatientPet = async (petId: string) => {
+    setActivePetId(petId);
+    const { data, error } = await supabase
+      .from("medical_records")
+      .select("id, created_at, pet_id, weight_kg, temperature_c, heart_rate_bpm, subjective, objective, assessment, plan")
+      .eq("pet_id", petId)
+      .order("created_at", { ascending: false });
     if (error) {
-      Alert.alert("Unable to update consultation", error.message);
+      Alert.alert("Unable to load history", error.message);
+      setMedicalRecords([]);
       return;
     }
-    setConsultation({ ...consultation, status });
+    setMedicalRecords((data || []) as MedicalRecord[]);
+  };
+
+  const updateConsultation = async (status: ConsultationStatus) => {
+    let currentConsultation = consultation;
+    if (!currentConsultation) return;
+
+    const previousStatus = currentConsultation.status;
+    setConsultation((current) => (current ? { ...current, status } : current));
+
+    try {
+      const { error } = await supabase
+        .from("consultations")
+        .update({ status })
+        .eq("id", currentConsultation.id)
+        .eq("conversation_id", currentConsultation.conversation_id);
+      if (error) throw error;
+    } catch (error) {
+      setConsultation((current) => (current ? { ...current, status: previousStatus } : current));
+      Alert.alert(
+        "Unable to update consultation",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    }
   };
 
   const handleToggleConsultation = async () => {
-    if (!consultation || consultation.client_id !== currentUserId) return;
-    await updateConsultation(
-      consultation.status === "active" ? "completed" : "active",
-      consultation.status === "active" ? new Date().toISOString() : null
-    );
+    if (userRole !== "client" || consultation?.status !== "active") return;
+    await updateConsultation("completed");
+  };
+
+  const handleStartConsultation = async () => {
+    if (
+      !active ||
+      userRole !== "client" ||
+      !isUuid(currentUserId) ||
+      !isUuid(active.participantId) ||
+      !["vet", "veterinarian"].includes(active.participantRole) ||
+      consultation?.status === "active"
+    ) {
+      return;
+    }
+    const { data, error } = await supabase
+      .from("consultations")
+      .upsert(
+        {
+          conversation_id: active.id,
+          client_id: currentUserId,
+          vet_id: active.participantId,
+          status: "active",
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: "conversation_id" }
+      )
+      .select("id, conversation_id, client_id, vet_id, status")
+      .single();
+    if (error) {
+      console.error("[Consultation] Failed to start consultation:", error);
+      Alert.alert("Unable to start consultation", error.message);
+      return;
+    }
+    setConsultation(data as ConsultationRecord);
+    setThreads((current) => current.map((thread) =>
+      thread.id === active.id ? { ...thread, consultation_status: "active" } : thread
+    ));
   };
 
   const handleEndConsultationByVet = async () => {
     if (
+      !(["vet", "veterinarian"].includes(userRole)) ||
       !consultation ||
       consultation.vet_id !== currentUserId ||
       consultation.status !== "active"
     )
       return;
-    await updateConsultation("completed", new Date().toISOString());
+    const selectedPetId = activePetId || await openPatientFile();
+    if (!selectedPetId) {
+      Alert.alert("Select a patient", "Open Patient File and select a pet before ending the consultation.");
+      return;
+    }
+    setActivePetId(selectedPetId);
+    setSoapVisible(true);
   };
 
-  const createInvoice = async (amount: number, note: string) => {
+  const createMedicalRecord = async (draft: SoapDraft) => {
+    const activeConversationId = active?.id || null;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!activePetId || !session?.user?.id) {
+      Alert.alert("Error", "Missing required pet or vet details for medical record creation.");
+      return;
+    }
+    if (!activeConversationId) {
+      Alert.alert("Error", "Missing active conversation ID.");
+      return;
+    }
+    const parsedWeightKg = parseFloat(draft.weightKg.trim());
+    const parsedTemperatureC = parseFloat(draft.temperatureC.trim());
+    const parsedHeartRateBpm = parseInt(draft.heartRateBpm.trim(), 10);
+    const weightKg = Number.isNaN(parsedWeightKg) ? null : parsedWeightKg;
+    const temperatureC = Number.isNaN(parsedTemperatureC) ? null : parsedTemperatureC;
+    const heartRateBpm = Number.isNaN(parsedHeartRateBpm) ? null : parsedHeartRateBpm;
+    if ([weightKg, temperatureC, heartRateBpm].some((value) => value !== null && !Number.isFinite(value))) {
+      Alert.alert("Invalid vitals", "Enter valid numeric values for the recorded vitals.");
+      return;
+    }
+    const subjective = sanitizeInput(draft.subjective).trim();
+    const objective = sanitizeInput(draft.objective).trim();
+    const assessment = sanitizeInput(draft.assessment).trim();
+    const plan = sanitizeInput(draft.plan).trim();
+    setSoapSubmitting(true);
+    try {
+      const { error } = await supabase.from("medical_records").insert({
+        pet_id: activePetId,
+        vet_id: session.user.id,
+        conversation_id: activeConversationId,
+        weight_kg: weightKg,
+        temperature_c: temperatureC,
+        heart_rate_bpm: heartRateBpm,
+        subjective,
+        objective,
+        assessment,
+        plan,
+      });
+      if (error) {
+        console.error("[SOAP Insert Error Details]:", error);
+        Alert.alert("Unable to save consultation", error.message);
+        return;
+      }
+      await updateConsultation("completed");
+      setSoapVisible(false);
+      handleBack();
+    } catch (error) {
+      console.error("[SOAP Insert Error Details]:", error);
+      Alert.alert("Unable to save consultation", error instanceof Error ? error.message : "Could not save medical record.");
+    } finally {
+      setSoapSubmitting(false);
+    }
+  };
+
+  const createInvoice = async (amount: number, note: string, items: InvoiceItem[]) => {
     if (!active || !currentUserId || !isUuid(active.participantId) || !["merchant", "vet", "veterinarian"].includes(userRole)) return;
     setInvoiceSubmitting(true);
     try {
@@ -803,7 +1383,7 @@ export default function ChatScreen() {
         .select("id, amount, status")
         .single();
       if (error) throw error;
-      const invoiceMetadata: InvoiceMetadata = { order_id: order.id, amount: Number(order.amount), note: cleanNote || undefined, seller_name: sellerName, seller_subaccount_id: sellerSubaccountId, status: "pending" };
+      const invoiceMetadata: InvoiceMetadata = { order_id: order.id, amount: Number(order.amount), items, note: cleanNote || undefined, seller_name: sellerName, seller_subaccount_id: sellerSubaccountId, status: "pending" };
       const invoiceMessage = await sendRealtimeMessage({ conversation_id: active.id, sender_id: currentUserId, receiver_id: active.participantId, content: cleanNote || "Invoice", message_type: "invoice", metadata: invoiceMetadata });
       setMessages((current) => appendUniqueMessage(current, invoiceMessage));
       setInvoiceVisible(false);
@@ -814,44 +1394,79 @@ export default function ChatScreen() {
     }
   };
 
-  const summarizeAndDraftInvoice = async () => {
-    if (!active || !["vet", "veterinarian"].includes(userRole) || aiInvoiceLoading) return;
-    const chatHistoryText = messages
-      .map((item) => `${item.sender_id === currentUserId ? "Veterinarian" : active.participantName}: ${item.content}`)
-      .filter((line) => line.trim().length > 0)
-      .join("\n");
-    if (!chatHistoryText) {
-      Alert.alert("No chat notes", "Add consultation notes or messages before drafting an invoice.");
+  const createOrder = async () => {
+    if (
+      !active ||
+      userRole !== "merchant" ||
+      !isUuid(currentUserId) ||
+      !isUuid(active.participantId) ||
+      activeOrder
+    ) {
       return;
     }
-
-    setAiInvoiceLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("ai-assistant", {
-        body: {
-          prompt: `Review this veterinary consultation chat and extract billable services or treatments. Return ONLY a JSON array with objects containing description and amount as a number in NGN. Use reasonable suggested NGN prices when the chat mentions a service without a price. If nothing is billable, return an empty array.\n\nChat history:\n${chatHistoryText}`,
-          role: "vet",
-        },
-      });
-      if (error || !data?.answer) throw new Error(error?.message || data?.error || "Could not draft invoice items.");
-      const suggestedItems = parseInvoiceItems(data.answer);
-      if (suggestedItems.length === 0) {
-        Alert.alert("No invoice items found", "The assistant could not identify billable services. You can create an invoice manually.");
-        return;
-      }
-      setInvoiceItems(suggestedItems);
-      setInvoiceVisible(true);
-    } catch (error) {
-      Alert.alert("AI invoice unavailable", error instanceof Error ? error.message : "Could not draft invoice items.");
-    } finally {
-      setAiInvoiceLoading(false);
+    const paidInvoice = [...messages].reverse().find((item) => {
+      if (item.message_type !== "invoice") return false;
+      const metadata = item.metadata as Partial<InvoiceMetadata> | null;
+      return metadata?.status === "paid";
+    });
+    const invoiceMetadata = paidInvoice?.metadata as Partial<InvoiceMetadata> | undefined;
+    const conversationId = active.id;
+    const merchantId = currentUserId;
+    const clientId = active.participantId;
+    const { data, error } = await supabase
+      .from("orders")
+      .insert([{
+        conversation_id: conversationId,
+        buyer_id: clientId,
+        merchant_id: merchantId,
+        amount: Number(invoiceMetadata?.amount || 0),
+        status: "pending",
+      }])
+      .select("*")
+      .single();
+    if (error) {
+      console.error("[Chat Order] Failed to create order:", error);
+      Alert.alert("Order creation failed", error.message);
+      return;
     }
+    setActiveOrder(data as ActiveOrder);
+  };
+
+  const updateActiveOrderStatus = async (newStatus: OrderStatus | "completed") => {
+    if (userRole !== "merchant") return;
+    if (!active || !activeOrder?.id) {
+      Alert.alert("Order update failed", "No active order was found for this conversation.");
+      return;
+    }
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: newStatus })
+      .eq("id", activeOrder.id);
+    if (error) {
+      console.error("[Chat Order] Failed to update status:", error);
+      Alert.alert("Order update failed", error.message);
+      return;
+    }
+    if (newStatus === "completed") {
+      setActiveOrder(null);
+    } else {
+      setActiveOrder((current) => (current ? { ...current, status: newStatus } : current));
+    }
+    const statusLabel = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+    const notification = await sendRealtimeMessage({
+      conversation_id: active.id,
+      sender_id: currentUserId,
+      receiver_id: active.participantId,
+      content: `Order status updated to ${statusLabel}`,
+      message_type: "text",
+    });
+    setMessages((current) => appendUniqueMessage(current, notification));
   };
 
   const payInvoice = async (orderId: string) => {
     const { data, error } = await supabase
       .from("orders")
-      .update({ status: "paid" })
+      .update({ status: "pending" })
       .eq("id", orderId)
       .select();
     if (error) {
@@ -864,7 +1479,63 @@ export default function ChatScreen() {
       return;
     }
     setMessages((current) => current.map((item) => item.metadata && item.metadata.order_id === orderId ? { ...item, metadata: { ...item.metadata, status: "paid" } } : item));
+      setActiveOrder((current) => (current?.id === orderId ? { ...current, status: "pending" } : current));
     Alert.alert("Payment Successful!", "Your invoice has been marked as paid.");
+  };
+
+  const createPrescription = async (draft: PrescriptionDraft) => {
+    if (!active || !currentUserId || !["vet", "veterinarian"].includes(userRole)) return;
+    const activeConversationId = active.id;
+    if (!activeConversationId) {
+      Alert.alert("Error", "Missing active conversation ID.");
+      return;
+    }
+    setPrescriptionSubmitting(true);
+    try {
+      const payload = {
+        conversation_id: activeConversationId,
+        vet_id: currentUserId,
+        client_id: active.participantId,
+        consultation_id: consultation?.id || null,
+        medication_name: sanitizeInput(draft.medicationName),
+        dosage: sanitizeInput(draft.dosage),
+        frequency: sanitizeInput(draft.frequency),
+        duration: sanitizeInput(draft.duration),
+        refills: Number(draft.refills) || 0,
+        instructions: sanitizeInput(draft.instructions),
+      };
+      const { data: prescription, error } = await supabase
+        .from("prescriptions")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (error) throw error;
+      const metadata: PrescriptionMetadata = {
+        ...draft,
+        medicationName: payload.medication_name,
+        dosage: payload.dosage,
+        frequency: payload.frequency,
+        duration: payload.duration,
+        refills: String(payload.refills),
+        instructions: payload.instructions,
+        prescription_id: prescription.id,
+      };
+      const prescriptionMessage = await sendRealtimeMessage({
+        conversation_id: activeConversationId,
+        sender_id: currentUserId,
+        receiver_id: active.participantId,
+        content: "Prescription",
+        message_type: "prescription" as RealtimeMessage["message_type"],
+        metadata,
+      });
+      setMessages((current) => appendUniqueMessage(current, prescriptionMessage));
+      setPrescriptionVisible(false);
+    } catch (error) {
+      console.error("[Prescription] Failed to create prescription:", error);
+      Alert.alert("Prescription failed", error instanceof Error ? error.message : "Could not save prescription.");
+    } finally {
+      setPrescriptionSubmitting(false);
+    }
   };
 
   const handleDeleteMessage = (messageToDelete: RealtimeMessage) => {
@@ -922,10 +1593,15 @@ export default function ChatScreen() {
           userRole,
           active.participantRole
         );
-        if (consultation)
-          setConsultation((current) =>
-            current ? { ...current, status: consultation.status } : current
-          );
+        if (consultation) {
+          setConsultation({
+            id: consultation.id,
+            conversation_id: conversationId,
+            client_id: userRole === "client" ? cleanSenderId : cleanReceiverId,
+            vet_id: userRole === "client" ? cleanReceiverId : cleanSenderId,
+            status: consultation.status,
+          });
+        }
       } catch (error) {
         console.error(
           "[Consultation] Failed to ensure consultation before send:",
@@ -1047,7 +1723,11 @@ export default function ChatScreen() {
         onCancelDelete={() => setDeleteCandidate(null)}
         consultation={consultation}
         onToggleConsultation={handleToggleConsultation}
+        onStartConsultation={handleStartConsultation}
         onEndConsultationByVet={handleEndConsultationByVet}
+        activeOrder={activeOrder}
+        onUpdateOrderStatus={updateActiveOrderStatus}
+        onCreateOrder={createOrder}
         onOpenPatientFile={() => {
           console.log("Patient File Clicked");
           setPatientFileVisible(true);
@@ -1062,14 +1742,25 @@ export default function ChatScreen() {
         invoiceVisible={invoiceVisible}
         invoiceSubmitting={invoiceSubmitting}
         onOpenInvoice={() => { setInvoiceItems([]); setInvoiceVisible(true); }}
-        onSummarizeInvoice={summarizeAndDraftInvoice}
-        aiInvoiceLoading={aiInvoiceLoading}
         invoiceItems={invoiceItems}
         onCloseInvoice={() => setInvoiceVisible(false)}
         onCreateInvoice={createInvoice}
         onPayInvoice={payInvoice}
+        prescriptionVisible={prescriptionVisible}
+        prescriptionSubmitting={prescriptionSubmitting}
+        onOpenPrescription={() => setPrescriptionVisible(true)}
+        onClosePrescription={() => setPrescriptionVisible(false)}
+        onCreatePrescription={createPrescription}
+        voiceNoteControls={{
+          recording: Boolean(recording),
+          recordingSeconds,
+          onStartRecording: startRecording,
+          onCancelRecording: cancelRecording,
+          onSendRecording: sendRecording,
+        }}
         />
-        <PatientFileOverlay visible={patientFileVisible} loading={patientFileLoading} pets={patientPets} userRole={userRole} onClose={() => setPatientFileVisible(false)} />
+        <PatientFileOverlay visible={patientFileVisible} loading={patientFileLoading} pets={patientPets} activePetId={activePetId} records={medicalRecords} userRole={userRole} onSelectPet={(petId) => void selectPatientPet(petId)} onClose={() => setPatientFileVisible(false)} />
+        <SoapConsultationModal visible={soapVisible} submitting={soapSubmitting} onClose={() => setSoapVisible(false)} onSubmit={createMedicalRecord} />
       </View>
     );
 
@@ -1097,10 +1788,13 @@ export default function ChatScreen() {
           threads.map((thread) => {
             const unreadCount = unreadCounts[thread.id] || 0;
             return (
-              <TouchableOpacity
+              <Pressable
                 key={thread.id}
                 style={styles.thread}
-                onPress={() => openThread(thread)}
+                onPress={() => handleThreadPress(thread)}
+                onLongPress={() => handleRequestDelete(thread)}
+                {...contextMenuProps(() => handleRequestDelete(thread))}
+                delayLongPress={500}
               >
                 <View style={styles.avatar}>
                   <MaterialCommunityIcons
@@ -1119,7 +1813,7 @@ export default function ChatScreen() {
                 <View style={styles.flex}>
                   <View style={styles.threadNameRow}>
                     <Text style={styles.primary}>{thread.participantName}</Text>
-                    {thread.consultation_status === "active" ? (
+                    {userRole !== "merchant" && thread.participantRole === "client" && thread.consultation_status === "active" ? (
                       <View style={styles.activeConsultBadge}>
                         <Text style={styles.activeConsultBadgeText}>
                           Active Consult
@@ -1146,16 +1840,60 @@ export default function ChatScreen() {
                     </Text>
                   </View>
                 ) : null}
+                {Platform.OS === "web" ? (
+                  <Pressable
+                    accessibilityLabel="Delete conversation"
+                    onPress={() => handleRequestDelete(thread)}
+                    style={styles.threadDeleteButton}
+                  >
+                    <Ionicons color="#ef4444" name="trash-outline" size={20} />
+                  </Pressable>
+                ) : null}
                 <MaterialCommunityIcons
                   name="chevron-right"
                   size={22}
                   color="#64748B"
                 />
-              </TouchableOpacity>
+              </Pressable>
             );
           })
         )}
       </ScrollView>
+      <Modal
+        visible={threadDeleteCandidate !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setThreadDeleteCandidate(null);
+        }}
+      >
+        <View style={[styles.modalBackdrop, styles.threadDeleteOverlay]}>
+          <View style={styles.locationSheet}>
+            <Text style={styles.locationSheetTitle}>Delete Conversation?</Text>
+            <Text style={styles.locationHint}>
+              This will remove it from your inbox while preserving the consultation and message history.
+            </Text>
+            <TouchableOpacity
+              style={styles.locationOption}
+              onPress={() => {
+                const thread = threadDeleteCandidate;
+                if (thread) void deleteThread(thread);
+              }}
+            >
+              <MaterialCommunityIcons name="delete-outline" size={22} color="#F87171" />
+              <Text style={styles.locationOptionText}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.locationCancel}
+              onPress={() => {
+                setThreadDeleteCandidate(null);
+              }}
+            >
+              <Text style={styles.locationCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1186,7 +1924,11 @@ function ChatRoom({
   onCancelDelete,
   consultation,
   onToggleConsultation,
+  onStartConsultation,
   onEndConsultationByVet,
+  activeOrder,
+  onUpdateOrderStatus,
+  onCreateOrder,
   onOpenPatientFile,
   patientFileVisible,
   patientPets,
@@ -1197,12 +1939,16 @@ function ChatRoom({
   invoiceVisible,
   invoiceSubmitting,
   onOpenInvoice,
-  onSummarizeInvoice,
-  aiInvoiceLoading,
   invoiceItems,
   onCloseInvoice,
   onCreateInvoice,
   onPayInvoice,
+  prescriptionVisible,
+  prescriptionSubmitting,
+  onOpenPrescription,
+  onClosePrescription,
+  onCreatePrescription,
+  voiceNoteControls,
 }: {
   active: Thread;
   currentUserId: string;
@@ -1229,7 +1975,11 @@ function ChatRoom({
   onCancelDelete: () => void;
   consultation: ConsultationRecord | null;
   onToggleConsultation: () => void;
+  onStartConsultation: () => Promise<void>;
   onEndConsultationByVet: () => void;
+  activeOrder: ActiveOrder | null;
+  onUpdateOrderStatus: (status: OrderStatus | "completed") => Promise<void>;
+  onCreateOrder: () => Promise<void>;
   onOpenPatientFile: () => void;
   patientFileVisible: boolean;
   patientPets: PatientPet[];
@@ -1240,12 +1990,16 @@ function ChatRoom({
   invoiceVisible: boolean;
   invoiceSubmitting: boolean;
   onOpenInvoice: () => void;
-  onSummarizeInvoice: () => void;
-  aiInvoiceLoading: boolean;
   invoiceItems: InvoiceItem[];
   onCloseInvoice: () => void;
-  onCreateInvoice: (amount: number, note: string) => Promise<void>;
+  onCreateInvoice: (amount: number, note: string, items: InvoiceItem[]) => Promise<void>;
   onPayInvoice: (orderId: string) => Promise<void>;
+  prescriptionVisible: boolean;
+  prescriptionSubmitting: boolean;
+  onOpenPrescription: () => void;
+  onClosePrescription: () => void;
+  onCreatePrescription: (draft: PrescriptionDraft) => Promise<void>;
+  voiceNoteControls: VoiceNoteControls;
 }) {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
@@ -1261,15 +2015,23 @@ function ChatRoom({
     pressTimer.current = setTimeout(() => onDeleteMessage(item), 600);
   };
 
-  const isConsultActive = consultation?.status === "active";
-  const isPetParent = consultation?.client_id === currentUserId;
-  const isVeterinarian = consultation?.vet_id === currentUserId;
+  const isPetParent = userRole === "client" || consultation?.client_id === currentUserId;
+  const isVetClientThread =
+    (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
+    (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
   const consultationStatus = consultation?.status || null;
-  const onCompleteConsultation = isPetParent
-    ? onToggleConsultation
-    : onEndConsultationByVet;
+  const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
+  const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
+  const roomConsultation = consultation;
 
-  if (consultation)
+  const cancelDeletePress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  if (roomConsultation)
     return (
       <ConsultationChatRoom
         active={active}
@@ -1295,9 +2057,13 @@ function ChatRoom({
         deleteCandidate={deleteCandidate}
         onConfirmDelete={onConfirmDelete}
         onCancelDelete={onCancelDelete}
-        consultation={consultation}
+        consultation={roomConsultation}
         onToggleConsultation={onToggleConsultation}
+        onStartConsultation={onStartConsultation}
         onEndConsultationByVet={onEndConsultationByVet}
+        activeOrder={activeOrder}
+        onUpdateOrderStatus={onUpdateOrderStatus}
+        onCreateOrder={onCreateOrder}
         onOpenPatientFile={onOpenPatientFile}
         patientFileVisible={patientFileVisible}
         patientPets={patientPets}
@@ -1307,194 +2073,33 @@ function ChatRoom({
         invoiceVisible={invoiceVisible}
         invoiceSubmitting={invoiceSubmitting}
         onOpenInvoice={onOpenInvoice}
-        onSummarizeInvoice={onSummarizeInvoice}
-        aiInvoiceLoading={aiInvoiceLoading}
         invoiceItems={invoiceItems}
         onCloseInvoice={onCloseInvoice}
         onCreateInvoice={onCreateInvoice}
         onPayInvoice={onPayInvoice}
+        prescriptionVisible={prescriptionVisible}
+        prescriptionSubmitting={prescriptionSubmitting}
+        onOpenPrescription={onOpenPrescription}
+        onClosePrescription={onClosePrescription}
+        onCreatePrescription={onCreatePrescription}
+        voiceNoteControls={voiceNoteControls}
         uploading={uploading}
       />
     );
 
-  const cancelDeletePress = () => {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-
-    if (consultation)
-      return (
-        <SafeAreaView style={styles.container}>
-          <View style={styles.roomHeader}>
-            <TouchableOpacity onPress={onBack}>
-              <MaterialCommunityIcons
-                name="arrow-left"
-                size={24}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-            <View style={styles.flex}>
-              <Text style={styles.title}>
-                {active.productName || active.participantName}
-              </Text>
-              <Text style={styles.subtitle}>
-                {active.productName
-                  ? `${active.participantName} · Marketplace`
-                  : active.participantName}
-              </Text>
-            </View>
-            {["vet", "veterinarian"].includes(userRole) &&
-            active.participantRole === "client" ? (
-              <TouchableOpacity
-                style={styles.patientButton}
-                onPress={onOpenPatientFile}
-              >
-                <MaterialCommunityIcons
-                  name="file-account"
-                  size={18}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.completeButtonText}>Patient File</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <View
-            style={[
-              styles.consultationBanner,
-              isConsultActive
-                ? styles.consultationActive
-                : styles.consultationCompleted,
-            ]}
-          >
-            <Text style={styles.consultationText}>
-              {isConsultActive
-                ? "Active Consultation"
-                : "Consultation Completed"}
-            </Text>
-            {isPetParent ? (
-              <TouchableOpacity
-                style={[
-                  styles.consultationButton,
-                  isConsultActive
-                    ? styles.endConsultationButton
-                    : styles.startConsultationButton,
-                ]}
-                onPress={onToggleConsultation}
-              >
-                <Text style={styles.consultationButtonText}>
-                  {isConsultActive ? "End Consult" : "Start Consult"}
-                </Text>
-              </TouchableOpacity>
-            ) : isVeterinarian && isConsultActive ? (
-              <TouchableOpacity
-                style={styles.endConsultationButton}
-                onPress={onEndConsultationByVet}
-              >
-                <Text style={styles.consultationButtonText}>
-                  Mark Completed
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <ScrollView
-            ref={messagesScrollRef}
-            onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
-            contentContainerStyle={styles.messages}
-          >
-            {messages.length === 0 ? (
-              <Text style={styles.empty}>
-                No messages yet. Start the conversation.
-              </Text>
-            ) : (
-              messages.map((item) => (
-                <View key={item.id} style={styles.messageRow}>
-                  <TouchableOpacity
-                    {...(item.sender_id === currentUserId
-                      ? contextMenuProps(() => onDeleteMessage(item))
-                      : {})}
-                    activeOpacity={0.8}
-                    onPressIn={item.location_data ? undefined : () => startDeletePress(item)}
-                    onPressOut={item.location_data ? undefined : cancelDeletePress}
-                    onLongPress={item.location_data ? () => onDeleteMessage(item) : undefined}
-                    delayLongPress={item.location_data ? 300 : undefined}
-                    disabled={item.sender_id !== currentUserId}
-                    style={[
-                      styles.bubble,
-                      item.sender_id === currentUserId
-                        ? styles.outgoing
-                        : styles.incoming,
-                    ]}
-                  >
-                    {item.media_url && item.media_type === "image" ? (
-                      <Image
-                        source={{ uri: item.media_url }}
-                        style={styles.attachment}
-                      />
-                    ) : null}
-                    {item.content ? (
-                      <Text style={styles.primary}>{item.content}</Text>
-                    ) : null}
-                  </TouchableOpacity>
-                  {deleteCandidate?.id === item.id ? (
-                    <View style={styles.deleteActions}>
-                      <Text style={styles.deletePrompt}>
-                        Delete this message?
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.deleteButton}
-                        onPress={onConfirmDelete}
-                      >
-                        <Text style={styles.deleteButtonText}>Delete</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.cancelButton}
-                        onPress={onCancelDelete}
-                      >
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
-                </View>
-              ))
-            )}
-          </ScrollView>
-          <View style={styles.composer}>
-            <TouchableOpacity
-              style={styles.attach}
-              onPress={onAttach}
-              disabled={uploading}
-            >
-              <MaterialCommunityIcons
-                name="paperclip"
-                size={21}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-            <TextInput
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Write a message..."
-              placeholderTextColor="#64748B"
-              style={[styles.input, styles.flex]}
-              multiline
-            />
-            <TouchableOpacity style={styles.send} onPress={onSend}>
-              <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.roomHeader}>
+        <View style={styles.headerTopRow}>
         <TouchableOpacity onPress={onBack}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <View style={styles.flex}>
-          <Text style={styles.title}>
+        <View style={styles.headerTitleContainer}>
+          <Text
+            style={styles.title}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {active.productName || active.participantName}
           </Text>
           <Text style={styles.subtitle}>
@@ -1503,8 +2108,15 @@ function ChatRoom({
               : active.participantName}
           </Text>
         </View>
-        {["vet", "veterinarian"].includes(userRole) &&
-        active.participantRole === "client" ? (
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.headerActions}
+          contentContainerStyle={styles.headerActionsContent}
+        >
+        {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} /> : null}
+        {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
           <TouchableOpacity
             style={styles.patientButton}
             onPress={onOpenPatientFile}
@@ -1517,30 +2129,55 @@ function ChatRoom({
             <Text style={styles.completeButtonText}>Patient File</Text>
           </TouchableOpacity>
         ) : null}
-        {consultationStatus === "active" ? (
-          <TouchableOpacity
-            style={styles.completeButton}
-            onPress={onCompleteConsultation}
-          >
-            <Text style={styles.completeButtonText}>Complete</Text>
-          </TouchableOpacity>
-        ) : null}
-        {canCreateInvoice ? (
+        {showInvoiceAction ? (
           <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
             <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
             <Text style={styles.completeButtonText}>Create Invoice</Text>
           </TouchableOpacity>
         ) : null}
+        {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+          <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
+            <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
+            <Text style={styles.completeButtonText}>Prescribe</Text>
+          </TouchableOpacity>
+        ) : null}
+        {isVetClientThread && consultationStatus === "active" ? (
+          <>
+            {isPetParent ? <Text style={styles.headerConsultationStatus}>Active Consultation</Text> : null}
+            <TouchableOpacity
+              style={styles.completeButton}
+              onPress={isPetParent ? onToggleConsultation : onEndConsultationByVet}
+            >
+              <Text style={styles.completeButtonText}>
+                {isPetParent ? "End Consult" : "Mark Completed"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : isVetClientThread ? (
+          <>
+            <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
+            {isPetParent ? (
+              <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
+                <Text style={styles.completeButtonText}>+ Start Consultation</Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
+        ) : null}
+        </ScrollView>
       </View>
-      {consultationStatus === "completed" ? (
-        <View style={styles.completedBanner}>
-          <MaterialCommunityIcons
-            name="check-circle"
-            size={18}
-            color="#86EFAC"
-          />
-          <Text style={styles.completedText}>
-            This consultation has been marked as completed.
+      {isVetClientThread && consultationStatus ? (
+        <View
+          style={[
+            styles.consultationBanner,
+            consultationStatus === "active"
+              ? styles.consultationActive
+              : styles.consultationCompleted,
+          ]}
+        >
+          <Text style={styles.consultationText}>
+            {consultationStatus === "active"
+              ? "Active Consultation"
+              : "Consultation Completed"}
           </Text>
         </View>
       ) : null}
@@ -1573,7 +2210,7 @@ function ChatRoom({
                 onPressOut={cancelDeletePress}
                 onPress={() => {
                   if (item.location_data) {
-                    void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                    openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
                   }
                 }}
                 disabled={item.sender_id !== currentUserId && !item.location_data}
@@ -1592,6 +2229,10 @@ function ChatRoom({
                 ) : null}
                 {item.message_type === "invoice" ? (
                   <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
+                ) : (item.message_type as string) === "prescription" ? (
+                  <PrescriptionMessage item={item} />
+                ) : (item.message_type as string) === "voice_note" && item.media_url ? (
+                  <VoiceNoteMessage mediaUrl={item.media_url} />
                 ) : item.location_data ? (
                   <LocationMessage item={item} />
                 ) : item.content ? (
@@ -1620,24 +2261,37 @@ function ChatRoom({
         )}
       </ScrollView>
       <View style={styles.composer}>
-        <TouchableOpacity
-          style={styles.attach}
-          onPress={onAttach}
-          disabled={uploading}
-        >
-          <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
-        </TouchableOpacity>
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Write a message..."
-          placeholderTextColor="#64748B"
-          style={[styles.input, styles.flex]}
-          multiline
-        />
-        <TouchableOpacity style={styles.send} onPress={onSend}>
-          <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
-        </TouchableOpacity>
+        {voiceNoteControls.recording ? (
+          <View style={styles.recordingBar}>
+            <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
+              <Ionicons name="trash-outline" size={21} color="#F87171" />
+            </TouchableOpacity>
+            <View style={styles.recordingStatus}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingTimer}>0:{String(voiceNoteControls.recordingSeconds).padStart(2, "0")}</Text>
+              <Text style={styles.recordingLabel}>Recording...</Text>
+            </View>
+            <TouchableOpacity onPress={() => void voiceNoteControls.onSendRecording()} style={styles.send}>
+              <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity style={styles.attach} onPress={onAttach} disabled={uploading}>
+              <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TextInput value={message} onChangeText={setMessage} placeholder="Write a message..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline />
+            {message.trim() ? (
+              <TouchableOpacity style={styles.send} onPress={onSend}>
+                <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.voiceIdleMic} onPressIn={() => void voiceNoteControls.onStartRecording()}>
+                <Ionicons name="mic" size={21} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
       </View>
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
@@ -1651,7 +2305,255 @@ function ChatRoom({
         liveLocationActive={liveLocationActive}
       />
       <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} />
+      <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
+  );
+}
+
+function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [positionMillis, setPositionMillis] = useState(0);
+  const [durationMillis, setDurationMillis] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
+  const playbackSpeedRef = useRef<1 | 1.5 | 2>(1);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    let loadedSound: Audio.Sound | null = null;
+    const loadSound = async () => {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync().catch(() => undefined);
+        soundRef.current = null;
+      }
+      htmlAudioRef.current?.pause();
+      htmlAudioRef.current = null;
+      setSound(null);
+      try {
+        const { sound: nextSound } = await Audio.Sound.createAsync(
+          { uri: mediaUrl },
+          Platform.OS === "web"
+            ? ({ shouldPlay: false, html5: true } as any)
+            : { shouldPlay: false },
+          (status) => {
+            if (!status.isLoaded || !mounted) return;
+            setPlaying(status.isPlaying);
+            setPositionMillis(status.positionMillis);
+            setDurationMillis(status.durationMillis || 0);
+            if (status.didJustFinish) setPlaying(false);
+          }
+        );
+        loadedSound = nextSound;
+        soundRef.current = nextSound;
+        await nextSound.setRateAsync(playbackSpeedRef.current, true);
+        if (mounted) setSound(nextSound);
+        else await nextSound.unloadAsync();
+      } catch (error) {
+        console.warn("[Voice Note] Expo-AV audio load failed:", error);
+      }
+    };
+    void loadSound();
+
+    return () => {
+      mounted = false;
+      if (loadedSound) {
+        soundRef.current = null;
+        void loadedSound.unloadAsync();
+      }
+      htmlAudioRef.current?.pause();
+      htmlAudioRef.current = null;
+    };
+  }, [mediaUrl]);
+
+  const togglePlayback = async () => {
+    try {
+      if (sound) {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          if (status.isPlaying) await sound.pauseAsync();
+          else await sound.playAsync();
+          return;
+        }
+      }
+
+      if (Platform.OS !== "web" || typeof window === "undefined") return;
+      if (!htmlAudioRef.current) {
+        const htmlAudio = new window.Audio(mediaUrl);
+        htmlAudio.preload = "metadata";
+        htmlAudio.ontimeupdate = () => {
+          setPositionMillis(htmlAudio.currentTime * 1000);
+          setDurationMillis(Number.isFinite(htmlAudio.duration) ? htmlAudio.duration * 1000 : 0);
+        };
+        htmlAudio.onplay = () => setPlaying(true);
+        htmlAudio.onpause = () => setPlaying(false);
+        htmlAudio.onended = () => {
+          setPlaying(false);
+          setPositionMillis(0);
+        };
+        htmlAudioRef.current = htmlAudio;
+      }
+      if (htmlAudioRef.current.paused) await htmlAudioRef.current.play();
+      else htmlAudioRef.current.pause();
+    } catch (error) {
+      console.warn("[Voice Note] Audio playback failed:", error);
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        try {
+          htmlAudioRef.current = new window.Audio(mediaUrl);
+          htmlAudioRef.current.onplay = () => setPlaying(true);
+          htmlAudioRef.current.onpause = () => setPlaying(false);
+          await htmlAudioRef.current.play();
+        } catch (fallbackError) {
+          console.warn("[Voice Note] HTML5 audio fallback failed:", fallbackError);
+        }
+      }
+    }
+  };
+
+  const cyclePlaybackSpeed = async () => {
+    const nextSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1;
+    setPlaybackSpeed(nextSpeed);
+    playbackSpeedRef.current = nextSpeed;
+    try {
+      if (sound) {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) await sound.setRateAsync(nextSpeed, true);
+      }
+      if (htmlAudioRef.current) htmlAudioRef.current.playbackRate = nextSpeed;
+    } catch (error) {
+      console.warn("[Voice Note] Failed to change playback speed:", error);
+    }
+  };
+
+  const formatDuration = (milliseconds: number) => {
+    const seconds = Math.floor(milliseconds / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  };
+
+  return (
+    <View style={styles.voiceNoteBubble}>
+      <TouchableOpacity onPress={() => void togglePlayback()} style={styles.voicePlayButton}>
+        <Ionicons name={playing ? "pause" : "play"} size={18} color="#FFFFFF" />
+      </TouchableOpacity>
+      <View style={styles.voiceProgressArea}>
+        <View style={styles.voiceProgressTrack}>
+          <View style={[styles.voiceProgressFill, { width: `${durationMillis ? Math.min(positionMillis / durationMillis, 1) * 100 : 0}%` }]} />
+        </View>
+        <View style={styles.voiceBars}>
+          {[3, 7, 12, 8, 15, 10, 18, 9, 14, 6, 12, 16, 8, 13, 5, 10].map((height, index) => (
+            <View key={index} style={[styles.voiceBar, { height }, index / 16 < (durationMillis ? positionMillis / durationMillis : 0) ? styles.voiceBarActive : null]} />
+          ))}
+        </View>
+        <Text style={styles.voiceDuration}>{formatDuration(playing ? positionMillis : durationMillis)}</Text>
+      </View>
+      <TouchableOpacity onPress={() => void cyclePlaybackSpeed()} style={styles.voiceSpeedButton}>
+        <Text style={styles.voiceSpeedText}>{playbackSpeed}x</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function PrescriptionMessage({ item }: { item: RealtimeMessage }) {
+  const metadata = (item.metadata || {}) as Partial<PrescriptionMetadata>;
+  const searchMedication = () => {
+    const query = encodeURIComponent(metadata.medicationName || "prescribed medication");
+    openSafeExternalUrl(`https://www.google.com/search?q=${query}+medication`);
+  };
+  return (
+    <View style={styles.prescriptionCard}>
+      <View style={styles.prescriptionHeading}>
+        <MaterialCommunityIcons name="medical-bag" size={20} color="#10B981" />
+        <Text style={styles.prescriptionTitle}>Prescription</Text>
+      </View>
+      <Text style={styles.prescriptionMedication}>{metadata.medicationName || "Medication"}</Text>
+      <View style={styles.prescriptionBadges}>
+        <Text style={styles.prescriptionBadge}>{metadata.dosage || "Dosage pending"}</Text>
+        <Text style={styles.prescriptionBadge}>{metadata.frequency || "Frequency pending"}</Text>
+        <Text style={styles.prescriptionBadge}>{metadata.duration || "Duration pending"}</Text>
+      </View>
+      <Text style={styles.prescriptionDetail}>Refills: {metadata.refills || "0"}</Text>
+      {metadata.instructions ? <Text style={styles.prescriptionInstructions}>{metadata.instructions}</Text> : null}
+      <TouchableOpacity style={styles.prescriptionAction} onPress={searchMedication}>
+        <Ionicons name="search-outline" size={16} color="#FFFFFF" />
+        <Text style={styles.prescriptionActionText}>Search medication</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function PrescriptionModal({
+  visible,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSubmit: (draft: PrescriptionDraft) => Promise<void>;
+  submitting: boolean;
+}) {
+  const [draft, setDraft] = useState<PrescriptionDraft>({
+    medicationName: "",
+    dosage: "",
+    frequency: "",
+    duration: "",
+    refills: "0",
+    instructions: "",
+  });
+  const update = (field: keyof PrescriptionDraft, value: string) =>
+    setDraft((current) => ({ ...current, [field]: value }));
+  const submit = () => {
+    if (!draft.medicationName.trim() || !draft.dosage.trim() || !draft.frequency.trim() || !draft.duration.trim()) {
+      Alert.alert("Incomplete prescription", "Add medication, dosage, frequency, and duration.");
+      return;
+    }
+    void onSubmit(draft);
+  };
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.prescriptionOverlay}>
+        <View style={styles.prescriptionModal}>
+          <View style={styles.invoiceModalHeader}>
+            <Text style={styles.invoiceModalTitle}>Write Prescription</Text>
+            <TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}>
+            {([
+              ["medicationName", "Medication Name", "e.g. Amoxicillin"],
+              ["dosage", "Dosage", "e.g. 250mg"],
+              ["frequency", "Frequency", "e.g. 2x daily"],
+              ["duration", "Duration", "e.g. 7 days"],
+              ["refills", "Refills", "0"],
+            ] as const).map(([field, label, placeholder]) => (
+              <View key={field}>
+                <Text style={styles.prescriptionLabel}>{label}</Text>
+                <TextInput
+                  value={draft[field]}
+                  onChangeText={(value) => update(field, value)}
+                  placeholder={placeholder}
+                  placeholderTextColor="#64748B"
+                  keyboardType={field === "refills" ? "number-pad" : "default"}
+                  style={styles.input}
+                />
+              </View>
+            ))}
+            <Text style={styles.prescriptionLabel}>Administration Instructions</Text>
+            <TextInput
+              value={draft.instructions}
+              onChangeText={(value) => update("instructions", value)}
+              placeholder="e.g. Give after meals and complete the course."
+              placeholderTextColor="#64748B"
+              multiline
+              style={[styles.input, styles.prescriptionInstructionsInput]}
+            />
+            <TouchableOpacity style={styles.prescriptionSubmit} onPress={submit} disabled={submitting}>
+              <Text style={styles.sendText}>{submitting ? "Saving..." : "Send Prescription"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1741,10 +2643,16 @@ function AttachmentOptions({
   );
 }
 
-function PatientFileOverlay({ visible, loading, pets, userRole, onClose }: { visible: boolean; loading: boolean; pets: PatientPet[]; userRole: string; onClose: () => void }) {
+function PatientFileOverlay({ visible, loading, pets, activePetId, records, userRole, onSelectPet, onClose }: { visible: boolean; loading: boolean; pets: PatientPet[]; activePetId: string | null; records: MedicalRecord[]; userRole: string; onSelectPet: (petId: string) => void; onClose: () => void }) {
   const [historyVersion, setHistoryVersion] = useState(0);
   if (!visible) return null;
-  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose}><Text style={styles.patientCloseText}>Close ✕</Text></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<Text style={styles.patientPetName}>{pet.name}</Text><Text style={styles.patientDetail}>{pet.type} · {pet.breed || "Breed unknown"} · {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text><PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
+  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose}><Text style={styles.patientCloseText}>Close ✕</Text></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<TouchableOpacity onPress={() => onSelectPet(pet.id)}><Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? "  • Selected" : ""}</Text></TouchableOpacity><Text style={styles.patientDetail}>{pet.type} · {pet.breed || "Breed unknown"} · {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>{activePetId === pet.id ? <><Text style={styles.patientLabel}>SOAP History</Text>{records.length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.map((record) => <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}><Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text><Text style={styles.patientLabel}>Vitals</Text><Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg · Temp: {record.temperature_c ?? "-"} °C · Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text><Text style={styles.patientLabel}>Assessment</Text><Text style={styles.patientDetail}>{record.assessment}</Text><Text style={styles.patientLabel}>Subjective</Text><Text style={styles.patientDetail}>{record.subjective}</Text><Text style={styles.patientLabel}>Objective</Text><Text style={styles.patientDetail}>{record.objective || "-"}</Text><Text style={styles.patientLabel}>Plan</Text><Text style={styles.patientDetail}>{record.plan}</Text></View>)}</> : null}<PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
+}
+
+function SoapConsultationModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: SoapDraft) => Promise<void> }) {
+  const [draft, setDraft] = useState<SoapDraft>({ weightKg: "", temperatureC: "", heartRateBpm: "", subjective: "", objective: "", assessment: "", plan: "" });
+  const update = (field: keyof SoapDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (°C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
 function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeMessage; currentUserId: string; onPayInvoice: (orderId: string) => Promise<void> }) {
@@ -1785,7 +2693,7 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 
   const payButton = isPendingInvoice && customer ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.order_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
 
-  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>₦{Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
+  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>₦{Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
 }
 
 const defaultInvoiceItems: InvoiceItem[] = [
@@ -1809,14 +2717,18 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       Alert.alert("Invalid invoice", "Add at least one item with a valid amount.");
       return;
     }
-    const itemNote = validItems.map((item) => `${item.description.trim()}: NGN ${item.amount.toLocaleString("en-NG")}`).join("; ");
-    void onSubmit(total, note.trim() || itemNote);
+    const normalizedItems = validItems.map((item) => ({
+      description: item.description.trim(),
+      amount: item.amount,
+    }));
+    const itemNote = normalizedItems.map((item) => `${item.description}: NGN ${item.amount.toLocaleString("en-NG")}`).join("; ");
+    void onSubmit(total, note.trim() || itemNote, normalizedItems);
   };
 
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={`${index}-${item.description}`} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => [...current, { description: "", amount: 0 }])}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Total: NGN {subtotal.toLocaleString("en-NG")}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
-function ConsultationChatRoom({
+ function ConsultationChatRoom({
   active,
   currentUserId,
   userRole,
@@ -1842,7 +2754,11 @@ function ConsultationChatRoom({
   onCancelDelete,
   consultation,
   onToggleConsultation,
+  onStartConsultation,
   onEndConsultationByVet,
+  activeOrder,
+  onUpdateOrderStatus,
+  onCreateOrder,
   onOpenPatientFile,
   patientFileVisible,
   patientPets,
@@ -1853,12 +2769,16 @@ function ConsultationChatRoom({
   invoiceVisible,
   invoiceSubmitting,
   onOpenInvoice,
-  onSummarizeInvoice,
-  aiInvoiceLoading,
   invoiceItems,
   onCloseInvoice,
   onCreateInvoice,
   onPayInvoice,
+  prescriptionVisible,
+  prescriptionSubmitting,
+  onOpenPrescription,
+  onClosePrescription,
+  onCreatePrescription,
+    voiceNoteControls,
 }: {
   active: Thread;
   currentUserId: string;
@@ -1885,7 +2805,11 @@ function ConsultationChatRoom({
   onCancelDelete: () => void;
   consultation: ConsultationRecord;
   onToggleConsultation: () => void;
+  onStartConsultation: () => Promise<void>;
   onEndConsultationByVet: () => void;
+  activeOrder: ActiveOrder | null;
+  onUpdateOrderStatus: (status: OrderStatus | "completed") => Promise<void>;
+  onCreateOrder: () => Promise<void>;
   onOpenPatientFile: () => void;
   patientFileVisible: boolean;
   patientPets: PatientPet[];
@@ -1896,26 +2820,40 @@ function ConsultationChatRoom({
   invoiceVisible: boolean;
   invoiceSubmitting: boolean;
   onOpenInvoice: () => void;
-  onSummarizeInvoice: () => void;
-  aiInvoiceLoading: boolean;
   invoiceItems: InvoiceItem[];
   onCloseInvoice: () => void;
-  onCreateInvoice: (amount: number, note: string) => Promise<void>;
+  onCreateInvoice: (amount: number, note: string, items: InvoiceItem[]) => Promise<void>;
   onPayInvoice: (orderId: string) => Promise<void>;
+  prescriptionVisible: boolean;
+  prescriptionSubmitting: boolean;
+  onOpenPrescription: () => void;
+  onClosePrescription: () => void;
+  onCreatePrescription: (draft: PrescriptionDraft) => Promise<void>;
+  voiceNoteControls: VoiceNoteControls;
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
   const isConsultActive = consultation.status === "active";
   const isPetParent =
     currentUserId === consultation.client_id || userRole === "client";
+  const isVetClientThread =
+    (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
+    (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
+  const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
+  const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.roomHeader}>
+        <View style={styles.headerTopRow}>
         <TouchableOpacity onPress={onBack}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <View style={styles.flex}>
-          <Text style={styles.title}>
+        <View style={styles.headerTitleContainer}>
+          <Text
+            style={styles.title}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {active.productName || active.participantName}
           </Text>
           <Text style={styles.subtitle}>
@@ -1924,77 +2862,99 @@ function ConsultationChatRoom({
               : active.participantName}
           </Text>
         </View>
-        {["vet", "veterinarian"].includes(userRole) &&
-        active.participantRole === "client" ? (
-          <TouchableOpacity
-            style={styles.patientButton}
-            onPress={onOpenPatientFile}
-          >
-            <MaterialCommunityIcons
-              name="file-account"
-              size={18}
-              color="#FFFFFF"
-            />
-            <Text style={styles.completeButtonText}>Patient File</Text>
-          </TouchableOpacity>
-        ) : null}
-        {canCreateInvoice ? (
-          <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
-            <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
-            <Text style={styles.completeButtonText}>Create Invoice</Text>
-          </TouchableOpacity>
-        ) : null}
-        {canCreateInvoice && ["vet", "veterinarian"].includes(userRole) ? (
-          <TouchableOpacity style={styles.aiInvoiceAction} onPress={onSummarizeInvoice} disabled={aiInvoiceLoading}>
-            {aiInvoiceLoading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="robot-outline" size={17} color="#FFFFFF" />}
-            <Text style={styles.completeButtonText}>{aiInvoiceLoading ? "Drafting..." : "AI Invoice"}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-      <View
-        style={[
-          styles.consultationBanner,
-          isConsultActive
-            ? styles.consultationActive
-            : styles.consultationCompleted,
-        ]}
-      >
-        <View style={styles.consultationStatus}>
-          <View
-            style={[
-              styles.consultationIndicator,
-              isConsultActive
-                ? styles.consultationIndicatorActive
-                : styles.consultationIndicatorCompleted,
-            ]}
-          />
-          <Text style={styles.consultationText}>
-            {isConsultActive ? "Active Consultation" : "Consultation Completed"}
-          </Text>
         </View>
-        {isPetParent ? (
-          <TouchableOpacity
-            style={[
-              styles.consultationButton,
-              isConsultActive
-                ? styles.endConsultationButton
-                : styles.startConsultationButton,
-            ]}
-            onPress={onToggleConsultation}
-          >
-            <Text style={styles.consultationButtonText}>
-              {isConsultActive ? "End Consult" : "Start Consult"}
-            </Text>
-          </TouchableOpacity>
-        ) : isConsultActive ? (
-          <TouchableOpacity
-            style={styles.endConsultationButton}
-            onPress={onEndConsultationByVet}
-          >
-            <Text style={styles.consultationButtonText}>Mark Completed</Text>
-          </TouchableOpacity>
-        ) : null}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.headerActions}
+          contentContainerStyle={styles.headerActionsContent}
+        >
+          {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} /> : null}
+          {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+            <TouchableOpacity
+              style={styles.patientButton}
+              onPress={onOpenPatientFile}
+            >
+              <MaterialCommunityIcons
+                name="file-account"
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text style={styles.completeButtonText}>Patient File</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showInvoiceAction ? (
+            <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
+              <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
+              <Text style={styles.completeButtonText}>Create Invoice</Text>
+            </TouchableOpacity>
+          ) : null}
+          {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+            <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
+              <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
+              <Text style={styles.completeButtonText}>Prescribe</Text>
+            </TouchableOpacity>
+          ) : null}
+          {isVetClientThread && isConsultActive ? (
+            <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
+          ) : null}
+          {isVetClientThread && isPetParent && isConsultActive ? (
+            <TouchableOpacity
+              style={[
+                styles.consultationButton,
+                isConsultActive
+                  ? styles.endConsultationButton
+                  : styles.startConsultationButton,
+              ]}
+              onPress={onToggleConsultation}
+            >
+              <Text style={styles.consultationButtonText}>
+                {isConsultActive ? "End Consult" : "Start Consult"}
+              </Text>
+            </TouchableOpacity>
+          ) : isVetClientThread && isConsultActive ? (
+            <TouchableOpacity
+              style={styles.endConsultationButton}
+              onPress={onEndConsultationByVet}
+            >
+              <Text style={styles.consultationButtonText}>End Consult</Text>
+            </TouchableOpacity>
+          ) : isVetClientThread ? (
+            <>
+              <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
+              {isPetParent ? (
+                <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
+                  <Text style={styles.completeButtonText}>+ Start Consultation</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : null}
+        </ScrollView>
       </View>
+      {isVetClientThread ? (
+        <View
+          style={[
+            styles.consultationBanner,
+            isConsultActive
+              ? styles.consultationActive
+              : styles.consultationCompleted,
+          ]}
+        >
+          <View style={styles.consultationStatus}>
+            <View
+              style={[
+                styles.consultationIndicator,
+                isConsultActive
+                  ? styles.consultationIndicatorActive
+                  : styles.consultationIndicatorCompleted,
+              ]}
+            />
+            <Text style={styles.consultationText}>
+              {isConsultActive ? "Active Consultation" : "Consultation Completed"}
+            </Text>
+          </View>
+        </View>
+      ) : null}
       {liveLocationActive ? (
         <View style={styles.liveLocationBanner}>
           <Text style={styles.liveLocationText}>Live location sharing is active</Text>
@@ -2028,7 +2988,7 @@ function ConsultationChatRoom({
                 delayLongPress={item.location_data ? 300 : undefined}
                 onPress={() => {
                   if (item.location_data) {
-                    void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                    openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
                   }
                 }}
                 disabled={item.sender_id !== currentUserId && !item.location_data}
@@ -2047,6 +3007,10 @@ function ConsultationChatRoom({
                 ) : null}
                 {item.message_type === "invoice" ? (
                   <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
+                ) : (item.message_type as string) === "prescription" ? (
+                  <PrescriptionMessage item={item} />
+                ) : (item.message_type as string) === "voice_note" && item.media_url ? (
+                  <VoiceNoteMessage mediaUrl={item.media_url} />
                 ) : item.location_data ? (
                   <LocationMessage item={item} />
                 ) : item.content ? (
@@ -2075,24 +3039,37 @@ function ConsultationChatRoom({
         )}
       </ScrollView>
       <View style={styles.composer}>
-        <TouchableOpacity
-          style={styles.attach}
-          onPress={onAttach}
-          disabled={uploading}
-        >
-          <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
-        </TouchableOpacity>
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Write a message..."
-          placeholderTextColor="#64748B"
-          style={[styles.input, styles.flex]}
-          multiline
-        />
-        <TouchableOpacity style={styles.send} onPress={onSend}>
-          <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
-        </TouchableOpacity>
+        {voiceNoteControls.recording ? (
+          <View style={styles.recordingBar}>
+            <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
+              <Ionicons name="trash-outline" size={21} color="#F87171" />
+            </TouchableOpacity>
+            <View style={styles.recordingStatus}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingTimer}>0:{String(voiceNoteControls.recordingSeconds).padStart(2, "0")}</Text>
+              <Text style={styles.recordingLabel}>Recording...</Text>
+            </View>
+            <TouchableOpacity onPress={() => void voiceNoteControls.onSendRecording()} style={styles.send}>
+              <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity style={styles.attach} onPress={onAttach} disabled={uploading}>
+              <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TextInput value={message} onChangeText={setMessage} placeholder="Write a message..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline />
+            {message.trim() ? (
+              <TouchableOpacity style={styles.send} onPress={onSend}>
+                <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.voiceIdleMic} onPressIn={() => void voiceNoteControls.onStartRecording()}>
+                <Ionicons name="mic" size={21} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
       </View>
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
@@ -2106,6 +3083,7 @@ function ConsultationChatRoom({
         liveLocationActive={liveLocationActive}
       />
       <InvoiceModal key={invoiceItems.map((item) => `${item.description}:${item.amount}`).join("|")} visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} initialItems={invoiceItems} />
+      <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
   );
 }
@@ -2125,9 +3103,32 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#334155",
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "stretch",
     gap: 12,
+    position: "relative",
+    zIndex: 10,
+    elevation: 5,
+  },
+  headerTopRow: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
+  headerTitleContainer: { flex: 1, flexShrink: 1, minWidth: 0 },
+  headerActions: {
+    width: "100%",
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 44,
+    maxHeight: 56,
+    zIndex: 11,
+    elevation: 6,
+    overflow: "visible",
+  },
+  headerActionsContent: {
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 12,
+    elevation: 7,
   },
   consultationBanner: {
     flexDirection: "row",
@@ -2138,6 +3139,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   consultationStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerConsultationControl: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" },
+  headerConsultationStatus: { color: "#D1FAE5", fontSize: 12, fontWeight: "600" },
+  consultationEndedBadge: { color: "#CBD5E1", fontSize: 12, fontWeight: "600" },
   consultationIndicator: { width: 8, height: 8, borderRadius: 4 },
   consultationIndicatorActive: { backgroundColor: "#10B981" },
   consultationIndicatorCompleted: { backgroundColor: "#9CA3AF" },
@@ -2153,12 +3157,15 @@ const styles = StyleSheet.create({
   endConsultationButton: { backgroundColor: "#EF4444" },
   consultationButtonText: { color: "#FFFFFF", fontWeight: "700" },
   invoiceAction: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
-  aiInvoiceAction: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#7C3AED", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  prescriptionActionHeader: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0E7490", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   invoiceCard: { alignSelf: "stretch", backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 240 },
   invoiceTitle: { color: "#0F172A", fontSize: 16, fontWeight: "700" },
   invoiceSeller: { color: "#475569", fontSize: 12, marginTop: 5 },
   invoiceAmount: { color: "#0F172A", fontSize: 22, fontWeight: "700", marginTop: 10 },
   invoiceNote: { color: "#475569", fontSize: 13, marginTop: 6 },
+  invoiceBreakdownRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginTop: 6 },
+  invoiceBreakdownName: { color: "#475569", fontSize: 12, flex: 1 },
+  invoiceBreakdownAmount: { color: "#0F172A", fontSize: 12, fontWeight: "600" },
   invoiceFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
   pendingBadge: { backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
   pendingBadgeText: { color: "#B45309", fontSize: 11, fontWeight: "700" },
@@ -2168,6 +3175,12 @@ const styles = StyleSheet.create({
   payButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   invoiceOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
   invoiceModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  prescriptionOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
+  prescriptionModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "90%" },
+  prescriptionForm: { paddingBottom: 12, gap: 8 },
+  prescriptionLabel: { color: "#94A3B8", fontSize: 12, marginTop: 8, marginBottom: 4 },
+  prescriptionInstructionsInput: { minHeight: 90, textAlignVertical: "top" },
+  prescriptionSubmit: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 16 },
   invoiceModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
   invoiceModalTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   closeText: { color: "#94A3B8", fontSize: 13 },
@@ -2180,6 +3193,16 @@ const styles = StyleSheet.create({
   addInvoiceItemText: { color: "#60A5FA", fontSize: 13, fontWeight: "700" },
   invoiceTotal: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", marginTop: 8, marginBottom: 4 },
   invoiceNoteInput: { minHeight: 80, textAlignVertical: "top" },
+  prescriptionCard: { backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 250 },
+  prescriptionHeading: { flexDirection: "row", alignItems: "center", gap: 7 },
+  prescriptionTitle: { color: "#0F172A", fontSize: 14, fontWeight: "700" },
+  prescriptionMedication: { color: "#0F172A", fontSize: 18, fontWeight: "700", marginTop: 10 },
+  prescriptionBadges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 9 },
+  prescriptionBadge: { color: "#065F46", backgroundColor: "#D1FAE5", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 4, fontSize: 11, fontWeight: "700" },
+  prescriptionDetail: { color: "#475569", fontSize: 12, marginTop: 9 },
+  prescriptionInstructions: { color: "#334155", fontSize: 13, lineHeight: 19, marginTop: 8 },
+  prescriptionAction: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#0E7490", borderRadius: 8, paddingVertical: 8, marginTop: 12 },
+  prescriptionActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   sendButton: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 18 },
   sendText: { color: "#FFFFFF", fontWeight: "700" },
   completeButton: {
@@ -2197,6 +3220,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
+  orderStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#1C2541",
+    borderColor: "#10B981",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+  orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
+  idleBadge: { color: "#94A3B8", fontSize: 12, fontWeight: "600" },
   completeButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   completedBanner: {
     flexDirection: "row",
@@ -2253,7 +3289,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   patientDetail: { color: "#CBD5E1", fontSize: 13, lineHeight: 20 },
-  title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700" },
+  title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { padding: 16 },
   messages: { padding: 16, flexGrow: 1 },
@@ -2279,6 +3315,7 @@ const styles = StyleSheet.create({
   },
   flex: { flex: 1 },
   threadNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  threadDeleteButton: { padding: 4 },
   activeConsultBadge: {
     backgroundColor: "#065F46",
     borderColor: "#10B981",
@@ -2296,6 +3333,17 @@ const styles = StyleSheet.create({
   outgoing: { alignSelf: "flex-end", backgroundColor: "#0E7490" },
   incoming: { alignSelf: "flex-start", backgroundColor: "#1E293B" },
   attachment: { width: 220, height: 180, borderRadius: 10, marginBottom: 8 },
+  voiceNoteBubble: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 210 },
+  voicePlayButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
+  voiceProgressArea: { flex: 1, gap: 4 },
+  voiceProgressTrack: { height: 4, borderRadius: 2, backgroundColor: "#64748B", overflow: "hidden" },
+  voiceProgressFill: { height: 4, borderRadius: 2, backgroundColor: "#A7F3D0" },
+  voiceBars: { height: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 2 },
+  voiceBar: { width: 3, minHeight: 3, borderRadius: 2, backgroundColor: "#64748B" },
+  voiceBarActive: { backgroundColor: "#A7F3D0" },
+  voiceDuration: { color: "#CBD5E1", fontSize: 11 },
+  voiceSpeedButton: { minWidth: 34, paddingHorizontal: 5, paddingVertical: 4, borderRadius: 6, backgroundColor: "#334155", alignItems: "center" },
+  voiceSpeedText: { color: "#A7F3D0", fontSize: 11, fontWeight: "700" },
   locationCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -2322,6 +3370,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     backgroundColor: "rgba(0, 0, 0, 0.65)",
   },
+  threadDeleteOverlay: { zIndex: 9999, elevation: 9999 },
   locationSheet: {
     backgroundColor: "#1E293B",
     borderTopLeftRadius: 18,
@@ -2349,6 +3398,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  recordingAction: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  recordingStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  recordingDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444" },
+  recordingTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  recordingLabel: { color: "#94A3B8", fontSize: 13 },
   attach: {
     width: 44,
     borderRadius: 8,
@@ -2371,6 +3425,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  voiceIdleMic: {
+    width: 44,
+    borderRadius: 8,
+    backgroundColor: "#0E7490",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recordingBar: { flex: 1, borderRadius: 8, backgroundColor: "#172554", flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
   unreadBadge: {
     minWidth: 24,
     paddingHorizontal: 6,

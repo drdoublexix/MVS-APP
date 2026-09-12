@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
@@ -137,7 +137,7 @@ export default function VetDashboardScreen() {
     const user = await getCurrentUser();
     if (!user || !normalizeUuid(product.merchantId)) return;
     const conversationId = `conv_${[user.id, product.merchantId].sort().join('_')}`;
-    router.push({ pathname: '/chat', params: { conversationId, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
+    router.push({ pathname: '/(vet)/chat', params: { conversationId, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
   };
 
   const askAiAssistant = async (isRetry = false) => {
@@ -269,6 +269,7 @@ export default function VetDashboardScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <SupportFab role="vet" />
     </SafeAreaView>
   );
 }
@@ -310,6 +311,39 @@ function Metric({ icon, label, value, color }: { icon: string; label: string; va
   return <View style={styles.metric}><View style={[styles.metricIcon, { backgroundColor: `${color}20` }]}><MaterialCommunityIcons name={icon as any} size={24} color={color} /></View><Text style={styles.muted}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>;
 }
 
+function SupportFab({ role }: { role: string }) {
+  const [offsetY, setOffsetY] = useState(0);
+  const openSupport = async () => {
+    const message = `Hello MVS Support, I need assistance with my account. Role: ${role}`;
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `whatsapp://send?phone=2349074874395&text=${encodedMessage}`;
+    const webUrl = `https://wa.me/2349074874395?text=${encodedMessage}`;
+    try {
+      if (await Linking.canOpenURL(whatsappUrl)) await Linking.openURL(whatsappUrl);
+      else await Linking.openURL(webUrl);
+    } catch {
+      await Linking.openURL(webUrl);
+    }
+  };
+  const [panResponder] = useState(() => {
+    let currentOffset = 0;
+    let startOffset = 0;
+    let moved = false;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { startOffset = currentOffset; moved = false; },
+      onPanResponderMove: (_, gesture) => {
+        if (Math.abs(gesture.dy) > 6) moved = true;
+        currentOffset = Math.max(-300, Math.min(300, startOffset + gesture.dy));
+        setOffsetY(currentOffset);
+      },
+      onPanResponderRelease: () => { if (!moved) void openSupport(); },
+      onPanResponderTerminate: () => { moved = true; },
+    });
+  });
+  return <View {...panResponder.panHandlers} style={[styles.supportFab, { transform: [{ translateY: offsetY }] }]}><MaterialCommunityIcons name="whatsapp" size={29} color="#FFFFFF" /></View>;
+}
+
 const styles = StyleSheet.create({
   aiOverlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'flex-end' },
   aiModal: { maxHeight: '85%', backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18 },
@@ -337,6 +371,7 @@ const styles = StyleSheet.create({
   askButtonText: { color: '#FFFFFF', fontWeight: '700' },
   vetCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, marginTop: 5 },
   vetCtaText: { color: '#10B981', fontSize: 13, fontWeight: '700' },
+  supportFab: { position: 'absolute', bottom: 24, right: 20, zIndex: 9999, width: 56, height: 56, borderRadius: 28, backgroundColor: '#005F53', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   aiError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#451A1A', borderRadius: 10, padding: 12, marginBottom: 12 },
   aiErrorText: { flex: 1, color: '#FCA5A5', fontSize: 13, marginRight: 12 },
   retryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },

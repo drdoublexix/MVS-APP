@@ -4,10 +4,54 @@ import { supabase } from './supabase';
 
 const ANDROID_CHANNEL_ID = 'mvs-default';
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
+const EXPO_PROJECT_ID = '5013bac6-0c3a-4c17-b268-e477a44b';
+
+const saveWebPushSubscription = async (userId: string): Promise<string | null> => {
+  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    return null;
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  if (!registration.pushManager) return null;
+
+  const vapidKey = process.env.EXPO_PUBLIC_VAPID_KEY;
+  const subscription =
+    (await registration.pushManager.getSubscription()) ||
+    (vapidKey
+      ? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey })
+      : null);
+
+  if (!subscription) return null;
+
+  const subscriptionString = JSON.stringify(subscription);
+  const { error } = await supabase
+    .from('profiles')
+    .update({ web_push_subscription: subscriptionString })
+    .eq('id', userId);
+
+  if (error) throw error;
+  console.log('[Notifications] Web push subscription saved successfully.');
+  return subscriptionString;
+};
 
 export const registerForPushNotifications = async (userId: string): Promise<string | null> => {
-  // --- 1. WEB / PWA ANDROID HANDLER ---
+  // --- 1. WEB / PWA HANDLER ---
   if (Platform.OS === 'web') {
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+    const vapidKey = process.env.EXPO_PUBLIC_VAPID_KEY;
+
+    if (!vapidKey || isLocalhost) {
+      const mockToken = `WebPushToken_${userId}`;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ expo_push_token: mockToken })
+        .eq('id', userId);
+      if (error) throw error;
+      console.log('[Notifications] Web mock push token saved:', mockToken);
+      return mockToken;
+    }
+
     if (typeof window === 'undefined' || !('Notification' in window)) {
       console.log('[Notifications] Web push notifications are not supported by this browser.');
       return null;
@@ -24,28 +68,18 @@ export const registerForPushNotifications = async (userId: string): Promise<stri
         return null;
       }
 
-      if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration.pushManager) {
-          const subscription =
-            (await registration.pushManager.getSubscription()) ||
-            (await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: process.env.EXPO_PUBLIC_VAPID_KEY,
-            }));
-
-          const subString = JSON.stringify(subscription);
-
-          // Store Web Push Subscription in Supabase
-          const { error } = await supabase
-            .from('profiles')
-            .update({ web_push_subscription: subString })
-            .eq('id', userId);
-
-          if (error) throw error;
-          console.log('[Notifications] Web push subscription saved successfully.');
-          return subString;
-        }
+      try {
+        const token = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
+        console.log('Generated Push Token:', token.data);
+        const { error } = await supabase
+          .from('profiles')
+          .update({ expo_push_token: token.data })
+          .eq('id', userId);
+        if (error) throw error;
+        return token.data;
+      } catch (expoError) {
+        console.warn('[Notifications] Web Expo push token unavailable; trying Web Push:', expoError);
+        return await saveWebPushSubscription(userId);
       }
     } catch (err) {
       console.warn('[Notifications] Web push registration failed:', err);
@@ -76,10 +110,11 @@ export const registerForPushNotifications = async (userId: string): Promise<stri
     return null;
   }
 
-  const tokenResponse = await Notifications.getExpoPushTokenAsync();
+  const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
   const expoPushToken = tokenResponse.data;
   if (!expoPushToken) return null;
 
+  console.log('Generated Push Token:', expoPushToken);
   const { error } = await supabase
     .from('profiles')
     .update({ expo_push_token: expoPushToken })

@@ -4,22 +4,23 @@ import * as Notifications from 'expo-notifications';
 import { router, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
+import { registerForPushNotifications } from '../../lib/notifications';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, sendPasswordResetLink, supabase, updatePassword } from '../../lib/supabase';
 
@@ -141,30 +142,7 @@ export default function MerchantProfileScreen() {
   });
 
   const requestNotificationPermission = async (userId: string) => {
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
-        await Notification.requestPermission();
-      }
-      return;
-    }
-
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('mvs-default', {
-        name: 'MVS Notifications',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#10B981',
-        sound: 'default',
-      });
-    }
-
-    const permissions = await Notifications.requestPermissionsAsync();
-    if (!permissions.granted) return;
-
-    const token = await Notifications.getExpoPushTokenAsync();
-    if (token.data) {
-      await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', userId);
-    }
+    await registerForPushNotifications(userId);
   };
 
   const loadNotificationPreferences = async (userId: string) => {
@@ -502,6 +480,7 @@ export default function MerchantProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
           <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
+          <Setting label="My Inventory" icon="archive" onPress={() => router.push('/inventory')} />
           <Setting label="Change Password" icon="lock" onPress={() => setModal('password')} />
           <Setting label="Notifications" icon="bell" onPress={() => setModal('notifications')} />
           <Setting label="Bank Account" icon="bank" onPress={() => setModal('bank')} />
@@ -689,7 +668,7 @@ export default function MerchantProfileScreen() {
                 }}
               />
 
-              <TouchableOpacity style={styles.save} onPress={() => setModal(null)}>
+              <TouchableOpacity style={styles.save} onPress={() => { void saveNotificationPreferences(notifications); setModal(null); }}>
                 <Text style={styles.saveText}>Save Preferences</Text>
               </TouchableOpacity>
             </ScrollView>

@@ -237,6 +237,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
+    flexGrow: 1,
     padding: 24,
     paddingBottom: 42,
     justifyContent: 'space-between',

@@ -124,7 +124,16 @@ export default function SignupScreen() {
           console.warn('[Signup] Location unavailable:', locationError);
         }
         const { error: profileError } = await supabase.from('profiles').upsert(
-          { id: user.id, email: sanitizeInput(user.email), full_name: profileName, phone_number: cleanPhoneNumber, role: userRole, ...location },
+          {
+            id: user.id,
+            email: sanitizeInput(user.email),
+            full_name: profileName,
+            phone_number: cleanPhoneNumber,
+            role: userRole,
+            specialty: userRole === 'vet' ? 'General Veterinary Practitioner' : null,
+            title: userRole === 'vet' ? 'Dr.' : null,
+            ...location,
+          },
           { onConflict: 'id' },
         );
         if (profileError) {
@@ -381,6 +390,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
     padding: 24,
     paddingBottom: 42,
   },

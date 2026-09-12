@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { addMarketplaceProduct, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -17,6 +17,36 @@ export default function MerchantDashboardScreen() {
   const [form, setForm] = useState({ title: '', category: '', price: '', stock: '' });
   const [metrics, setMetrics] = useState({ totalSales: 0, activeListings: 0, pendingOrders: 0 });
   const [productOrderStatuses, setProductOrderStatuses] = useState<Record<string, string>>({});
+  const [supportOffsetY, setSupportOffsetY] = useState(0);
+  const openWhatsAppSupport = async () => {
+    const message = 'Hello MVS Support, I need assistance with my account. Role: merchant';
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `whatsapp://send?phone=2349074874395&text=${encodedMessage}`;
+    const webUrl = `https://wa.me/2349074874395?text=${encodedMessage}`;
+    try {
+      if (await Linking.canOpenURL(whatsappUrl)) await Linking.openURL(whatsappUrl);
+      else await Linking.openURL(webUrl);
+    } catch {
+      await Linking.openURL(webUrl);
+    }
+  };
+  const [supportPanResponder] = useState(() => {
+    let currentOffset = 0;
+    let startOffset = 0;
+    let moved = false;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { startOffset = currentOffset; moved = false; },
+      onPanResponderMove: (_, gesture) => {
+        if (Math.abs(gesture.dy) > 6) moved = true;
+        currentOffset = Math.max(-300, Math.min(300, startOffset + gesture.dy));
+        setSupportOffsetY(currentOffset);
+      },
+      onPanResponderRelease: () => { if (!moved) void openWhatsAppSupport(); },
+      onPanResponderTerminate: () => { moved = true; },
+    });
+  });
+
 
   // WEB / PWA Android Push Notification Registration
   useEffect(() => {
@@ -169,7 +199,7 @@ export default function MerchantDashboardScreen() {
     <Text style={styles.title}>Store Dashboard</Text><Text style={styles.subtitle}>Manage your inventory and sales</Text>
     <View style={styles.stats}>
       <Stat icon="cash" label="Total Sales" value={`₦${metrics.totalSales.toLocaleString('en-NG')}`} color="#10B981" />
-      <Stat icon="package-variant" label="Active Listings" value={String(metrics.activeListings)} color="#3B82F6" onPress={() => router.push('/(merchant)/inventory')} />
+      <Stat icon="package-variant" label="Active Listings" value={String(metrics.activeListings)} color="#3B82F6" onPress={() => router.push('/inventory')} />
       <Stat icon="clock" label="Pending Orders" value={String(metrics.pendingOrders)} color="#F59E0B" />
     </View>
     <KnowledgeHubSection />
@@ -194,6 +224,7 @@ export default function MerchantDashboardScreen() {
       );
     })}
   </ScrollView>
+  <View {...supportPanResponder.panHandlers} style={[supportFabStyle, { transform: [{ translateY: supportOffsetY }] }]}><MaterialCommunityIcons name="whatsapp" size={29} color="#FFFFFF" /></View>
   <Modal visible={visible} animationType="slide"><SafeAreaView style={styles.modal}><View style={styles.modalHeader}><TouchableOpacity onPress={() => setVisible(false)}><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity><Text style={styles.modalTitle}>Add New Product</Text><View style={{ width: 24 }} /></View><ScrollView contentContainerStyle={styles.form}>
     <Text style={styles.label}>Product Title</Text><TextInput value={form.title} onChangeText={(title) => setForm({ ...form, title })} style={styles.input} placeholder="e.g. Premium Dog Collar" placeholderTextColor="#64748B" />
     <Text style={styles.label}>Category</Text><View style={styles.categories}>{categories.map((category) => <TouchableOpacity key={category} onPress={() => setForm({ ...form, category })} style={[styles.category, form.category === category && styles.selected]}><Text style={[styles.categoryText, form.category === category && styles.selectedText]}>{category}</Text></TouchableOpacity>)}</View>
@@ -202,6 +233,8 @@ export default function MerchantDashboardScreen() {
     <TouchableOpacity style={styles.publish} onPress={publish}><MaterialCommunityIcons name="upload" size={19} color="#FFFFFF" /><Text style={styles.publishText}>Publish to Global Marketplace</Text></TouchableOpacity>
   </ScrollView></SafeAreaView></Modal></SafeAreaView>;
 }
+
+const supportFabStyle = { position: 'absolute' as const, bottom: 24, right: 20, zIndex: 9999, width: 56, height: 56, borderRadius: 28, backgroundColor: '#005F53', alignItems: 'center' as const, justifyContent: 'center' as const, elevation: 8, shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } };
 
 function Stat({ icon, label, value, color, onPress }: { icon: string; label: string; value: string; color: string; onPress?: () => void }) {
   const content = <View style={styles.stat}><MaterialCommunityIcons name={icon as any} size={25} color={color} /><Text style={styles.muted}>{label}</Text><Text style={styles.statValue}>{value}</Text></View>;

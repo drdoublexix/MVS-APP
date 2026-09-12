@@ -7,6 +7,7 @@ import { Alert, Image, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Sw
 import EditPetModal, { type EditablePet } from '../../components/EditPetModal';
 import PetMedicalHistory from '../../components/PetMedicalHistory';
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
+import { registerForPushNotifications } from '../../lib/notifications';
 import { calculatePetAgeInWeeks } from '../../lib/petAge';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
@@ -69,48 +70,11 @@ export default function ProfileScreen() {
     const user = await getCurrentUser();
     if (!user) return;
     try {
-      await requestNotificationPermission(user.id);
+      await registerForPushNotifications(user.id);
     } catch (error) {
       console.warn('[Notifications] Permission or token registration failed:', error);
     }
     await supabase.from('profiles').update({ notification_preferences: prefs }).eq('id', user.id);
-  };
-
-  const requestNotificationPermission = async (userId: string) => {
-    if (Platform.OS === 'web') {
-      if (typeof window === 'undefined' || !('Notification' in window)) return;
-
-      const permission = Notification.permission === 'granted'
-        ? 'granted'
-        : await Notification.requestPermission();
-      if (permission !== 'granted' || !('serviceWorker' in navigator)) return;
-
-      const registration = await navigator.serviceWorker.ready;
-      if (!registration.pushManager) return;
-
-      const vapidKey = process.env.EXPO_PUBLIC_VAPID_KEY;
-      const subscription =
-        (await registration.pushManager.getSubscription()) ||
-        (vapidKey
-          ? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey })
-          : null);
-
-      if (subscription) {
-        await supabase
-          .from('profiles')
-          .update({ web_push_subscription: JSON.stringify(subscription) })
-          .eq('id', userId);
-      }
-      return;
-    }
-
-    const permissions = await Notifications.requestPermissionsAsync();
-    if (!permissions.granted) return;
-
-    const token = await Notifications.getExpoPushTokenAsync();
-    if (token.data) {
-      await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', userId);
-    }
   };
 
   useEffect(() => {

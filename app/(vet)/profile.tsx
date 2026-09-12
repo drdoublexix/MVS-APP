@@ -3,22 +3,23 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
+import { registerForPushNotifications } from '../../lib/notifications';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
@@ -107,6 +108,11 @@ export default function VetProfileScreen() {
   const saveNotificationPreferences = async (prefs: VetNotificationPrefs) => {
     const user = await getCurrentUser();
     if (!user) return;
+    try {
+      await registerForPushNotifications(user.id);
+    } catch (error) {
+      console.warn('[Notifications] Permission or token registration failed:', error);
+    }
     await supabase.from('profiles').update({ notification_preferences: prefs }).eq('id', user.id);
   };
 
@@ -692,7 +698,7 @@ export default function VetProfileScreen() {
                 }}
               />
 
-              <TouchableOpacity style={styles.save} onPress={() => setModal(null)}>
+              <TouchableOpacity style={styles.save} onPress={() => { void saveNotificationPreferences(notifications); setModal(null); }}>
                 <Text style={styles.saveText}>Save Preferences</Text>
               </TouchableOpacity>
             </ScrollView>

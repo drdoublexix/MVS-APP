@@ -7,6 +7,11 @@
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "mvsapp",
+    "extra": {
+      "eas": {
+        "projectId": "5013bac6-0c3a-4c17-b268-e477a44b"
+      }
+    },
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -76,7 +81,7 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0F172A"
         }
       ],
       [
