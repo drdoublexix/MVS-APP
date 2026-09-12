@@ -6,20 +6,19 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
@@ -27,17 +26,17 @@ import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterw
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-    deleteRealtimeMessage,
-    ensureConsultationRecord,
-    getCurrentUser,
-    isUuid,
-    normalizeUuid,
-    sendRealtimeMessage,
-    subscribeToMessages,
-    supabase,
-    uploadChatAttachment,
-    type ConsultationStatus,
-    type RealtimeMessage,
+  deleteRealtimeMessage,
+  ensureConsultationRecord,
+  getCurrentUser,
+  isUuid,
+  normalizeUuid,
+  sendRealtimeMessage,
+  subscribeToMessages,
+  supabase,
+  uploadChatAttachment,
+  type ConsultationStatus,
+  type RealtimeMessage,
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 
@@ -63,6 +62,7 @@ type Thread = {
   participantId: string;
   participantName: string;
   participantRole: string;
+  created_at?: string;
   consultation_status?: ConsultationStatus;
   productName?: string;
   messages: RealtimeMessage[];
@@ -165,6 +165,20 @@ type VoiceNoteControls = {
 
 const formatPatientAge = calculatePetAgeInWeeks;
 
+const formatMessageTime = (createdAt: string) =>
+  new Date(createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+const getLatestThreadTime = (thread: Thread) =>
+  new Date(
+    thread.messages?.[thread.messages.length - 1]?.created_at ||
+      thread.created_at ||
+      0
+  ).getTime();
+
 const firstParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
@@ -222,6 +236,170 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate }: {
     </TouchableOpacity>
   );
 }
+const styles = {
+  container: { flex: 1, backgroundColor: "#0F172A" },
+  chatRoot: { flex: 1, position: "relative" },
+  header: { padding: 18, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  roomHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "column", alignItems: "stretch", gap: 12, position: "relative", zIndex: 10, elevation: 5 },
+  headerTopRow: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
+  headerTitleContainer: { flex: 1, flexShrink: 1, minWidth: 0 },
+  headerActions: { width: "100%", flexGrow: 1, flexShrink: 1, minHeight: 44, maxHeight: 56, zIndex: 11, elevation: 6, overflow: "visible" },
+  headerActionsContent: { flexDirection: "row", flexWrap: "nowrap", alignItems: "center", gap: 8, zIndex: 12, elevation: 7 },
+  consultationBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  consultationStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerConsultationControl: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" },
+  headerConsultationStatus: { color: "#D1FAE5", fontSize: 12, fontWeight: "600" },
+  consultationEndedBadge: { color: "#CBD5E1", fontSize: 12, fontWeight: "600" },
+  consultationIndicator: { width: 8, height: 8, borderRadius: 4 },
+  consultationIndicatorActive: { backgroundColor: "#10B981" },
+  consultationIndicatorCompleted: { backgroundColor: "#9CA3AF" },
+  consultationActive: { backgroundColor: "#065F46" },
+  consultationCompleted: { backgroundColor: "#1F2937" },
+  consultationText: { color: "#FFFFFF", fontWeight: "600", flex: 1 },
+  consultationButton: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  startConsultationButton: { backgroundColor: "#10B981" },
+  endConsultationButton: { backgroundColor: "#EF4444" },
+  consultationButtonText: { color: "#FFFFFF", fontWeight: "700" },
+  invoiceAction: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  prescriptionActionHeader: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0E7490", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  invoiceCard: { alignSelf: "stretch", backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 240 },
+  invoiceTitle: { color: "#0F172A", fontSize: 16, fontWeight: "700" },
+  invoiceSeller: { color: "#475569", fontSize: 12, marginTop: 5 },
+  invoiceAmount: { color: "#0F172A", fontSize: 22, fontWeight: "700", marginTop: 10 },
+  invoiceNote: { color: "#475569", fontSize: 13, marginTop: 6 },
+  invoiceBreakdownRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginTop: 6 },
+  invoiceBreakdownName: { color: "#475569", fontSize: 12, flex: 1 },
+  invoiceBreakdownAmount: { color: "#0F172A", fontSize: 12, fontWeight: "600" },
+  invoiceFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
+  pendingBadge: { backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
+  pendingBadgeText: { color: "#B45309", fontSize: 11, fontWeight: "700" },
+  paidBadge: { backgroundColor: "#D1FAE5" },
+  paidBadgeText: { color: "#047857" },
+  payButton: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  payButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  invoiceOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
+  invoiceModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  prescriptionOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
+  prescriptionModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "90%" },
+  prescriptionForm: { paddingBottom: 12, gap: 8 },
+  prescriptionLabel: { color: "#94A3B8", fontSize: 12, marginTop: 8, marginBottom: 4 },
+  prescriptionInstructionsInput: { minHeight: 90, textAlignVertical: "top" },
+  prescriptionSubmit: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 16 },
+  invoiceModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
+  invoiceModalTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+  closeText: { color: "#94A3B8", fontSize: 13 },
+  invoiceLabel: { color: "#94A3B8", fontSize: 12, marginBottom: 6, marginTop: 10 },
+  invoiceForm: { paddingBottom: 10 },
+  invoiceItemRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
+  invoiceDescriptionInput: { flex: 1.5 },
+  invoiceAmountInput: { flex: 0.8 },
+  addInvoiceItem: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 9 },
+  addInvoiceItemText: { color: "#60A5FA", fontSize: 13, fontWeight: "700" },
+  invoiceTotal: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", marginTop: 8, marginBottom: 4 },
+  invoiceNoteInput: { minHeight: 80, textAlignVertical: "top" },
+  prescriptionCard: { backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 250 },
+  prescriptionHeading: { flexDirection: "row", alignItems: "center", gap: 7 },
+  prescriptionTitle: { color: "#0F172A", fontSize: 14, fontWeight: "700" },
+  prescriptionMedication: { color: "#0F172A", fontSize: 18, fontWeight: "700", marginTop: 10 },
+  prescriptionBadges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 9 },
+  prescriptionBadge: { color: "#065F46", backgroundColor: "#D1FAE5", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 4, fontSize: 11, fontWeight: "700" },
+  prescriptionDetail: { color: "#475569", fontSize: 12, marginTop: 9 },
+  prescriptionInstructions: { color: "#334155", fontSize: 13, lineHeight: 19, marginTop: 8 },
+  prescriptionAction: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#0E7490", borderRadius: 8, paddingVertical: 8, marginTop: 12 },
+  prescriptionActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  sendButton: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 18 },
+  sendText: { color: "#FFFFFF", fontWeight: "700" },
+  completeButton: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  patientButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  orderStatusBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1C2541", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
+  idleBadge: { color: "#94A3B8", fontSize: 12, fontWeight: "600" },
+  completeButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  completedBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#14532D" },
+  completedText: { color: "#DCFCE7", fontSize: 12, flex: 1 },
+  patientOverlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 9999, elevation: 9999, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0, 0, 0, 0.75)", padding: 16 },
+  patientSheet: { width: "100%", maxWidth: 500, maxHeight: "88%", backgroundColor: "#1E293B", borderRadius: 12, padding: 20 },
+  patientClose: { alignSelf: "flex-end", padding: 8 },
+  patientCloseText: { color: "#FFFFFF", fontWeight: "700" },
+  patientHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  patientTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+  patientPet: { borderTopWidth: 1, borderTopColor: "#334155", paddingVertical: 14 },
+  patientGallery: { gap: 8, marginBottom: 10 },
+  patientPhoto: { width: 110, height: 90, borderRadius: 8 },
+  patientPetName: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
+  patientLabel: { color: "#60A5FA", fontSize: 12, fontWeight: "700", marginTop: 12, marginBottom: 3 },
+  patientDetail: { color: "#CBD5E1", fontSize: 13, lineHeight: 20 },
+  title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
+  subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
+  list: { padding: 16 },
+  messages: { padding: 16, flexGrow: 1 },
+  messageRow: { marginBottom: 10 },
+  thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
+  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
+  flex: { flex: 1 },
+  threadNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  threadDeleteButton: { padding: 4 },
+  activeConsultBadge: { backgroundColor: "#065F46", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  activeConsultBadgeText: { color: "#10B981", fontSize: 10, fontWeight: "700" },
+  primary: { color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
+  messageTimestamp: { color: "#A7F3D0", fontSize: 10, alignSelf: "flex-end", marginTop: 5 },
+  muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
+  message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
+  empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
+  bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
+  outgoing: { alignSelf: "flex-end", backgroundColor: "#0E7490" },
+  incoming: { alignSelf: "flex-start", backgroundColor: "#1E293B" },
+  attachment: { width: 220, height: 180, borderRadius: 10, marginBottom: 8 },
+  voiceNoteBubble: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 210 },
+  voicePlayButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
+  voiceProgressArea: { flex: 1, gap: 4 },
+  voiceProgressTrack: { height: 4, borderRadius: 2, backgroundColor: "#64748B", overflow: "hidden" },
+  voiceProgressFill: { height: 4, borderRadius: 2, backgroundColor: "#A7F3D0" },
+  voiceBars: { height: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 2 },
+  voiceBar: { width: 3, minHeight: 3, borderRadius: 2, backgroundColor: "#64748B" },
+  voiceBarActive: { backgroundColor: "#A7F3D0" },
+  voiceDuration: { color: "#CBD5E1", fontSize: 11 },
+  voiceSpeedButton: { minWidth: 34, paddingHorizontal: 5, paddingVertical: 4, borderRadius: 6, backgroundColor: "#334155", alignItems: "center" },
+  voiceSpeedText: { color: "#A7F3D0", fontSize: 11, fontWeight: "700" },
+  locationCard: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 220, padding: 2 },
+  locationTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  locationAddress: { color: "#CBD5E1", fontSize: 12, marginTop: 3 },
+  locationCoordinates: { color: "#94A3B8", fontSize: 11, marginTop: 4 },
+  liveLocationBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 16, paddingVertical: 9, backgroundColor: "#064E3B" },
+  liveLocationText: { color: "#D1FAE5", fontSize: 12, flex: 1 },
+  stopLiveLocationText: { color: "#FCA5A5", fontSize: 12, fontWeight: "700" },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0, 0, 0, 0.65)" },
+  threadDeleteOverlay: { zIndex: 9999, elevation: 9999 },
+  locationSheet: { backgroundColor: "#1E293B", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 20, gap: 8 },
+  locationSheetTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700", marginBottom: 6 },
+  locationOption: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, borderTopWidth: 1, borderTopColor: "#334155" },
+  locationOptionText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
+  locationHint: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
+  locationCancel: { alignItems: "center", paddingVertical: 12, marginTop: 4 },
+  locationCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
+  composer: { padding: 12, borderTopWidth: 1, borderTopColor: "#334155", gap: 8 },
+  composerRow: { flexDirection: "row", gap: 8, minHeight: 44 },
+  selectedAttachment: { flexDirection: "row", alignItems: "center", gap: 8 },
+  selectedAttachmentImage: { width: 56, height: 56, borderRadius: 8 },
+  recordingAction: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  recordingStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  recordingDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444" },
+  recordingTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  recordingLabel: { color: "#94A3B8", fontSize: 13 },
+  attach: { width: 44, borderRadius: 8, backgroundColor: "#475569", alignItems: "center", justifyContent: "center" },
+  input: { backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 8, color: "#FFFFFF", padding: 11 },
+  send: { width: 44, borderRadius: 8, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
+  voiceIdleMic: { width: 44, borderRadius: 8, backgroundColor: "#0E7490", alignItems: "center", justifyContent: "center" },
+  recordingBar: { flex: 1, borderRadius: 8, backgroundColor: "#172554", flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
+  unreadBadge: { minWidth: 24, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", marginLeft: 8 },
+  unreadBadgeText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  deleteActions: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: -4, marginBottom: 4 },
+  deletePrompt: { color: "#FCA5A5", fontSize: 12, marginRight: 4 },
+  deleteButton: { backgroundColor: "#DC2626", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  deleteButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
+  cancelButton: { backgroundColor: "#475569", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  cancelButtonText: { color: "#FFFFFF", fontWeight: "600", fontSize: 12 },
+} as const;
 
 const appendUniqueMessage = (
   messages: RealtimeMessage[],
@@ -284,6 +462,7 @@ export default function ChatScreen() {
   const [message, setMessage] = useState(
     initialMessageParam || starterMessageParam || ""
   );
+  const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachmentVisible, setAttachmentVisible] = useState(false);
@@ -549,11 +728,7 @@ export default function ChatScreen() {
         });
         const activeThreads = rawThreads
           .filter((thread) => !thread.deleted_by_user_ids.includes(cleanUserId))
-          .sort(
-            (first, second) =>
-              Number(second.consultation_status === "active") -
-              Number(first.consultation_status === "active")
-          );
+          .sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first));
         setThreads(activeThreads);
       } catch (error) {
         console.error("[Chat] Failed to load conversations:", error);
@@ -569,6 +744,52 @@ export default function ChatScreen() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    const inboxChannel = supabase
+      .channel(`messages:inbox:${currentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const incoming = payload.new as RealtimeMessage;
+          if (
+            incoming.sender_id !== currentUserId &&
+            incoming.receiver_id !== currentUserId
+          ) {
+            return;
+          }
+          setThreads((current) => {
+            const participantId = normalizeUuid(
+              incoming.sender_id === currentUserId
+                ? incoming.receiver_id
+                : incoming.sender_id
+            );
+            if (!participantId) return current;
+            const threadIndex = current.findIndex(
+              (thread) => thread.participantId === participantId
+            );
+            if (threadIndex === -1) return current;
+            const thread = current[threadIndex];
+            const updatedThread = {
+              ...thread,
+              messages: appendUniqueMessage(thread.messages, incoming).sort(
+                (first, second) => first.created_at.localeCompare(second.created_at)
+              ),
+            };
+            return [
+              updatedThread,
+              ...current.filter((_, index) => index !== threadIndex),
+            ];
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(inboxChannel);
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     const routeRecipient = normalizeUuid(
@@ -1570,7 +1791,7 @@ export default function ChatScreen() {
     const cleanSenderId = normalizeUuid(currentUserId);
     const cleanReceiverId = normalizeUuid(active?.participantId);
     const text = sanitizeInput(message);
-    if (!active || !text || !cleanSenderId || !cleanReceiverId) {
+    if (!active || (!text && !selectedImage) || !cleanSenderId || !cleanReceiverId) {
       console.error("[Chat Error]: Missing sender or receiver ID");
       return;
     }
@@ -1579,6 +1800,18 @@ export default function ChatScreen() {
     const senderEmail = sanitizeInput(user?.email);
     if (!senderEmail) {
       console.error("[Chat Error]: Authenticated user email is missing");
+      return;
+    }
+    setUploading(Boolean(selectedImage));
+    let uploaded: Awaited<ReturnType<typeof uploadChatAttachment>> | null = null;
+    try {
+      if (selectedImage) uploaded = await uploadChatAttachment(conversationId, selectedImage);
+    } catch (error) {
+      setUploading(false);
+      Alert.alert(
+        "Attachment failed",
+        error instanceof Error ? error.message : "Could not upload attachment."
+      );
       return;
     }
     if (
@@ -1623,6 +1856,8 @@ export default function ChatScreen() {
         sender_email: senderEmail,
         client_generated_id: tempId,
       },
+      media_url: uploaded?.publicUrl,
+      media_type: uploaded?.mediaType,
       created_at: new Date().toISOString(),
     };
     setMessages((current) => appendUniqueMessage(current, optimistic));
@@ -1634,11 +1869,14 @@ export default function ChatScreen() {
         content: text,
         message_type: "text",
         metadata: optimistic.metadata,
+        media_url: uploaded?.publicUrl,
+        media_type: uploaded?.mediaType,
       });
       setMessages((current) =>
         appendUniqueMessage(current, { ...confirmed, temp_id: tempId })
       );
       setMessage("");
+      setSelectedImage(null);
       router.setParams({ initialMessage: undefined });
     } catch (error) {
       setMessages((current) =>
@@ -1649,45 +1887,25 @@ export default function ChatScreen() {
         "Message failed",
         error instanceof Error ? error.message : "Failed to send message."
       );
+    } finally {
+      setUploading(false);
     }
   };
 
   const attachMessage = async () => {
-    const cleanSenderId = normalizeUuid(currentUserId);
-    const cleanReceiverId = normalizeUuid(active?.participantId);
-    if (!active || !cleanSenderId || !cleanReceiverId || uploading) return;
+    if (uploading) return;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images", "videos"],
+        mediaTypes: ["images"],
         selectionLimit: 1,
       });
       if (result.canceled || !result.assets[0]) return;
-      setUploading(true);
-      const uploaded = await uploadChatAttachment(
-        conversationIdFor(cleanSenderId, cleanReceiverId),
-        result.assets[0]
-      );
-      const user = await getCurrentUser();
-      const senderEmail = user?.email || "";
-      if (!senderEmail) throw new Error("Authenticated user email is missing.");
-      await sendRealtimeMessage({
-        conversation_id: conversationIdFor(cleanSenderId, cleanReceiverId),
-        sender_id: cleanSenderId,
-        receiver_id: cleanReceiverId,
-        content: sanitizeInput(message),
-        message_type: "text",
-        metadata: { sender_name: senderEmail, sender_email: senderEmail },
-        media_url: uploaded.publicUrl,
-        media_type: uploaded.mediaType,
-      });
-      setMessage("");
+      setSelectedImage(result.assets[0]);
     } catch (error) {
       Alert.alert(
         "Attachment failed",
         error instanceof Error ? error.message : "Could not upload attachment."
       );
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -1701,6 +1919,8 @@ export default function ChatScreen() {
         messages={messages}
         message={message}
         setMessage={setMessage}
+        selectedImageUri={selectedImage?.uri || null}
+        onRemoveImage={() => setSelectedImage(null)}
         onBack={handleBack}
         onSend={sendMessage}
         onAttach={() => setAttachmentVisible(true)}
@@ -1785,7 +2005,7 @@ export default function ChatScreen() {
         ) : threads.length === 0 ? (
           <Text style={styles.empty}>No conversations yet.</Text>
         ) : (
-          threads.map((thread) => {
+          [...threads].sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first)).map((thread) => {
             const unreadCount = unreadCounts[thread.id] || 0;
             return (
               <Pressable
@@ -1897,7 +2117,6 @@ export default function ChatScreen() {
     </SafeAreaView>
   );
 }
-
 function ChatRoom({
   active,
   currentUserId,
@@ -1905,6 +2124,8 @@ function ChatRoom({
   messages,
   message,
   setMessage,
+  selectedImageUri,
+  onRemoveImage,
   onBack,
   onSend,
   onAttach,
@@ -1956,6 +2177,8 @@ function ChatRoom({
   messages: RealtimeMessage[];
   message: string;
   setMessage: (value: string) => void;
+  selectedImageUri: string | null;
+  onRemoveImage: () => void;
   onBack: () => void;
   onSend: () => void;
   onAttach: () => void;
@@ -2040,6 +2263,8 @@ function ChatRoom({
         messages={messages}
         message={message}
         setMessage={setMessage}
+        selectedImageUri={selectedImageUri}
+        onRemoveImage={onRemoveImage}
         onBack={onBack}
         onSend={onSend}
         onAttach={onAttach}
@@ -2238,6 +2463,7 @@ function ChatRoom({
                 ) : item.content ? (
                   <Text style={styles.primary}>{item.content}</Text>
                 ) : null}
+                <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
               </TouchableOpacity>
               {deleteCandidate?.id === item.id ? (
                 <View style={styles.deleteActions}>
@@ -2261,6 +2487,15 @@ function ChatRoom({
         )}
       </ScrollView>
       <View style={styles.composer}>
+        {selectedImageUri ? (
+          <View style={styles.selectedAttachment}>
+            <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
+            <TouchableOpacity onPress={onRemoveImage} accessibilityLabel="Remove selected image">
+              <MaterialCommunityIcons name="close-circle" size={24} color="#F87171" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View style={styles.composerRow}>
         {voiceNoteControls.recording ? (
           <View style={styles.recordingBar}>
             <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
@@ -2281,7 +2516,7 @@ function ChatRoom({
               <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
             </TouchableOpacity>
             <TextInput value={message} onChangeText={setMessage} placeholder="Write a message..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline />
-            {message.trim() ? (
+            {message.trim() || selectedImageUri ? (
               <TouchableOpacity style={styles.send} onPress={onSend}>
                 <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
               </TouchableOpacity>
@@ -2292,6 +2527,7 @@ function ChatRoom({
             )}
           </>
         )}
+      </View>
       </View>
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
@@ -2309,7 +2545,6 @@ function ChatRoom({
     </SafeAreaView>
   );
 }
-
 function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -2735,6 +2970,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   messages,
   message,
   setMessage,
+    selectedImageUri,
+    onRemoveImage,
   onBack,
   onSend,
   onAttach,
@@ -2786,6 +3023,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   messages: RealtimeMessage[];
   message: string;
   setMessage: (value: string) => void;
+  selectedImageUri: string | null;
+  onRemoveImage: () => void;
   onBack: () => void;
   onSend: () => void;
   onAttach: () => void;
@@ -3016,6 +3255,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                 ) : item.content ? (
                   <Text style={styles.primary}>{item.content}</Text>
                 ) : null}
+                <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
               </TouchableOpacity>
               {deleteCandidate?.id === item.id ? (
                 <View style={styles.deleteActions}>
@@ -3039,6 +3279,15 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         )}
       </ScrollView>
       <View style={styles.composer}>
+        {selectedImageUri ? (
+          <View style={styles.selectedAttachment}>
+            <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
+            <TouchableOpacity onPress={onRemoveImage} accessibilityLabel="Remove selected image">
+              <MaterialCommunityIcons name="close-circle" size={24} color="#F87171" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View style={styles.composerRow}>
         {voiceNoteControls.recording ? (
           <View style={styles.recordingBar}>
             <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
@@ -3059,7 +3308,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
             </TouchableOpacity>
             <TextInput value={message} onChangeText={setMessage} placeholder="Write a message..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline />
-            {message.trim() ? (
+            {message.trim() || selectedImageUri ? (
               <TouchableOpacity style={styles.send} onPress={onSend}>
                 <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
               </TouchableOpacity>
@@ -3070,6 +3319,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
             )}
           </>
         )}
+        </View>
       </View>
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
@@ -3088,382 +3338,4 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F172A" },
-  chatRoot: { flex: 1, position: "relative" },
-  header: {
-    padding: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: "#334155",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  roomHeader: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#334155",
-    flexDirection: "column",
-    alignItems: "stretch",
-    gap: 12,
-    position: "relative",
-    zIndex: 10,
-    elevation: 5,
-  },
-  headerTopRow: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
-  headerTitleContainer: { flex: 1, flexShrink: 1, minWidth: 0 },
-  headerActions: {
-    width: "100%",
-    flexGrow: 1,
-    flexShrink: 1,
-    minHeight: 44,
-    maxHeight: 56,
-    zIndex: 11,
-    elevation: 6,
-    overflow: "visible",
-  },
-  headerActionsContent: {
-    flexDirection: "row",
-    flexWrap: "nowrap",
-    alignItems: "center",
-    gap: 8,
-    zIndex: 12,
-    elevation: 7,
-  },
-  consultationBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  consultationStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerConsultationControl: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" },
-  headerConsultationStatus: { color: "#D1FAE5", fontSize: 12, fontWeight: "600" },
-  consultationEndedBadge: { color: "#CBD5E1", fontSize: 12, fontWeight: "600" },
-  consultationIndicator: { width: 8, height: 8, borderRadius: 4 },
-  consultationIndicatorActive: { backgroundColor: "#10B981" },
-  consultationIndicatorCompleted: { backgroundColor: "#9CA3AF" },
-  consultationActive: { backgroundColor: "#065F46" },
-  consultationCompleted: { backgroundColor: "#1F2937" },
-  consultationText: { color: "#FFFFFF", fontWeight: "600", flex: 1 },
-  consultationButton: {
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  startConsultationButton: { backgroundColor: "#10B981" },
-  endConsultationButton: { backgroundColor: "#EF4444" },
-  consultationButtonText: { color: "#FFFFFF", fontWeight: "700" },
-  invoiceAction: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
-  prescriptionActionHeader: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0E7490", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
-  invoiceCard: { alignSelf: "stretch", backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 240 },
-  invoiceTitle: { color: "#0F172A", fontSize: 16, fontWeight: "700" },
-  invoiceSeller: { color: "#475569", fontSize: 12, marginTop: 5 },
-  invoiceAmount: { color: "#0F172A", fontSize: 22, fontWeight: "700", marginTop: 10 },
-  invoiceNote: { color: "#475569", fontSize: 13, marginTop: 6 },
-  invoiceBreakdownRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginTop: 6 },
-  invoiceBreakdownName: { color: "#475569", fontSize: 12, flex: 1 },
-  invoiceBreakdownAmount: { color: "#0F172A", fontSize: 12, fontWeight: "600" },
-  invoiceFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
-  pendingBadge: { backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
-  pendingBadgeText: { color: "#B45309", fontSize: 11, fontWeight: "700" },
-  paidBadge: { backgroundColor: "#D1FAE5" },
-  paidBadgeText: { color: "#047857" },
-  payButton: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
-  payButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  invoiceOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
-  invoiceModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  prescriptionOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
-  prescriptionModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "90%" },
-  prescriptionForm: { paddingBottom: 12, gap: 8 },
-  prescriptionLabel: { color: "#94A3B8", fontSize: 12, marginTop: 8, marginBottom: 4 },
-  prescriptionInstructionsInput: { minHeight: 90, textAlignVertical: "top" },
-  prescriptionSubmit: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 16 },
-  invoiceModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
-  invoiceModalTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
-  closeText: { color: "#94A3B8", fontSize: 13 },
-  invoiceLabel: { color: "#94A3B8", fontSize: 12, marginBottom: 6, marginTop: 10 },
-  invoiceForm: { paddingBottom: 10 },
-  invoiceItemRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
-  invoiceDescriptionInput: { flex: 1.5 },
-  invoiceAmountInput: { flex: 0.8 },
-  addInvoiceItem: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 9 },
-  addInvoiceItemText: { color: "#60A5FA", fontSize: 13, fontWeight: "700" },
-  invoiceTotal: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", marginTop: 8, marginBottom: 4 },
-  invoiceNoteInput: { minHeight: 80, textAlignVertical: "top" },
-  prescriptionCard: { backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 250 },
-  prescriptionHeading: { flexDirection: "row", alignItems: "center", gap: 7 },
-  prescriptionTitle: { color: "#0F172A", fontSize: 14, fontWeight: "700" },
-  prescriptionMedication: { color: "#0F172A", fontSize: 18, fontWeight: "700", marginTop: 10 },
-  prescriptionBadges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 9 },
-  prescriptionBadge: { color: "#065F46", backgroundColor: "#D1FAE5", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 4, fontSize: 11, fontWeight: "700" },
-  prescriptionDetail: { color: "#475569", fontSize: 12, marginTop: 9 },
-  prescriptionInstructions: { color: "#334155", fontSize: 13, lineHeight: 19, marginTop: 8 },
-  prescriptionAction: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#0E7490", borderRadius: 8, paddingVertical: 8, marginTop: 12 },
-  prescriptionActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  sendButton: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 18 },
-  sendText: { color: "#FFFFFF", fontWeight: "700" },
-  completeButton: {
-    backgroundColor: "#10B981",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  patientButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#2563EB",
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-  },
-  orderStatusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#1C2541",
-    borderColor: "#10B981",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-  },
-  orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
-  idleBadge: { color: "#94A3B8", fontSize: 12, fontWeight: "600" },
-  completeButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  completedBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#14532D",
-  },
-  completedText: { color: "#DCFCE7", fontSize: 12, flex: 1 },
-  patientOverlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 9999,
-    elevation: 9999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
-    padding: 16,
-  },
-  patientSheet: {
-    width: "100%",
-    maxWidth: 500,
-    maxHeight: "88%",
-    backgroundColor: "#1E293B",
-    borderRadius: 12,
-    padding: 20,
-  },
-  patientClose: { alignSelf: "flex-end", padding: 8 },
-  patientCloseText: { color: "#FFFFFF", fontWeight: "700" },
-  patientHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  patientTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
-  patientPet: {
-    borderTopWidth: 1,
-    borderTopColor: "#334155",
-    paddingVertical: 14,
-  },
-  patientGallery: { gap: 8, marginBottom: 10 },
-  patientPhoto: { width: 110, height: 90, borderRadius: 8 },
-  patientPetName: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
-  patientLabel: {
-    color: "#60A5FA",
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 12,
-    marginBottom: 3,
-  },
-  patientDetail: { color: "#CBD5E1", fontSize: 13, lineHeight: 20 },
-  title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
-  subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
-  list: { padding: 16 },
-  messages: { padding: 16, flexGrow: 1 },
-  messageRow: { marginBottom: 10 },
-  thread: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    padding: 13,
-    backgroundColor: "#1E293B",
-    borderWidth: 1,
-    borderColor: "#334155",
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#10B981",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  flex: { flex: 1 },
-  threadNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  threadDeleteButton: { padding: 4 },
-  activeConsultBadge: {
-    backgroundColor: "#065F46",
-    borderColor: "#10B981",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  activeConsultBadgeText: { color: "#10B981", fontSize: 10, fontWeight: "700" },
-  primary: { color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
-  muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
-  message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
-  empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
-  bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
-  outgoing: { alignSelf: "flex-end", backgroundColor: "#0E7490" },
-  incoming: { alignSelf: "flex-start", backgroundColor: "#1E293B" },
-  attachment: { width: 220, height: 180, borderRadius: 10, marginBottom: 8 },
-  voiceNoteBubble: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 210 },
-  voicePlayButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
-  voiceProgressArea: { flex: 1, gap: 4 },
-  voiceProgressTrack: { height: 4, borderRadius: 2, backgroundColor: "#64748B", overflow: "hidden" },
-  voiceProgressFill: { height: 4, borderRadius: 2, backgroundColor: "#A7F3D0" },
-  voiceBars: { height: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 2 },
-  voiceBar: { width: 3, minHeight: 3, borderRadius: 2, backgroundColor: "#64748B" },
-  voiceBarActive: { backgroundColor: "#A7F3D0" },
-  voiceDuration: { color: "#CBD5E1", fontSize: 11 },
-  voiceSpeedButton: { minWidth: 34, paddingHorizontal: 5, paddingVertical: 4, borderRadius: 6, backgroundColor: "#334155", alignItems: "center" },
-  voiceSpeedText: { color: "#A7F3D0", fontSize: 11, fontWeight: "700" },
-  locationCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    minWidth: 220,
-    padding: 2,
-  },
-  locationTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
-  locationAddress: { color: "#CBD5E1", fontSize: 12, marginTop: 3 },
-  locationCoordinates: { color: "#94A3B8", fontSize: 11, marginTop: 4 },
-  liveLocationBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    backgroundColor: "#064E3B",
-  },
-  liveLocationText: { color: "#D1FAE5", fontSize: 12, flex: 1 },
-  stopLiveLocationText: { color: "#FCA5A5", fontSize: 12, fontWeight: "700" },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.65)",
-  },
-  threadDeleteOverlay: { zIndex: 9999, elevation: 9999 },
-  locationSheet: {
-    backgroundColor: "#1E293B",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 20,
-    gap: 8,
-  },
-  locationSheetTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700", marginBottom: 6 },
-  locationOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#334155",
-  },
-  locationOptionText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
-  locationHint: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
-  locationCancel: { alignItems: "center", paddingVertical: 12, marginTop: 4 },
-  locationCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
-  composer: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#334155",
-    flexDirection: "row",
-    gap: 8,
-  },
-  recordingAction: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  recordingStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
-  recordingDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444" },
-  recordingTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
-  recordingLabel: { color: "#94A3B8", fontSize: 13 },
-  attach: {
-    width: 44,
-    borderRadius: 8,
-    backgroundColor: "#475569",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  input: {
-    backgroundColor: "#1E293B",
-    borderWidth: 1,
-    borderColor: "#334155",
-    borderRadius: 8,
-    color: "#FFFFFF",
-    padding: 11,
-  },
-  send: {
-    width: 44,
-    borderRadius: 8,
-    backgroundColor: "#10B981",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  voiceIdleMic: {
-    width: 44,
-    borderRadius: 8,
-    backgroundColor: "#0E7490",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recordingBar: { flex: 1, borderRadius: 8, backgroundColor: "#172554", flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
-  unreadBadge: {
-    minWidth: 24,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-    backgroundColor: "#EF4444",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-  unreadBadgeText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  deleteActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: -4,
-    marginBottom: 4,
-  },
-  deletePrompt: { color: "#FCA5A5", fontSize: 12, marginRight: 4 },
-  deleteButton: {
-    backgroundColor: "#DC2626",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  deleteButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
-  cancelButton: {
-    backgroundColor: "#475569",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  cancelButtonText: { color: "#FFFFFF", fontWeight: "600", fontSize: 12 },
-});
+
