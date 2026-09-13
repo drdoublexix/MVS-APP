@@ -374,8 +374,9 @@ const styles = {
   roomHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "column", alignItems: "stretch", gap: 12, position: "relative", zIndex: 10, elevation: 5 },
   headerTopRow: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
   headerTitleContainer: { flex: 1, flexShrink: 1, minWidth: 0 },
-  headerActions: { width: "100%", flexGrow: 1, flexShrink: 1, minHeight: 44, maxHeight: 56, zIndex: 11, elevation: 6, overflow: "visible" },
-  headerActionsContent: { flexDirection: "row", flexWrap: "nowrap", alignItems: "center", gap: 8, zIndex: 12, elevation: 7 },
+  headerActionsWrapper: { width: "100%", overflow: "hidden" },
+  headerActions: { width: "100%", flexGrow: 0, flexShrink: 1, minHeight: 44, maxHeight: 56, zIndex: 11, elevation: 6 },
+  headerActionsContent: { flexGrow: 1, flexDirection: "row", flexWrap: "nowrap", alignItems: "center", paddingHorizontal: 12, gap: 8, zIndex: 12, elevation: 7 },
   consultationBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
   consultationStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
   headerConsultationControl: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" },
@@ -387,12 +388,12 @@ const styles = {
   consultationActive: { backgroundColor: "#065F46" },
   consultationCompleted: { backgroundColor: "#1F2937" },
   consultationText: { color: "#FFFFFF", fontWeight: "600", flex: 1 },
-  consultationButton: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
-  startConsultationButton: { backgroundColor: "#10B981" },
-  endConsultationButton: { backgroundColor: "#EF4444" },
+  consultationButton: { flexShrink: 0, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  startConsultationButton: { flexShrink: 0, backgroundColor: "#10B981" },
+  endConsultationButton: { flexShrink: 0, backgroundColor: "#EF4444" },
   consultationButtonText: { color: "#FFFFFF", fontWeight: "700" },
-  invoiceAction: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
-  prescriptionActionHeader: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0E7490", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  invoiceAction: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  prescriptionActionHeader: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0E7490", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   invoiceCard: { alignSelf: "stretch", backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14, minWidth: 240 },
   invoiceTitle: { color: "#0F172A", fontSize: 16, fontWeight: "700" },
   invoiceSeller: { color: "#475569", fontSize: 12, marginTop: 5 },
@@ -441,12 +442,12 @@ const styles = {
   prescriptionActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   sendButton: { backgroundColor: "#10B981", borderRadius: 9, padding: 13, alignItems: "center", marginTop: 18 },
   sendText: { color: "#FFFFFF", fontWeight: "700" },
-  completeButton: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
-  patientButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  completeButton: { flexShrink: 0, backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  patientButton: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1C2541", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
   viewProfileButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
-  buyerProtectionButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#92400E", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  buyerProtectionButton: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#92400E", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   profileModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099", padding: 20 },
   profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
   protectionModal: { width: "100%", maxWidth: 420, maxHeight: "88%", backgroundColor: "#1E293B", borderColor: "#92400E", borderWidth: 1, borderRadius: 14, padding: 20 },
@@ -2625,12 +2626,13 @@ function ChatRoom({
           </Text>
         </View>
         </View>
-        <ScrollView
-          horizontal={true}
-          showsHorizontalScrollIndicator={false}
-          style={styles.headerActions}
-          contentContainerStyle={styles.headerActionsContent}
-        >
+        <View style={styles.headerActionsWrapper}>
+          <ScrollView
+            horizontal={true}
+            showsHorizontalScrollIndicator={false}
+            style={styles.headerActions}
+            contentContainerStyle={styles.headerActionsContent}
+          >
         {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} /> : null}
         {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
           <TouchableOpacity
@@ -2690,7 +2692,8 @@ function ChatRoom({
             <Text style={styles.completeButtonText}>🛡️ Buyer Protection</Text>
           </TouchableOpacity>
         ) : null}
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
       <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
       {isVetClientThread && consultationStatus ? (
@@ -3336,12 +3339,13 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           </Text>
         </View>
         </View>
-        <ScrollView
-          horizontal={true}
-          showsHorizontalScrollIndicator={false}
-          style={styles.headerActions}
-          contentContainerStyle={styles.headerActionsContent}
-        >
+        <View style={styles.headerActionsWrapper}>
+          <ScrollView
+            horizontal={true}
+            showsHorizontalScrollIndicator={false}
+            style={styles.headerActions}
+            contentContainerStyle={styles.headerActionsContent}
+          >
           {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} /> : null}
           {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
             <TouchableOpacity
@@ -3413,7 +3417,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               <Text style={styles.completeButtonText}>🛡️ Buyer Protection</Text>
             </TouchableOpacity>
           ) : null}
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
       <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
       {isVetClientThread ? (
