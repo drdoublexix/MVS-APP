@@ -1,24 +1,31 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import {
+    AudioModule,
+    RecordingPresets,
+    setAudioModeAsync,
+    useAudioPlayer,
+    useAudioPlayerStatus,
+    useAudioRecorder,
+} from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
@@ -26,17 +33,17 @@ import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterw
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-  deleteRealtimeMessage,
-  ensureConsultationRecord,
-  getCurrentUser,
-  isUuid,
-  normalizeUuid,
-  sendRealtimeMessage,
-  subscribeToMessages,
-  supabase,
-  uploadChatAttachment,
-  type ConsultationStatus,
-  type RealtimeMessage,
+    deleteRealtimeMessage,
+    ensureConsultationRecord,
+    getCurrentUser,
+    isUuid,
+    normalizeUuid,
+    sendRealtimeMessage,
+    subscribeToMessages,
+    supabase,
+    uploadChatAttachment,
+    type ConsultationStatus,
+    type RealtimeMessage,
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 
@@ -646,10 +653,10 @@ export default function ChatScreen() {
   const [farmSoapSubmitting, setFarmSoapSubmitting] = useState(false);
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
   const [isLongPressActive, setIsLongPressActive] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const openedRoute = useRef<string | null>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveLocationSubscription = useRef<Location.LocationSubscription | null>(null);
   const activeLiveMessageIdRef = useRef<string | null>(null);
@@ -663,17 +670,15 @@ export default function ChatScreen() {
   const startRecording = async () => {
     if (recording) return;
     try {
-      const permission = await Audio.requestPermissionsAsync();
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert("Microphone permission required", "Allow MVS to record a voice note.");
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const result = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(result.recording);
-      recordingRef.current = result.recording;
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setRecording(true);
       setRecordingSeconds(0);
       recordingTimer.current = setInterval(() => {
         setRecordingSeconds((seconds) => seconds + 1);
@@ -685,33 +690,29 @@ export default function ChatScreen() {
   };
 
   const cancelRecording = async () => {
-    const activeRecording = recording;
     stopRecordingTimer();
-    setRecording(null);
-    recordingRef.current = null;
+    setRecording(false);
     setRecordingSeconds(0);
-    if (activeRecording) {
+    if (audioRecorder.isRecording) {
       try {
-        await activeRecording.stopAndUnloadAsync();
+        await audioRecorder.stop();
       } catch (error) {
         console.warn("[Voice Note] Failed to discard recording:", error);
       }
     }
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    await setAudioModeAsync({ allowsRecording: false });
   };
 
   const sendRecording = async () => {
-    const activeRecording = recording;
     const cleanSenderId = normalizeUuid(currentUserId);
     const cleanReceiverId = normalizeUuid(active?.participantId);
-    if (!activeRecording || !active || !cleanSenderId || !cleanReceiverId) return;
+    if (!recording || !active || !cleanSenderId || !cleanReceiverId) return;
     stopRecordingTimer();
-    setRecording(null);
-    recordingRef.current = null;
+    setRecording(false);
     setRecordingSeconds(0);
     try {
-      await activeRecording.stopAndUnloadAsync();
-      const uri = activeRecording.getURI();
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
       if (!uri) throw new Error("The recording file is unavailable.");
       const response = await fetch(uri);
       const blob = await response.blob();
@@ -739,17 +740,14 @@ export default function ChatScreen() {
       console.error("[Voice Note] Failed to send recording:", error);
       Alert.alert("Voice note failed", "Could not upload the recording.");
     } finally {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await setAudioModeAsync({ allowsRecording: false });
     }
   };
 
   useEffect(() => () => {
     stopRecordingTimer();
-    if (recordingRef.current) {
-      void recordingRef.current.stopAndUnloadAsync().catch(() => undefined);
-      recordingRef.current = null;
-    }
-  }, []);
+    if (audioRecorder.isRecording) void audioRecorder.stop().catch(() => undefined);
+  }, [audioRecorder]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2851,119 +2849,21 @@ function ChatRoom({
   );
 }
 function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [positionMillis, setPositionMillis] = useState(0);
-  const [durationMillis, setDurationMillis] = useState(0);
+  const player = useAudioPlayer(mediaUrl, { updateInterval: 100 });
+  const status = useAudioPlayerStatus(player);
+  const playing = status.playing;
+  const positionMillis = status.currentTime * 1000;
+  const durationMillis = status.duration * 1000;
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
-  const playbackSpeedRef = useRef<1 | 1.5 | 2>(1);
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    let loadedSound: Audio.Sound | null = null;
-    const loadSound = async () => {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync().catch(() => undefined);
-        soundRef.current = null;
-      }
-      htmlAudioRef.current?.pause();
-      htmlAudioRef.current = null;
-      setSound(null);
-      try {
-        const { sound: nextSound } = await Audio.Sound.createAsync(
-          { uri: mediaUrl },
-          Platform.OS === "web"
-            ? ({ shouldPlay: false, html5: true } as any)
-            : { shouldPlay: false },
-          (status) => {
-            if (!status.isLoaded || !mounted) return;
-            setPlaying(status.isPlaying);
-            setPositionMillis(status.positionMillis);
-            setDurationMillis(status.durationMillis || 0);
-            if (status.didJustFinish) setPlaying(false);
-          }
-        );
-        loadedSound = nextSound;
-        soundRef.current = nextSound;
-        await nextSound.setRateAsync(playbackSpeedRef.current, true);
-        if (mounted) setSound(nextSound);
-        else await nextSound.unloadAsync();
-      } catch (error) {
-        console.warn("[Voice Note] Expo-AV audio load failed:", error);
-      }
-    };
-    void loadSound();
-
-    return () => {
-      mounted = false;
-      if (loadedSound) {
-        soundRef.current = null;
-        void loadedSound.unloadAsync();
-      }
-      htmlAudioRef.current?.pause();
-      htmlAudioRef.current = null;
-    };
-  }, [mediaUrl]);
-
-  const togglePlayback = async () => {
-    try {
-      if (sound) {
-        const status = await sound.getStatusAsync();
-        if (status.isLoaded) {
-          if (status.isPlaying) await sound.pauseAsync();
-          else await sound.playAsync();
-          return;
-        }
-      }
-
-      if (Platform.OS !== "web" || typeof window === "undefined") return;
-      if (!htmlAudioRef.current) {
-        const htmlAudio = new window.Audio(mediaUrl);
-        htmlAudio.preload = "metadata";
-        htmlAudio.ontimeupdate = () => {
-          setPositionMillis(htmlAudio.currentTime * 1000);
-          setDurationMillis(Number.isFinite(htmlAudio.duration) ? htmlAudio.duration * 1000 : 0);
-        };
-        htmlAudio.onplay = () => setPlaying(true);
-        htmlAudio.onpause = () => setPlaying(false);
-        htmlAudio.onended = () => {
-          setPlaying(false);
-          setPositionMillis(0);
-        };
-        htmlAudioRef.current = htmlAudio;
-      }
-      if (htmlAudioRef.current.paused) await htmlAudioRef.current.play();
-      else htmlAudioRef.current.pause();
-    } catch (error) {
-      console.warn("[Voice Note] Audio playback failed:", error);
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        try {
-          htmlAudioRef.current = new window.Audio(mediaUrl);
-          htmlAudioRef.current.onplay = () => setPlaying(true);
-          htmlAudioRef.current.onpause = () => setPlaying(false);
-          await htmlAudioRef.current.play();
-        } catch (fallbackError) {
-          console.warn("[Voice Note] HTML5 audio fallback failed:", fallbackError);
-        }
-      }
-    }
+  const togglePlayback = () => {
+    if (player.playing) player.pause();
+    else player.play();
   };
 
-  const cyclePlaybackSpeed = async () => {
+  const cyclePlaybackSpeed = () => {
     const nextSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1;
     setPlaybackSpeed(nextSpeed);
-    playbackSpeedRef.current = nextSpeed;
-    try {
-      if (sound) {
-        const status = await sound.getStatusAsync();
-        if (status.isLoaded) await sound.setRateAsync(nextSpeed, true);
-      }
-      if (htmlAudioRef.current) htmlAudioRef.current.playbackRate = nextSpeed;
-    } catch (error) {
-      console.warn("[Voice Note] Failed to change playback speed:", error);
-    }
+    player.setPlaybackRate(nextSpeed);
   };
 
   const formatDuration = (milliseconds: number) => {

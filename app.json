@@ -8,8 +8,11 @@
     "userInterfaceStyle": "light",
     "scheme": "mvsapp",
     "extra": {
+      "router": {
+        "origin": false
+      },
       "eas": {
-        "projectId": "5013bac6-0c3a-4c17-b268-e477a44b"
+        "projectId": "739602ef-f2b2-49fb-8f3d-ec13cd46a4e3"
       }
     },
     "updates": {
@@ -43,7 +46,9 @@
         "CAMERA",
         "RECORD_AUDIO",
         "POST_NOTIFICATIONS",
-        "RECEIVE_BOOT_COMPLETED"
+        "RECEIVE_BOOT_COMPLETED",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -98,12 +103,23 @@
         }
       ],
       [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow MVS to record voice notes."
+        }
+      ],
+      [
         "expo-router",
         {
           "origin": false
         }
       ],
-      "@react-native-community/datetimepicker"
-    ]
+      "@react-native-community/datetimepicker",
+      "expo-image",
+      "expo-web-browser",
+      "expo-video",
+      "expo-asset"
+    ],
+    "owner": "drdoublexix"
   }
 }
