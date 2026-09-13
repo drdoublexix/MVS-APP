@@ -2,15 +2,16 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForPushNotifications } from '../lib/notifications';
 import { readCachedAuthState, supabase, writeCachedAuthState } from '../lib/supabase';
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
-  state = {
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null }> {
+  state: { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null } = {
     hasError: false,
     error: null,
+    errorInfo: null,
   };
 
   static getDerivedStateFromError(error: Error) {
@@ -19,16 +20,41 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[App Error Boundary] Unhandled runtime error:', error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   render() {
     if (this.state.hasError) {
+      let errorMessage = 'Unknown error';
+      let stackTrace = 'No stack trace available';
+
+      try {
+        errorMessage = this.state.error?.toString() ?? errorMessage;
+      } catch {
+        errorMessage = 'Unknown error';
+      }
+
+      try {
+        stackTrace = this.state.error?.stack ?? this.state.errorInfo?.componentStack ?? stackTrace;
+      } catch {
+        stackTrace = 'No stack trace available';
+      }
+
       return (
         <SafeAreaProvider style={styles.boundaryContainer}>
-          <View style={styles.boundaryContent}>
+          <ScrollView
+            contentContainerStyle={styles.boundaryContent}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.boundaryTitle}>Something went wrong</Text>
-            <Text style={styles.boundaryText}>The app hit an unexpected error. Please reopen the app or try again.</Text>
-          </View>
+            <Text selectable={true} style={styles.boundaryText}>
+              {errorMessage}
+            </Text>
+            <Text selectable={true} style={styles.boundaryStack}>
+              {stackTrace}
+            </Text>
+          </ScrollView>
         </SafeAreaProvider>
       );
     }
@@ -318,10 +344,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B132B',
   },
   boundaryContent: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 24,
+    paddingVertical: 32,
     backgroundColor: '#0B132B',
   },
   boundaryTitle: {
@@ -333,7 +360,15 @@ const styles = StyleSheet.create({
   boundaryText: {
     color: '#CBD5E1',
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: 'left',
     lineHeight: 24,
+    marginBottom: 16,
+  },
+  boundaryStack: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    textAlign: 'left',
+    lineHeight: 18,
+    fontFamily: 'monospace',
   },
 });
