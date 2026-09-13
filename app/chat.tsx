@@ -2626,7 +2626,7 @@ function ChatRoom({
         </View>
         </View>
         <ScrollView
-          horizontal
+          horizontal={true}
           showsHorizontalScrollIndicator={false}
           style={styles.headerActions}
           contentContainerStyle={styles.headerActionsContent}
@@ -2665,15 +2665,15 @@ function ChatRoom({
         ) : null}
         {isVetClientThread && consultationStatus === "active" ? (
           <>
-            {isPetParent ? <Text style={styles.headerConsultationStatus}>Active Consultation</Text> : null}
             <TouchableOpacity
               style={styles.completeButton}
               onPress={isPetParent ? onToggleConsultation : onEndConsultationByVet}
             >
               <Text style={styles.completeButtonText}>
-                {isPetParent ? "End Consult" : "Mark Completed"}
+                End Consultation
               </Text>
             </TouchableOpacity>
+            <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
           </>
         ) : isVetClientThread ? (
           <>
@@ -2705,7 +2705,7 @@ function ChatRoom({
           <Text style={styles.consultationText}>
             {consultationStatus === "active"
               ? "Active Consultation"
-              : "Consultation Completed"}
+              : "Consultation Ended"}
           </Text>
         </View>
       ) : null}
@@ -3337,7 +3337,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         </View>
         </View>
         <ScrollView
-          horizontal
+          horizontal={true}
           showsHorizontalScrollIndicator={false}
           style={styles.headerActions}
           contentContainerStyle={styles.headerActionsContent}
@@ -3374,9 +3374,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               <Text style={styles.completeButtonText}>Prescribe</Text>
             </TouchableOpacity>
           ) : null}
-          {isVetClientThread && isConsultActive ? (
-            <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
-          ) : null}
           {isVetClientThread && isPetParent && isConsultActive ? (
             <TouchableOpacity
               style={[
@@ -3388,7 +3385,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               onPress={onToggleConsultation}
             >
               <Text style={styles.consultationButtonText}>
-                {isConsultActive ? "End Consult" : "Start Consult"}
+                End Consultation
               </Text>
             </TouchableOpacity>
           ) : isVetClientThread && isConsultActive ? (
@@ -3396,7 +3393,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               style={styles.endConsultationButton}
               onPress={onEndConsultationByVet}
             >
-              <Text style={styles.consultationButtonText}>End Consult</Text>
+              <Text style={styles.consultationButtonText}>End Consultation</Text>
             </TouchableOpacity>
           ) : isVetClientThread ? (
             <>
@@ -3407,6 +3404,9 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                 </TouchableOpacity>
               ) : null}
             </>
+          ) : null}
+          {isVetClientThread && isConsultActive ? (
+            <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
           ) : null}
           {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
             <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
@@ -3435,7 +3435,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               ]}
             />
             <Text style={styles.consultationText}>
-              {isConsultActive ? "Active Consultation" : "Consultation Completed"}
+              {isConsultActive ? "Active Consultation" : "Consultation Ended"}
             </Text>
           </View>
         </View>
