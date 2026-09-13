@@ -53,12 +53,41 @@ export default function ProfileScreen() {
   const [farmDraft, setFarmDraft] = useState<FarmDraft>({ species: farmSpecies[0], customSpecies: '', breed: '', flockSize: '', location: '', restockDate: '' });
   const [editingPet, setEditingPet] = useState<EditablePet>(emptyPet);
   const [password, setPassword] = useState({ next: '', confirm: '' });
-  const [notifications, setNotifications] = useState({
-    consultation_updates: true,
-    chat_messages: true,
-    vaccine_health_reminders: true,
-    order_updates: true,
+  type NotificationPreferences = {
+    orders: boolean;
+    chat: boolean;
+    consultations: boolean;
+    reminders: boolean;
+    payouts: boolean;
+  };
+
+  const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
+    orders: true,
+    chat: true,
+    consultations: true,
+    reminders: true,
+    payouts: true,
   });
+
+  const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
+    orders: typeof prefs?.orders === 'boolean' ? prefs.orders : true,
+    chat: typeof prefs?.chat === 'boolean' ? prefs.chat : true,
+    consultations: typeof prefs?.consultations === 'boolean' ? prefs.consultations : true,
+    reminders: typeof prefs?.reminders === 'boolean' ? prefs.reminders : true,
+    payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
+  });
+
+  const role = 'client';
+  const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
+    ...(role === 'client' ? [
+      { key: 'orders' as const, label: 'New Orders / Order Updates' },
+      { key: 'chat' as const, label: 'Chat Messages / Inquiries' },
+      { key: 'consultations' as const, label: 'Consultation Updates / New Consult Requests' },
+      { key: 'reminders' as const, label: 'Vaccine & Health Reminders' },
+    ] : []),
+  ];
+
+  const [notifications, setNotifications] = useState<NotificationPreferences>(buildDefaultNotificationPreferences());
 
   const loadPets = async (ownerId: string) => {
     const { data } = await supabase.from('pets').select('*').eq('owner_id', ownerId).order('created_at', { ascending: true });
@@ -72,16 +101,20 @@ export default function ProfileScreen() {
 
   const loadNotificationPreferences = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('avatar_url, notification_preferences, phone_number').eq('id', userId).maybeSingle();
+
     if (data?.notification_preferences && typeof data.notification_preferences === 'object') {
-      setNotifications(data.notification_preferences);
+      setNotifications(normalizeNotificationPreferences(data.notification_preferences as Record<string, unknown>));
+    } else {
+      setNotifications(buildDefaultNotificationPreferences());
     }
+
     if (data?.avatar_url && typeof data.avatar_url === 'string' && data.avatar_url.trim() !== '') {
       setProfile((current) => ({ ...(current || {}), avatar_url: current?.avatar_url || data.avatar_url }));
     }
     if (data?.phone_number) setProfile((current) => ({ ...(current || {}), phone: data.phone_number }));
   };
 
-  const saveNotificationPreferences = async (prefs: typeof notifications) => {
+  const saveNotificationPreferences = async (prefs: NotificationPreferences) => {
     const user = await getCurrentUser();
     if (!user) return;
     try {
@@ -396,7 +429,7 @@ export default function ProfileScreen() {
         </View></View>
       </Modal>
       <EditPetModal isVisible={petEditorVisible} onClose={() => setPetEditorVisible(false)} pet={editingPet} userId={currentUserId} onSave={savePet} />
-      <Modal visible={modal === 'profile' || modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}><View style={styles.overlay}><View style={styles.modal}><TouchableOpacity style={styles.close} onPress={() => setModal(null)}><Text style={styles.closeText}>Close</Text></TouchableOpacity>{modal === 'profile' ? <Form title="Edit Profile" onSave={() => { void saveProfile(); }}><Field label="Full Name" value={profile.name} onChangeText={(name) => setProfile({ ...profile, name })} /><Field label="Phone Number" value={profile.phone} onChangeText={(phone) => setProfile({ ...profile, phone })} /><Text style={styles.label}>Location</Text><TouchableOpacity style={styles.input} onPress={() => setLocationPickerVisible(true)}><Text style={profile.city && profile.state ? styles.primary : styles.muted}>{profile.city && profile.state ? `${profile.city}, ${profile.state}` : 'Select city and state'}</Text></TouchableOpacity></Form> : modal === 'notifications' ? <View style={{ flex: 1, maxHeight: '85%' }}><View style={styles.notificationHeader}><Text style={styles.modalTitle}>Notifications</Text></View><ScrollView style={{ flex: 1 }}><View style={styles.notificationContent}><Toggle label="Consultation Updates" value={notifications.consultation_updates} onChange={(consultation_updates) => { const updated = { ...notifications, consultation_updates }; setNotifications(updated); void saveNotificationPreferences(updated); }} /><Toggle label="Chat Messages" value={notifications.chat_messages} onChange={(chat_messages) => { const updated = { ...notifications, chat_messages }; setNotifications(updated); void saveNotificationPreferences(updated); }} /><Toggle label="Vaccine & Health Reminders" value={notifications.vaccine_health_reminders} onChange={(vaccine_health_reminders) => { const updated = { ...notifications, vaccine_health_reminders }; setNotifications(updated); void saveNotificationPreferences(updated); }} /><Toggle label="Order Updates" value={notifications.order_updates} onChange={(order_updates) => { const updated = { ...notifications, order_updates }; setNotifications(updated); void saveNotificationPreferences(updated); }} /></View></ScrollView><TouchableOpacity style={styles.save} onPress={() => setModal(null)}><Text style={styles.saveText}>Save Preferences</Text></TouchableOpacity></View> : null}</View></View></Modal>
+      <Modal visible={modal === 'profile' || modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}><View style={styles.overlay}><View style={styles.modal}><TouchableOpacity style={styles.close} onPress={() => setModal(null)}><Text style={styles.closeText}>Close</Text></TouchableOpacity>{modal === 'profile' ? <Form title="Edit Profile" onSave={() => { void saveProfile(); }}><Field label="Full Name" value={profile.name} onChangeText={(name) => setProfile({ ...profile, name })} /><Field label="Phone Number" value={profile.phone} onChangeText={(phone) => setProfile({ ...profile, phone })} /><Text style={styles.label}>Location</Text><TouchableOpacity style={styles.input} onPress={() => setLocationPickerVisible(true)}><Text style={profile.city && profile.state ? styles.primary : styles.muted}>{profile.city && profile.state ? `${profile.city}, ${profile.state}` : 'Select city and state'}</Text></TouchableOpacity></Form> : modal === 'notifications' ? <View style={{ flex: 1, maxHeight: '85%' }}><View style={styles.notificationHeader}><Text style={styles.modalTitle}>Notifications</Text></View><ScrollView style={{ flex: 1 }}><View style={styles.notificationContent}>{notificationOptions.map((option) => <Toggle key={option.key} label={option.label} value={notifications[option.key]} onChange={(value) => { const updated = { ...notifications, [option.key]: value } as NotificationPreferences; setNotifications(updated); void saveNotificationPreferences(updated); }} />)}</View></ScrollView><TouchableOpacity style={styles.save} onPress={() => setModal(null)}><Text style={styles.saveText}>Save Preferences</Text></TouchableOpacity></View> : null}</View></View></Modal>
       <Modal visible={locationPickerVisible} transparent animationType="slide" onRequestClose={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><View style={styles.overlay}><View style={styles.locationModal}><View style={locationStyles.locationHeader}><Text style={styles.modalTitle}>Choose location</Text><TouchableOpacity onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><Text style={styles.closeText}>✕</Text></TouchableOpacity></View><TouchableOpacity style={styles.save} onPress={() => { void detectAndSaveLocation(); }} disabled={locationLoading}><Text style={styles.saveText}>{locationLoading ? 'Detecting location...' : 'Use My Location'}</Text></TouchableOpacity>{locationStatePicker ? <TouchableOpacity style={locationStyles.locationBack} onPress={() => setLocationStatePicker(null)}><Text style={styles.resetText}>‹ Choose another state</Text></TouchableOpacity> : null}<ScrollView style={locationStyles.locationList} contentContainerStyle={locationStyles.locationListContent} showsVerticalScrollIndicator>{locationStatePicker ? NIGERIAN_LOCATIONS.find((location) => location.state === locationStatePicker)?.areas.map((area) => <TouchableOpacity key={area} style={styles.locationOption} onPress={() => { void selectManualLocation(area, locationStatePicker); }}><Text style={styles.primary}>{area}</Text><Text style={styles.muted}>{locationStatePicker}</Text></TouchableOpacity>) : NIGERIAN_LOCATIONS.map((location) => <TouchableOpacity key={location.state} style={styles.locationOption} onPress={() => setLocationStatePicker(location.state)}><Text style={styles.primary}>{location.state}</Text><Text style={styles.muted}>{location.city}</Text></TouchableOpacity>)}</ScrollView><TouchableOpacity style={locationStyles.locationCancel} onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity></View></View></Modal>
       <Modal visible={modal === 'password'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>

@@ -25,11 +25,29 @@ import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser
 
 type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
 
-interface VetNotificationPrefs {
-  consultations: boolean;
+type NotificationPreferences = {
+  orders: boolean;
   chat: boolean;
+  consultations: boolean;
+  reminders: boolean;
   payouts: boolean;
-}
+};
+
+const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
+  orders: true,
+  chat: true,
+  consultations: true,
+  reminders: true,
+  payouts: true,
+});
+
+const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
+  orders: typeof prefs?.orders === 'boolean' ? prefs.orders : true,
+  chat: typeof prefs?.chat === 'boolean' ? prefs.chat : true,
+  consultations: typeof prefs?.consultations === 'boolean' ? prefs.consultations : true,
+  reminders: typeof prefs?.reminders === 'boolean' ? prefs.reminders : true,
+  payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
+});
 
 const NIGERIAN_BANKS = [
   { label: 'Access Bank', code: '044' },
@@ -87,25 +105,26 @@ export default function VetProfileScreen() {
 
   const [password, setPassword] = useState({ next: '', confirm: '' });
 
-  const [notifications, setNotifications] = useState<VetNotificationPrefs>({
-    consultations: true,
-    chat: true,
-    payouts: true,
-  });
+  const role = 'veterinarian';
+  const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
+    { key: 'consultations', label: 'Consultation Updates / New Consult Requests' },
+    { key: 'chat', label: 'Chat Messages / Patient Messages' },
+    { key: 'payouts', label: 'Payout Notifications / Payout & Earnings' },
+  ];
+
+  const [notifications, setNotifications] = useState<NotificationPreferences>(buildDefaultNotificationPreferences());
 
   const loadNotificationPreferences = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('notification_preferences').eq('id', userId).maybeSingle();
+
     if (data?.notification_preferences && typeof data.notification_preferences === 'object') {
-      const prefs = data.notification_preferences;
-      setNotifications({
-        consultations: prefs.consultations ?? prefs.new_consult_requests ?? true,
-        chat: prefs.chat ?? prefs.patient_messages ?? true,
-        payouts: prefs.payouts ?? prefs.payout_earnings ?? true,
-      });
+      setNotifications(normalizeNotificationPreferences(data.notification_preferences as Record<string, unknown>));
+    } else {
+      setNotifications(buildDefaultNotificationPreferences());
     }
   };
 
-  const saveNotificationPreferences = async (prefs: VetNotificationPrefs) => {
+  const saveNotificationPreferences = async (prefs: NotificationPreferences) => {
     const user = await getCurrentUser();
     if (!user) return;
     try {
@@ -698,33 +717,18 @@ export default function VetProfileScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Toggle
-                label="New Consult Requests"
-                value={notifications.consultations}
-                onChange={(value) => {
-                  const updated = { ...notifications, consultations: value };
-                  setNotifications(updated);
-                  void saveNotificationPreferences(updated);
-                }}
-              />
-              <Toggle
-                label="Patient Messages"
-                value={notifications.chat}
-                onChange={(value) => {
-                  const updated = { ...notifications, chat: value };
-                  setNotifications(updated);
-                  void saveNotificationPreferences(updated);
-                }}
-              />
-              <Toggle
-                label="Payout & Earnings"
-                value={notifications.payouts}
-                onChange={(value) => {
-                  const updated = { ...notifications, payouts: value };
-                  setNotifications(updated);
-                  void saveNotificationPreferences(updated);
-                }}
-              />
+              {notificationOptions.map((option) => (
+                <Toggle
+                  key={option.key}
+                  label={option.label}
+                  value={notifications[option.key]}
+                  onChange={(value) => {
+                    const updated = { ...notifications, [option.key]: value } as NotificationPreferences;
+                    setNotifications(updated);
+                    void saveNotificationPreferences(updated);
+                  }}
+                />
+              ))}
 
               <TouchableOpacity style={styles.save} onPress={() => { void saveNotificationPreferences(notifications); setModal(null); }}>
                 <Text style={styles.saveText}>Save Preferences</Text>

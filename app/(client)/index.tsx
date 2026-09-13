@@ -1,5 +1,4 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -82,32 +81,6 @@ export default function ClientHome() {
     void requestDeviceLocation().catch((err) => {
       console.warn('[Client Home] Location request skipped or denied:', err);
     });
-
-    // 3. Register the authenticated user for platform notifications
-    void (async () => {
-      try {
-        const user = await getCurrentUser();
-        if (!user) return;
-
-        if (Platform.OS === 'ios' || Platform.OS === 'android') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          if (status !== 'granted') return;
-
-          const token = await Notifications.getExpoPushTokenAsync({ projectId: 'YOUR_EXPO_PROJECT_ID' });
-          console.log('Generated Push Token:', token.data);
-          await supabase.from('profiles').update({ expo_push_token: token.data }).eq('id', user.id);
-          return;
-        }
-
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
-          if (Notification.permission === 'default') {
-            await Notification.requestPermission();
-          }
-        }
-      } catch {
-        // Notification registration must not block the rest of the screen startup.
-      }
-    })();
   }, []);
 
   useEffect(() => {

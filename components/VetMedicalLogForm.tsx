@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   option: { color: '#60A5FA', fontSize: 11 },
   selectedOption: { color: '#10B981', fontSize: 11, fontWeight: '700' },
   field: { flex: 1, marginBottom: 8 },
-  input: { backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', borderRadius: 7, color: '#FFFFFF', padding: 9, fontSize: 12 },
+  input: { backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', borderRadius: 7, color: '#FFFFFF', padding: 9, fontSize: 16 },
   notesInput: { minHeight: 55, textAlignVertical: 'top' },
   inline: { flexDirection: 'row', gap: 8 },
   half: { flex: 1 },

@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 34 },
   field: { marginBottom: 16 },
   label: { color: '#334155', fontSize: 13, fontWeight: '700', marginBottom: 7 },
-  input: { minHeight: 46, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, color: '#0F172A', paddingHorizontal: 13, paddingVertical: 11, backgroundColor: '#F8FAFC' },
+  input: { minHeight: 46, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, color: '#0F172A', paddingHorizontal: 13, paddingVertical: 11, backgroundColor: '#F8FAFC', fontSize: 16 },
   description: { minHeight: 110, textAlignVertical: 'top' },
   categoryRow: { gap: 8, paddingBottom: 17 },
   category: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 9 },

@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, Modal, PanResponder, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { addMarketplaceProduct, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -46,50 +46,6 @@ export default function MerchantDashboardScreen() {
       onPanResponderTerminate: () => { moved = true; },
     });
   });
-
-
-  // WEB / PWA Android Push Notification Registration
-  useEffect(() => {
-    const registerWebNotifications = async () => {
-      if (Platform.OS !== 'web' || typeof window === 'undefined' || !('Notification' in window)) {
-        return;
-      }
-
-      try {
-        // Request browser notification permission for Web/PWA
-        if (Notification.permission === 'default') {
-          await Notification.requestPermission();
-        }
-
-        if (Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-          const registration = await navigator.serviceWorker.ready;
-          const user = await getCurrentUser();
-
-          if (user && registration.pushManager) {
-            // Subscribe the PWA client to push notifications
-            const subscription = await registration.pushManager.getSubscription() || 
-              await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                // Replace with your VAPID public key if using web push service
-                applicationServerKey: process.env.EXPO_PUBLIC_VAPID_KEY,
-              });
-
-            if (subscription) {
-              // Save web push subscription directly to Supabase profile
-              await supabase
-                .from('profiles')
-                .update({ web_push_subscription: JSON.stringify(subscription) })
-                .eq('id', user.id);
-            }
-          }
-        }
-      } catch (error) {
-        console.warn('[PWA Notification] Failed to register web push:', error);
-      }
-    };
-
-    void registerWebNotifications();
-  }, []);
 
   useFocusEffect(useCallback(() => {
     void fetchMarketplaceProducts().catch(() => undefined);

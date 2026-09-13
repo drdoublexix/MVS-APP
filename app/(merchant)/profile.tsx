@@ -135,11 +135,38 @@ export default function MerchantProfileScreen() {
     flutterwaveSubaccountId: '',
   });
   const [password, setPassword] = useState({ next: '', confirm: '' });
-  const [notifications, setNotifications] = useState({
-    new_orders: true,
-    customer_inquiries: true,
-    payout_notifications: true,
+  type NotificationPreferences = {
+    orders: boolean;
+    chat: boolean;
+    consultations: boolean;
+    reminders: boolean;
+    payouts: boolean;
+  };
+
+  const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
+    orders: true,
+    chat: true,
+    consultations: true,
+    reminders: true,
+    payouts: true,
   });
+
+  const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
+    orders: typeof prefs?.orders === 'boolean' ? prefs.orders : true,
+    chat: typeof prefs?.chat === 'boolean' ? prefs.chat : true,
+    consultations: typeof prefs?.consultations === 'boolean' ? prefs.consultations : true,
+    reminders: typeof prefs?.reminders === 'boolean' ? prefs.reminders : true,
+    payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
+  });
+
+  const role = 'merchant';
+  const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
+    { key: 'orders', label: 'New Orders / Order Updates' },
+    { key: 'chat', label: 'Customer Inquiries / Chat Messages' },
+    { key: 'payouts', label: 'Payout Notifications / Payout & Earnings' },
+  ];
+
+  const [notifications, setNotifications] = useState<NotificationPreferences>(buildDefaultNotificationPreferences());
 
   const requestNotificationPermission = async (userId: string) => {
     await registerForPushNotifications(userId);
@@ -153,11 +180,13 @@ export default function MerchantProfileScreen() {
       .maybeSingle();
 
     if (data?.notification_preferences && typeof data.notification_preferences === 'object') {
-      setNotifications(data.notification_preferences);
+      setNotifications(normalizeNotificationPreferences(data.notification_preferences as Record<string, unknown>));
+    } else {
+      setNotifications(buildDefaultNotificationPreferences());
     }
   };
 
-  const saveNotificationPreferences = async (prefs: typeof notifications) => {
+  const saveNotificationPreferences = async (prefs: NotificationPreferences) => {
     const user = await getCurrentUser();
     if (!user) return;
     try {
@@ -671,33 +700,18 @@ export default function MerchantProfileScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Toggle
-                label="New Orders"
-                value={notifications.new_orders}
-                onChange={(value) => {
-                  const updated = { ...notifications, new_orders: value };
-                  setNotifications(updated);
-                  void saveNotificationPreferences(updated);
-                }}
-              />
-              <Toggle
-                label="Customer Inquiries"
-                value={notifications.customer_inquiries}
-                onChange={(value) => {
-                  const updated = { ...notifications, customer_inquiries: value };
-                  setNotifications(updated);
-                  void saveNotificationPreferences(updated);
-                }}
-              />
-              <Toggle
-                label="Payout Notifications"
-                value={notifications.payout_notifications}
-                onChange={(value) => {
-                  const updated = { ...notifications, payout_notifications: value };
-                  setNotifications(updated);
-                  void saveNotificationPreferences(updated);
-                }}
-              />
+              {notificationOptions.map((option) => (
+                <Toggle
+                  key={option.key}
+                  label={option.label}
+                  value={notifications[option.key]}
+                  onChange={(value) => {
+                    const updated = { ...notifications, [option.key]: value } as NotificationPreferences;
+                    setNotifications(updated);
+                    void saveNotificationPreferences(updated);
+                  }}
+                />
+              ))}
 
               <TouchableOpacity style={styles.save} onPress={() => { void saveNotificationPreferences(notifications); setModal(null); }}>
                 <Text style={styles.saveText}>Save Preferences</Text>

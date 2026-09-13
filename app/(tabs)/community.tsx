@@ -31,6 +31,7 @@ export default function CommunityScreen() {
   const [deletingMessage, setDeletingMessage] = useState(false);
   const deletePressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<CommunityMessage>>(null);
+  const composerInputRef = useRef<TextInput>(null);
 
   const loadMessages = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -128,6 +129,9 @@ export default function CommunityScreen() {
       if (error) throw error;
       setContent('');
       setPendingImages([]);
+      setTimeout(() => {
+        composerInputRef.current?.focus();
+      }, 0);
     } catch (error) {
       Alert.alert('Could not send message', error instanceof Error ? error.message : 'Please try again.');
     } finally {
@@ -209,7 +213,7 @@ export default function CommunityScreen() {
       <View style={styles.banner}><Text style={styles.heroTitle}>MVS Community Hub</Text><Text style={styles.kicker}>MVS COMMUNITY</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
       <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={() => { if (messages.length) listRef.current?.scrollToEnd({ animated: false }); }} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <Text style={styles.empty}>Be the first to say hello.</Text>} />
       {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
-      <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><TextInput value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={styles.input} editable={!sending} multiline maxLength={2000} /><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
+      <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={styles.input} editable={!sending} multiline maxLength={2000} /><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
       <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmCard}>
@@ -273,6 +277,6 @@ const styles = StyleSheet.create({
   pendingImage: { width: 52, height: 52, borderRadius: 8 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
   iconButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, maxHeight: 110, minHeight: 42, borderWidth: 1, borderColor: '#334155', borderRadius: 22, color: '#FFFFFF', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#1E293B', fontSize: 15 },
+  input: { flex: 1, maxHeight: 110, minHeight: 42, borderWidth: 1, borderColor: '#334155', borderRadius: 22, color: '#FFFFFF', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#1E293B', fontSize: 16 },
   sendButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#10B981' },
 });

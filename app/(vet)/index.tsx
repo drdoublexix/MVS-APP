@@ -43,11 +43,6 @@ export default function VetDashboardScreen() {
     void requestDeviceLocation().catch((err) => {
       console.warn('[Vet Dashboard] Location request skipped or denied:', err);
     });
-
-    // 3. Prompt web notification permission if available
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      void Notification.requestPermission();
-    }
   }, []);
 
   // Load AI chat history when modal opens

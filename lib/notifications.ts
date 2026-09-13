@@ -33,7 +33,8 @@ const saveWebPushSubscription = async (userId: string): Promise<string | null> =
 
   if (!subscription) return null;
 
-  const subscriptionString = JSON.stringify(subscription);
+  const subscriptionPayload = typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription;
+  const subscriptionString = JSON.stringify(subscriptionPayload);
   console.log('[PUSH DIAGNOSTIC] Web Subscription:', subscriptionString);
   const { error } = await supabase
     .from('profiles')

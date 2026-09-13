@@ -1,4 +1,4 @@
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   AudioModule,
   RecordingPresets,
@@ -310,7 +310,7 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, rec
       }}
     >
       <MaterialCommunityIcons name="package-variant" size={16} color="#FFFFFF" />
-      <Text style={styles.completeButtonText}>Order: {label}{canUpdate && (nextStatus || isCompleteAction) ? (isCompleteAction ? " (Complete)" : " →") : ""}</Text>
+      <Text style={styles.completeButtonText}>Order: {label}{canUpdate && (nextStatus || isCompleteAction) ? (isCompleteAction ? " (Complete)" : " â†’") : ""}</Text>
     </TouchableOpacity>
   );
 }
@@ -346,7 +346,7 @@ function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose:
       <View style={styles.profileModalBackdrop}>
         <View style={styles.protectionModal}>
           <View style={styles.profileModalHeader}>
-            <Text style={styles.protectionModalTitle}>🛡️ MVS User Protection & 48-Hour Refund Policy</Text>
+            <Text style={styles.protectionModalTitle}>ðŸ›¡ï¸ MVS User Protection & 48-Hour Refund Policy</Text>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close buyer protection">
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -543,7 +543,7 @@ const styles = {
   recordingTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   recordingLabel: { color: "#94A3B8", fontSize: 13 },
   attach: { width: 44, borderRadius: 8, backgroundColor: "#475569", alignItems: "center", justifyContent: "center" },
-  input: { backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 8, color: "#FFFFFF", padding: 11 },
+  input: { backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 8, color: "#FFFFFF", padding: 11, fontSize: 16 },
   send: { width: 44, borderRadius: 8, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
   voiceIdleMic: { width: 44, borderRadius: 8, backgroundColor: "#0E7490", alignItems: "center", justifyContent: "center" },
   recordingBar: { flex: 1, borderRadius: 8, backgroundColor: "#172554", flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
@@ -2813,7 +2813,7 @@ function ChatRoom({
           </Text>
           <Text style={styles.subtitle}>
             {active.productName
-              ? `${active.participantName} · Marketplace`
+              ? `${active.participantName} Â· Marketplace`
               : active.participantName}
           </Text>
         </View>
@@ -2881,7 +2881,7 @@ function ChatRoom({
         ) : null}
         {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
           <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-            <Text style={styles.completeButtonText}>🛡️ User Protection</Text>
+            <Text style={styles.completeButtonText}>ðŸ›¡ï¸ User Protection</Text>
           </TouchableOpacity>
         ) : null}
           </ScrollView>
@@ -2984,16 +2984,65 @@ function ChatRoom({
           ))
         )}
       </ScrollView>
-      <View style={styles.composer}>
-        {selectedImageUri ? (
-          <View style={styles.selectedAttachment}>
-            <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
-            <TouchableOpacity onPress={onRemoveImage} accessibilityLabel="Remove selected image">
-              <MaterialCommunityIcons name="close-circle" size={24} color="#F87171" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        <View style={styles.composerRow}>
+      <ChatComposer
+        message={message}
+        setMessage={setMessage}
+        selectedImageUri={selectedImageUri}
+        onRemoveImage={onRemoveImage}
+        onAttach={onAttach}
+        onSend={onSend}
+        uploading={uploading}
+        voiceNoteControls={voiceNoteControls}
+      />
+      <AttachmentOptions
+        attachmentVisible={attachmentVisible}
+        locationVisible={locationVisible}
+        onCloseAttachment={onCloseAttachment}
+        onSendPhoto={onSendPhoto}
+        onOpenLocation={onOpenLocation}
+        onCloseLocation={onCloseLocation}
+        onSendCurrentLocation={onSendCurrentLocation}
+        onStartLiveLocation={onStartLiveLocation}
+        liveLocationActive={liveLocationActive}
+      />
+      {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
+      <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
+    </SafeAreaView>
+  );
+}
+
+function ChatComposer({
+  message,
+  setMessage,
+  selectedImageUri,
+  onRemoveImage,
+  onAttach,
+  onSend,
+  uploading,
+  voiceNoteControls,
+}: {
+  message: string;
+  setMessage: (value: string) => void;
+  selectedImageUri: string | null;
+  onRemoveImage: () => void;
+  onAttach: () => void;
+  onSend: () => void;
+  uploading: boolean;
+  voiceNoteControls: VoiceNoteControls;
+}) {
+  const messageInputRef = useRef<TextInput>(null);
+
+  return (
+    <View style={styles.composer}>
+      {selectedImageUri ? (
+        <View style={styles.selectedAttachment}>
+          <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
+          <TouchableOpacity onPress={onRemoveImage} accessibilityLabel="Remove selected image">
+            <MaterialCommunityIcons name="close-circle" size={24} color="#F87171" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      <View style={styles.composerRow}>
         {voiceNoteControls.recording ? (
           <View style={styles.recordingBar}>
             <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
@@ -3013,9 +3062,26 @@ function ChatRoom({
             <TouchableOpacity style={styles.attach} onPress={onAttach} disabled={uploading}>
               <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
             </TouchableOpacity>
-            <TextInput value={message} onChangeText={setMessage} selection={message ? { start: message.length, end: message.length } : undefined} placeholder="Write a message..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline />
+            <TextInput
+              ref={messageInputRef}
+              value={message}
+              onChangeText={setMessage}
+              selection={message ? { start: message.length, end: message.length } : undefined}
+              placeholder="Write a message..."
+              placeholderTextColor="#64748B"
+              style={[styles.input, styles.flex]}
+              multiline
+            />
             {message.trim() || selectedImageUri ? (
-              <TouchableOpacity style={styles.send} onPress={onSend}>
+              <TouchableOpacity
+                style={styles.send}
+                onPress={() => {
+                  onSend();
+                  setTimeout(() => {
+                    messageInputRef.current?.focus();
+                  }, 0);
+                }}
+              >
                 <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
               </TouchableOpacity>
             ) : (
@@ -3026,23 +3092,10 @@ function ChatRoom({
           </>
         )}
       </View>
-      </View>
-      <AttachmentOptions
-        attachmentVisible={attachmentVisible}
-        locationVisible={locationVisible}
-        onCloseAttachment={onCloseAttachment}
-        onSendPhoto={onSendPhoto}
-        onOpenLocation={onOpenLocation}
-        onCloseLocation={onCloseLocation}
-        onSendCurrentLocation={onSendCurrentLocation}
-        onStartLiveLocation={onStartLiveLocation}
-        liveLocationActive={liveLocationActive}
-      />
-      {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
-      <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
-    </SafeAreaView>
+    </View>
   );
 }
+
 function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
   const player = useAudioPlayer(mediaUrl, { updateInterval: 100 });
   const status = useAudioPlayerStatus(player);
@@ -3199,7 +3252,7 @@ function LocationMessage({ item }: { item: RealtimeMessage }) {
     <View style={styles.locationCard}>
       <MaterialCommunityIcons name="map-marker" size={22} color="#34D399" />
       <View style={styles.flex}>
-        <Text style={styles.locationTitle}>📍 Shared Location</Text>
+        <Text style={styles.locationTitle}>ðŸ“ Shared Location</Text>
         {location.addressName ? <Text style={styles.locationAddress}>{location.addressName}</Text> : null}
         <Text style={styles.locationCoordinates}>
           {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
@@ -3281,7 +3334,7 @@ function AttachmentOptions({
 function PatientFileOverlay({ visible, loading, pets, activePetId, records, userRole, onSelectPet, onClose }: { visible: boolean; loading: boolean; pets: PatientPet[]; activePetId: string | null; records: MedicalRecord[]; userRole: string; onSelectPet: (petId: string) => void; onClose: () => void }) {
   const [historyVersion, setHistoryVersion] = useState(0);
   if (!visible) return null;
-  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose}><Text style={styles.patientCloseText}>Close ✕</Text></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<TouchableOpacity onPress={() => onSelectPet(pet.id)}><Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? "  • Selected" : ""}</Text></TouchableOpacity><Text style={styles.patientDetail}>{pet.type} · {pet.breed || "Breed unknown"} · {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>{activePetId === pet.id ? <><Text style={styles.patientLabel}>SOAP History</Text>{records.length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.map((record) => <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}><Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text><Text style={styles.patientLabel}>Vitals</Text><Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg · Temp: {record.temperature_c ?? "-"} °C · Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text><Text style={styles.patientLabel}>Assessment</Text><Text style={styles.patientDetail}>{record.assessment}</Text><Text style={styles.patientLabel}>Subjective</Text><Text style={styles.patientDetail}>{record.subjective}</Text><Text style={styles.patientLabel}>Objective</Text><Text style={styles.patientDetail}>{record.objective || "-"}</Text><Text style={styles.patientLabel}>Plan</Text><Text style={styles.patientDetail}>{record.plan}</Text></View>)}</> : null}<PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
+  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose}><Text style={styles.patientCloseText}>Close âœ•</Text></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<TouchableOpacity onPress={() => onSelectPet(pet.id)}><Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? "  â€¢ Selected" : ""}</Text></TouchableOpacity><Text style={styles.patientDetail}>{pet.type} Â· {pet.breed || "Breed unknown"} Â· {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>{activePetId === pet.id ? <><Text style={styles.patientLabel}>SOAP History</Text>{records.length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.map((record) => <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}><Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text><Text style={styles.patientLabel}>Vitals</Text><Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg Â· Temp: {record.temperature_c ?? "-"} Â°C Â· Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text><Text style={styles.patientLabel}>Assessment</Text><Text style={styles.patientDetail}>{record.assessment}</Text><Text style={styles.patientLabel}>Subjective</Text><Text style={styles.patientDetail}>{record.subjective}</Text><Text style={styles.patientLabel}>Objective</Text><Text style={styles.patientDetail}>{record.objective || "-"}</Text><Text style={styles.patientLabel}>Plan</Text><Text style={styles.patientDetail}>{record.plan}</Text></View>)}</> : null}<PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
 }
 
 function ConsultationTypeModal({ visible, onClose, onPet, onFarm }: { visible: boolean; onClose: () => void; onPet: () => void; onFarm: () => void }) {
@@ -3301,7 +3354,7 @@ function FarmSoapModal({ visible, submitting, onClose, onSubmit }: { visible: bo
 function SoapConsultationModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: SoapDraft) => Promise<void> }) {
   const [draft, setDraft] = useState<SoapDraft>({ weightKg: "", temperatureC: "", heartRateBpm: "", subjective: "", objective: "", assessment: "", plan: "" });
   const update = (field: keyof SoapDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (°C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (Â°C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
 function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeMessage; currentUserId: string; onPayInvoice: (orderId: string) => Promise<void> }) {
@@ -3342,7 +3395,7 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 
   const payButton = isPendingInvoice && customer ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.order_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
 
-  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>₦{Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
+  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>â‚¦{Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
 }
 
 const defaultInvoiceItems: InvoiceItem[] = [
@@ -3526,7 +3579,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           </Text>
           <Text style={styles.subtitle}>
             {active.productName
-              ? `${active.participantName} · Marketplace`
+              ? `${active.participantName} Â· Marketplace`
               : active.participantName}
           </Text>
         </View>
@@ -3606,7 +3659,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           ) : null}
           {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
             <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-              <Text style={styles.completeButtonText}>🛡️ User Protection</Text>
+              <Text style={styles.completeButtonText}>ðŸ›¡ï¸ User Protection</Text>
             </TouchableOpacity>
           ) : null}
           </ScrollView>
@@ -3721,49 +3774,16 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           ))
         )}
       </ScrollView>
-      <View style={styles.composer}>
-        {selectedImageUri ? (
-          <View style={styles.selectedAttachment}>
-            <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
-            <TouchableOpacity onPress={onRemoveImage} accessibilityLabel="Remove selected image">
-              <MaterialCommunityIcons name="close-circle" size={24} color="#F87171" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        <View style={styles.composerRow}>
-        {voiceNoteControls.recording ? (
-          <View style={styles.recordingBar}>
-            <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
-              <Ionicons name="trash-outline" size={21} color="#F87171" />
-            </TouchableOpacity>
-            <View style={styles.recordingStatus}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingTimer}>0:{String(voiceNoteControls.recordingSeconds).padStart(2, "0")}</Text>
-              <Text style={styles.recordingLabel}>Recording...</Text>
-            </View>
-            <TouchableOpacity onPress={() => void voiceNoteControls.onSendRecording()} style={styles.send}>
-              <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            <TouchableOpacity style={styles.attach} onPress={onAttach} disabled={uploading}>
-              <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TextInput value={message} onChangeText={setMessage} selection={message ? { start: message.length, end: message.length } : undefined} placeholder="Write a message..." placeholderTextColor="#64748B" style={[styles.input, styles.flex]} multiline />
-            {message.trim() || selectedImageUri ? (
-              <TouchableOpacity style={styles.send} onPress={onSend}>
-                <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.voiceIdleMic} onPressIn={() => void voiceNoteControls.onStartRecording()}>
-                <Ionicons name="mic" size={21} color="#FFFFFF" />
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-        </View>
-      </View>
+      <ChatComposer
+        message={message}
+        setMessage={setMessage}
+        selectedImageUri={selectedImageUri}
+        onRemoveImage={onRemoveImage}
+        onAttach={onAttach}
+        onSend={onSend}
+        uploading={uploading}
+        voiceNoteControls={voiceNoteControls}
+      />
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
         locationVisible={locationVisible}
@@ -3780,5 +3800,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     </SafeAreaView>
   );
 }
+
 
 
