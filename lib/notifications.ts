@@ -8,11 +8,11 @@ Notifications.setNotificationHandler({
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
   }),
 });
 
-const ANDROID_CHANNEL_ID = 'mvs-default';
+const ANDROID_CHANNEL_ID = 'default';
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
 const EXPO_PROJECT_ID = '5013bac6-0c3a-4c17-b268-e477a44b';
 
@@ -152,13 +152,7 @@ export const sendPushNotification = async (
       .eq('id', recipientUserId)
       .maybeSingle();
 
-    if (profileError) {
-      console.warn('[Notifications] Failed to fetch profile:', profileError.message);
-      return;
-    }
-
-    if (!profile) {
-      console.warn('[Notifications] Profile not found for user:', recipientUserId);
+    if (profileError || !profile) {
       return;
     }
 
@@ -179,7 +173,6 @@ export const sendPushNotification = async (
       .find((value) => typeof value === 'boolean');
 
     if (preferenceValue === false) {
-      console.log('[Notifications] Notification category disabled by user:', preferenceKey);
       return;
     }
 
@@ -207,26 +200,29 @@ export const sendPushNotification = async (
           try {
             await response.text();
           } catch {
-            // Ignore response-body read failures; push delivery is best-effort.
+            // Ignore response-body read issues; push delivery is best-effort.
           }
           return;
         }
-
-        console.log('[Notifications] Expo push notification sent to user:', recipientUserId);
       } catch {
-        // Ignore local/dev/web network and CORS failures for Expo push delivery.
-        // This keeps message sending and status updates from being blocked.
+        // Ignore localhost/CORS and network failures so UI actions are not interrupted.
         return;
       }
     }
 
-    if (profile.web_push_subscription) {
-      console.log('[Notifications] User has active web push subscription.');
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const webNotificationOptions = {
+          body,
+          vibrate: [200, 100, 200],
+        } as NotificationOptions & { vibrate?: number[] };
+
+        new Notification(title, webNotificationOptions);
+      } catch {
+        // Ignore browser notification UI failures in development and restricted contexts.
+      }
     }
-  } catch (error) {
-    console.error(
-      '[Notifications] Error sending push notification:',
-      error instanceof Error ? error.message : error
-    );
+  } catch {
+    // Swallow notification delivery failures so messaging and status updates continue normally.
   }
 };
