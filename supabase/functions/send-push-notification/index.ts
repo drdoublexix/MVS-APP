@@ -1,5 +1,7 @@
+// @ts-nocheck
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import webPush from 'https://esm.sh/web-push@3.0.0';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -36,39 +38,88 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Fetch recipient's token from profiles table
-    const { data: profile, error: profileError } = await supabaseAdmin
+    // Fetch recipient tokens from profiles table
+    const { data, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('expo_push_token')
+      .select('expo_push_token, web_push_subscription')
       .eq('id', recipientId)
-      .single();
+      .limit(1);
 
-    if (profileError || !profile?.expo_push_token) {
-      return new Response(JSON.stringify({ error: 'Push token not found for user.' }), {
+    const profile = Array.isArray(data) ? data[0] ?? null : null;
+
+    if (profileError || !profile) {
+      return new Response(JSON.stringify({ error: 'Profile not found for user.' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    // Send payload to Expo Push API
-    const pushResponse = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        to: profile.expo_push_token,
-        sound: 'default',
-        title,
-        body,
-        data: data || {},
-      }),
-    });
+    const deliveryResult: Record<string, unknown> = {
+      expo: null,
+      web: null,
+    };
 
-    const pushResult = await pushResponse.json();
+    if (profile.expo_push_token) {
+      const pushResponse = await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          to: profile.expo_push_token,
+          sound: 'default',
+          title,
+          body,
+          data: {
+            ...(data || {}),
+            url: data?.url || '/',
+          },
+        }),
+      });
 
-    return new Response(JSON.stringify({ success: true, result: pushResult }), {
+      deliveryResult.expo = await pushResponse.json();
+    }
+
+    if (profile.web_push_subscription) {
+      const vapidPublicKey = Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
+      const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
+
+      if (vapidPublicKey && vapidPrivateKey) {
+        try {
+          const parsedSubscription = JSON.parse(profile.web_push_subscription);
+          webPush.setVapidDetails(
+            'mailto:admin@mvsapp.com.ng',
+            vapidPublicKey,
+            vapidPrivateKey
+          );
+
+          const browserPayload = JSON.stringify({
+            title,
+            body,
+            data: {
+              ...(data || {}),
+              url: data?.url || '/',
+            },
+          });
+
+          await webPush.sendNotification(parsedSubscription, browserPayload);
+          deliveryResult.web = { sent: true };
+        } catch (webPushError) {
+          deliveryResult.web = {
+            sent: false,
+            error: webPushError instanceof Error ? webPushError.message : String(webPushError),
+          };
+        }
+      } else {
+        deliveryResult.web = {
+          sent: false,
+          error: 'VAPID_PRIVATE_KEY is not configured on the Edge Function.',
+        };
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, result: deliveryResult }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     });

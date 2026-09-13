@@ -34,6 +34,7 @@ const saveWebPushSubscription = async (userId: string): Promise<string | null> =
   if (!subscription) return null;
 
   const subscriptionString = JSON.stringify(subscription);
+  console.log('[PUSH DIAGNOSTIC] Web Subscription:', subscriptionString);
   const { error } = await supabase
     .from('profiles')
     .update({ web_push_subscription: subscriptionString })
@@ -47,24 +48,17 @@ const saveWebPushSubscription = async (userId: string): Promise<string | null> =
 export const registerForPushNotifications = async (userId: string): Promise<string | null> => {
   // --- 1. WEB / PWA HANDLER ---
   if (Platform.OS === 'web') {
-    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-    const vapidKey = process.env.EXPO_PUBLIC_VAPID_KEY;
-
-    if (!vapidKey || isLocalhost) {
-      const mockToken = `WebPushToken_${userId}`;
-      const { error } = await supabase
-        .from('profiles')
-        .update({ expo_push_token: mockToken })
-        .eq('id', userId);
-      if (error) throw error;
-      console.log('[Notifications] Web mock push token saved:', mockToken);
-      return mockToken;
-    }
-
     if (typeof window === 'undefined' || !('Notification' in window)) {
       console.log('[Notifications] Web push notifications are not supported by this browser.');
       return null;
+    }
+
+    if ('serviceWorker' in navigator) {
+      try {
+        await navigator.serviceWorker.register('/sw.js');
+      } catch {
+        // Ignore registration failures; browser push is best-effort.
+      }
     }
 
     try {
@@ -78,19 +72,7 @@ export const registerForPushNotifications = async (userId: string): Promise<stri
         return null;
       }
 
-      try {
-        const token = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
-        console.log('Generated Push Token:', token.data);
-        const { error } = await supabase
-          .from('profiles')
-          .update({ expo_push_token: token.data })
-          .eq('id', userId);
-        if (error) throw error;
-        return token.data;
-      } catch (expoError) {
-        console.warn('[Notifications] Web Expo push token unavailable; trying Web Push:', expoError);
-        return await saveWebPushSubscription(userId);
-      }
+      return await saveWebPushSubscription(userId);
     } catch (err) {
       console.warn('[Notifications] Web push registration failed:', err);
     }
@@ -124,7 +106,7 @@ export const registerForPushNotifications = async (userId: string): Promise<stri
   const expoPushToken = tokenResponse.data;
   if (!expoPushToken) return null;
 
-  console.log('Generated Push Token:', expoPushToken);
+  console.log('[PUSH DIAGNOSTIC] Expo Token:', expoPushToken);
   const { error } = await supabase
     .from('profiles')
     .update({ expo_push_token: expoPushToken })
@@ -148,7 +130,7 @@ export const sendPushNotification = async (
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('expo_push_token, web_push_subscription, notification_preferences')
+      .select('notification_preferences')
       .eq('id', recipientUserId)
       .maybeSingle();
 
@@ -176,52 +158,14 @@ export const sendPushNotification = async (
       return;
     }
 
-    const expoPushToken = profile.expo_push_token;
-    if (expoPushToken) {
-      try {
-        const response = await fetch(EXPO_PUSH_API, {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Accept-Encoding': 'gzip, deflate',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: expoPushToken,
-            title,
-            body,
-            sound: 'default',
-            channelId: ANDROID_CHANNEL_ID,
-            data: data || {},
-          }),
-        });
-
-        if (!response.ok) {
-          try {
-            await response.text();
-          } catch {
-            // Ignore response-body read issues; push delivery is best-effort.
-          }
-          return;
-        }
-      } catch {
-        // Ignore localhost/CORS and network failures so UI actions are not interrupted.
-        return;
-      }
-    }
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        const webNotificationOptions = {
-          body,
-          vibrate: [200, 100, 200],
-        } as NotificationOptions & { vibrate?: number[] };
-
-        new Notification(title, webNotificationOptions);
-      } catch {
-        // Ignore browser notification UI failures in development and restricted contexts.
-      }
-    }
+    await supabase.functions.invoke('send-push-notification', {
+      body: {
+        recipientId: recipientUserId,
+        title,
+        body,
+        data,
+      },
+    });
   } catch {
     // Swallow notification delivery failures so messaging and status updates continue normally.
   }
