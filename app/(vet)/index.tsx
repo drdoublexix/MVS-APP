@@ -101,57 +101,74 @@ export default function VetDashboardScreen() {
     };
   }, [aiVisible]);
 
+  const refreshDashboardMetrics = useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      const currentUserId = normalizeUuid(user?.id);
+      if (!currentUserId) return;
+
+      const { data: activeConsultations, error: consultationsError } = await supabase
+        .from('consultations')
+        .select('id, client_id')
+        .eq('vet_id', currentUserId)
+        .eq('status', 'active');
+
+      if (consultationsError) {
+        console.error('[Vet Dashboard] Failed to load active patient count:', consultationsError.message);
+      } else {
+        const activePatientIds = new Set(
+          (activeConsultations || [])
+            .map((consultation) => consultation.client_id)
+            .filter((clientId): clientId is string => Boolean(clientId))
+        );
+        setTotalPatients(activePatientIds.size);
+      }
+
+      const { data: earningsData, error: earningsError } = await supabase
+        .from('orders')
+        .select('amount')
+        .eq('merchant_id', currentUserId)
+        .in('status', ['paid', 'completed']);
+
+      if (!earningsError) {
+        setTotalEarnings(earningsData?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
+      }
+
+      const { data: ratingData, error: ratingError } = await supabase.rpc('get_vet_rating_summary', { target_vet_id: currentUserId });
+      if (!ratingError) {
+        const ratingSummary = Array.isArray(ratingData) ? ratingData[0] : ratingData;
+        setOverallRating(Number(ratingSummary?.average_rating || 0));
+      }
+    } catch (error) {
+      console.warn('[Vet Dashboard] Failed to refresh metrics:', error);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
-      let currentUserId: string | null = null;
-
-      const refreshDashboardMetrics = async () => {
-        const user = await getCurrentUser();
-        currentUserId = normalizeUuid(user?.id);
-        if (!currentUserId) return;
-        if (mounted) setTotalPatients(0);
-        const { data: activeConsultations, error } = await supabase
-          .from('consultations')
-          .select('id, client_id')
-          .eq('vet_id', currentUserId)
-          .eq('status', 'active');
-        if (error) {
-          console.error('[Vet Dashboard] Failed to load active patient count:', error.message);
-        } else if (mounted) {
-          const activePatientIds = new Set(
-            (activeConsultations || [])
-              .map((consultation) => consultation.client_id)
-              .filter((clientId): clientId is string => Boolean(clientId))
-          );
-          setTotalPatients(activePatientIds.size);
-        }
-        const { data: earningsData, error: earningsError } = await supabase
-          .from('orders')
-          .select('amount')
-          .eq('merchant_id', currentUserId)
-          .in('status', ['paid', 'completed']);
-        if (!earningsError && mounted) {
-          setTotalEarnings(earningsData?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
-        }
-        const { data: ratingData, error: ratingError } = await supabase.rpc('get_vet_rating_summary', { target_vet_id: currentUserId });
-        if (!ratingError && mounted) {
-          const ratingSummary = Array.isArray(ratingData) ? ratingData[0] : ratingData;
-          setOverallRating(Number(ratingSummary?.average_rating || 0));
-        }
-      };
 
       void refreshDashboardMetrics();
+
       const consultationChannel = supabase
         .channel('vet-dashboard-consultations')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'consultations' },
           (payload) => {
+            if (!mounted) return;
             const changedConsultation = payload.eventType === 'DELETE'
               ? payload.old as { vet_id?: string }
               : payload.new as { vet_id?: string };
-            if (!currentUserId || changedConsultation.vet_id !== currentUserId) return;
+            if (!changedConsultation.vet_id) return;
+            void refreshDashboardMetrics();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'orders' },
+          () => {
+            if (!mounted) return;
             void refreshDashboardMetrics();
           }
         )
@@ -161,7 +178,7 @@ export default function VetDashboardScreen() {
         mounted = false;
         void supabase.removeChannel(consultationChannel);
       };
-    }, [])
+    }, [refreshDashboardMetrics])
   );
 
   const inquireAboutProduct = async (product: (typeof products)[number]) => {

@@ -145,23 +145,49 @@ export default function ClientHome() {
     return () => { mounted = false; };
   }, [aiVisible]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const user = await getCurrentUser();
-        if (!user) return;
-        const { data, error } = await supabase.from('orders').select('product_id, status').eq('buyer_id', user.id);
-        if (error) throw error;
-        const statusMap: Record<string, string> = {};
-        for (const item of data || []) {
-          if (item?.product_id) statusMap[String(item.product_id)] = item.status;
-        }
-        setProductOrderStatuses(statusMap);
-      } catch (error) {
-        console.warn('[Client Home] Failed to load order statuses:', error);
+  const loadOrderStatuses = useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
+      const { data, error } = await supabase.from('orders').select('product_id, status').eq('buyer_id', user.id);
+      if (error) throw error;
+      const statusMap: Record<string, string> = {};
+      for (const item of data || []) {
+        if (item?.product_id) statusMap[String(item.product_id)] = item.status;
       }
-    })();
+      setProductOrderStatuses(statusMap);
+    } catch (error) {
+      console.warn('[Client Home] Failed to load order statuses:', error);
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadOrderStatuses();
+    }, [loadOrderStatuses])
+  );
+
+  useEffect(() => {
+    void loadOrderStatuses();
+
+    let mounted = true;
+    const ordersChannel = supabase
+      .channel('client-home-orders')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        () => {
+          if (!mounted) return;
+          void loadOrderStatuses();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      void supabase.removeChannel(ordersChannel);
+    };
+  }, [loadOrderStatuses]);
 
   const getOrderBadge = (status?: string) => {
     if (!status) return null;

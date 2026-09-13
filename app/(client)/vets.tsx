@@ -186,8 +186,27 @@ export default function VetsScreen() {
     const user = await getCurrentUser();
     const userId = normalizeUuid(user?.id);
     if (!doctorId || !userId) return;
-    setIntakeVet(null);
+
     const conversationId = `conv_${[userId, doctorId].sort().join('_')}`;
+
+    const { error } = await supabase
+      .from('consultations')
+      .upsert(
+        {
+          conversation_id: conversationId,
+          client_id: userId,
+          vet_id: doctorId,
+          status: 'active',
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: 'conversation_id' }
+      );
+
+    if (error) {
+      console.warn('[Consultation] Failed to initialise active consultation from vet modal:', error);
+    }
+
+    setIntakeVet(null);
     router.push({
       pathname: '/chat',
       params: {

@@ -2,6 +2,16 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 const ANDROID_CHANNEL_ID = 'mvs-default';
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
 const EXPO_PROJECT_ID = '5013bac6-0c3a-4c17-b268-e477a44b';
@@ -129,11 +139,13 @@ export const sendPushNotification = async (
   recipientUserId: string,
   title: string,
   body: string,
-  categoryKey: string,
-  data?: object
+  data?: Record<string, unknown>
 ): Promise<void> => {
   try {
-    // Fetch user profile preferences and push tokens
+    if (!recipientUserId || !title || !body) {
+      return;
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('expo_push_token, web_push_subscription, notification_preferences')
@@ -150,42 +162,64 @@ export const sendPushNotification = async (
       return;
     }
 
-    // Check notification category preferences
-    const notificationPreferences = profile.notification_preferences || {};
-    const isNotificationEnabled = notificationPreferences[categoryKey] !== false;
+    const notificationPreferences = (profile.notification_preferences && typeof profile.notification_preferences === 'object'
+      ? profile.notification_preferences
+      : {}) as Record<string, unknown>;
 
-    if (!isNotificationEnabled) {
-      console.log('[Notifications] Notification category disabled by user:', categoryKey);
+    const preferenceKey = String(data?.preferenceKey || data?.category || data?.type || 'chat');
+    const preferenceAliases: Record<string, string[]> = {
+      chat: ['chat', 'chat_messages', 'messages'],
+      consults: ['consults', 'consultations', 'consultation_updates'],
+      orders: ['orders', 'order_updates', 'new_orders'],
+    };
+
+    const aliasKeys = preferenceAliases[preferenceKey] || [preferenceKey];
+    const preferenceValue = aliasKeys
+      .map((key) => notificationPreferences[key])
+      .find((value) => typeof value === 'boolean');
+
+    if (preferenceValue === false) {
+      console.log('[Notifications] Notification category disabled by user:', preferenceKey);
       return;
     }
 
-    // A. Send Native Push Notification via Expo
     const expoPushToken = profile.expo_push_token;
     if (expoPushToken) {
-      const response = await fetch(EXPO_PUSH_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: expoPushToken,
-          title,
-          body,
-          sound: 'default',
-          channelId: ANDROID_CHANNEL_ID,
-          data: data || {},
-        }),
-      });
+      try {
+        const response = await fetch(EXPO_PUSH_API, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: expoPushToken,
+            title,
+            body,
+            sound: 'default',
+            channelId: ANDROID_CHANNEL_ID,
+            data: data || {},
+          }),
+        });
 
-      if (!response.ok) {
-        const responseText = await response.text();
-        console.warn('[Notifications] Failed to send Expo push:', response.status, responseText);
-      } else {
+        if (!response.ok) {
+          try {
+            await response.text();
+          } catch {
+            // Ignore response-body read failures; push delivery is best-effort.
+          }
+          return;
+        }
+
         console.log('[Notifications] Expo push notification sent to user:', recipientUserId);
+      } catch {
+        // Ignore local/dev/web network and CORS failures for Expo push delivery.
+        // This keeps message sending and status updates from being blocked.
+        return;
       }
     }
 
-    // B. Log Web Push trigger availability (Delivered via WebPush API / Service Worker backend)
     if (profile.web_push_subscription) {
       console.log('[Notifications] User has active web push subscription.');
     }

@@ -32,8 +32,9 @@ export const subscribeToUnreadMessages = (userId: string, onUpdate: () => void) 
     unreadChannelUserId = userId;
     unreadChannel = supabase
       .channel(channelName)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => { unreadUpdateListeners.forEach((listener) => listener()); })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => { unreadUpdateListeners.forEach((listener) => listener()); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        unreadUpdateListeners.forEach((listener) => listener());
+      })
       .subscribe();
   }
 

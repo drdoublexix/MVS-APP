@@ -1,11 +1,11 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
-    AudioModule,
-    RecordingPresets,
-    setAudioModeAsync,
-    useAudioPlayer,
-    useAudioPlayerStatus,
-    useAudioRecorder,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
 } from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -13,37 +13,38 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
+import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-    deleteRealtimeMessage,
-    ensureConsultationRecord,
-    getCurrentUser,
-    isUuid,
-    normalizeUuid,
-    sendRealtimeMessage,
-    subscribeToMessages,
-    supabase,
-    uploadChatAttachment,
-    type ConsultationStatus,
-    type RealtimeMessage,
+  deleteRealtimeMessage,
+  ensureConsultationRecord,
+  getCurrentUser,
+  isUuid,
+  normalizeUuid,
+  sendRealtimeMessage,
+  subscribeToMessages,
+  supabase,
+  uploadChatAttachment,
+  type ConsultationStatus,
+  type RealtimeMessage,
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 
@@ -913,32 +914,45 @@ export default function ChatScreen() {
       .channel('public:consultations')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'consultations' },
+        { event: '*', schema: 'public', table: 'consultations' },
         (payload) => {
-          const consultation = payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus };
+          const consultation = payload.eventType === 'DELETE'
+            ? (payload.old as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus })
+            : (payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus });
           if (!consultation?.conversation_id) return;
+
           setThreads((current) =>
             current.map((thread) =>
               thread.id === consultation.conversation_id
-                ? { ...thread, consultation_status: consultation.status ?? thread.consultation_status }
+                ? {
+                    ...thread,
+                    consultation_status:
+                      payload.eventType === 'DELETE'
+                        ? undefined
+                        : (consultation.status ?? thread.consultation_status),
+                  }
                 : thread
             )
           );
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'consultations' },
-        (payload) => {
-          const consultation = payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus };
-          if (!consultation?.conversation_id) return;
-          setThreads((current) =>
-            current.map((thread) =>
-              thread.id === consultation.conversation_id
-                ? { ...thread, consultation_status: consultation.status ?? thread.consultation_status }
-                : thread
-            )
-          );
+
+          if (payload.eventType === 'DELETE') {
+            setConsultation((current) =>
+              current?.conversation_id === consultation.conversation_id
+                ? null
+                : current
+            );
+            return;
+          }
+
+          setConsultation((current) => {
+            if (current?.conversation_id !== consultation.conversation_id) {
+              return current;
+            }
+            return {
+              ...current,
+              status: consultation.status ?? current.status,
+            };
+          });
         }
       )
       .subscribe();
@@ -954,15 +968,20 @@ export default function ChatScreen() {
       .channel(`messages:inbox:${currentUserId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
+        { event: "*", schema: "public", table: "messages" },
         (payload) => {
-          const incoming = payload.new as RealtimeMessage;
+          const incoming = payload.eventType === "DELETE"
+            ? (payload.old as RealtimeMessage)
+            : (payload.new as RealtimeMessage);
+
+          if (!incoming) return;
           if (
             incoming.sender_id !== currentUserId &&
             incoming.receiver_id !== currentUserId
           ) {
             return;
           }
+
           setThreads((current) => {
             const participantId = normalizeUuid(
               incoming.sender_id === currentUserId
@@ -975,11 +994,19 @@ export default function ChatScreen() {
             );
             if (threadIndex === -1) return current;
             const thread = current[threadIndex];
+
+            let nextMessages = thread.messages;
+            if (payload.eventType === "DELETE") {
+              nextMessages = thread.messages.filter((message) => message.id !== incoming.id);
+            } else {
+              nextMessages = appendUniqueMessage(thread.messages, incoming).sort(
+                (first, second) => first.created_at.localeCompare(second.created_at)
+              );
+            }
+
             const updatedThread = {
               ...thread,
-              messages: appendUniqueMessage(thread.messages, incoming).sort(
-                (first, second) => first.created_at.localeCompare(second.created_at)
-              ),
+              messages: nextMessages,
             };
             return [
               updatedThread,
@@ -1041,6 +1068,73 @@ export default function ChatScreen() {
     starterMessageParam,
     categoryParam,
   ]);
+
+  useEffect(() => {
+    if (!active || !currentUserId || !categoryParam || userRole !== "client" || !isUuid(active.participantId) || !["vet", "veterinarian"].includes(active.participantRole)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const ensureCategoryConsultation = async () => {
+      const optimisticConsultation: ConsultationRecord = {
+        id: `temp-${active.id}`,
+        conversation_id: active.id,
+        client_id: currentUserId,
+        vet_id: active.participantId,
+        status: "active",
+      };
+
+      if (!cancelled) {
+        setConsultation((current) => (current?.status === "active" ? current : optimisticConsultation));
+        setThreads((current) =>
+          current.map((thread) =>
+            thread.id === active.id
+              ? { ...thread, consultation_status: "active" }
+              : thread
+          )
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("consultations")
+        .upsert(
+          {
+            conversation_id: active.id,
+            client_id: currentUserId,
+            vet_id: active.participantId,
+            status: "active",
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: "conversation_id" }
+        )
+        .select("id, conversation_id, client_id, vet_id, status")
+        .single();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("[Consultation] Failed to initialise active consultation from category route:", error);
+        return;
+      }
+
+      const nextConsultation = data as ConsultationRecord;
+      setConsultation(nextConsultation);
+      setThreads((current) =>
+        current.map((thread) =>
+          thread.id === active.id
+            ? { ...thread, consultation_status: nextConsultation.status }
+            : thread
+        )
+      );
+    };
+
+    void ensureCategoryConsultation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, categoryParam, currentUserId, userRole]);
 
   useEffect(() => {
     if (!active?.participantId) {
@@ -1738,6 +1832,17 @@ export default function ChatScreen() {
         .eq("id", currentConsultation.id)
         .eq("conversation_id", currentConsultation.conversation_id);
       if (error) throw error;
+
+      const recipientUserId = currentUserId === currentConsultation.client_id
+        ? currentConsultation.vet_id
+        : currentConsultation.client_id;
+
+      void sendPushNotification(recipientUserId, 'Consultation update', `Consultation marked as ${status}.`, {
+        preferenceKey: 'consults',
+        type: 'consultation_status',
+        conversation_id: currentConsultation.conversation_id,
+        status,
+      });
     } catch (error) {
       setConsultation((current) => (current ? { ...current, status: previousStatus } : current));
       Alert.alert(
@@ -1763,6 +1868,20 @@ export default function ChatScreen() {
     ) {
       return;
     }
+
+    const optimisticConsultation: ConsultationRecord = {
+      id: `temp-${active.id}`,
+      conversation_id: active.id,
+      client_id: currentUserId,
+      vet_id: active.participantId,
+      status: "active",
+    };
+
+    setConsultation(optimisticConsultation);
+    setThreads((current) => current.map((thread) =>
+      thread.id === active.id ? { ...thread, consultation_status: "active" } : thread
+    ));
+
     const { data, error } = await supabase
       .from("consultations")
       .upsert(
@@ -1777,15 +1896,29 @@ export default function ChatScreen() {
       )
       .select("id, conversation_id, client_id, vet_id, status")
       .single();
+
     if (error) {
       console.error("[Consultation] Failed to start consultation:", error);
       Alert.alert("Unable to start consultation", error.message);
+      setConsultation((current) => (current?.status === "active" ? null : current));
+      setThreads((current) => current.map((thread) =>
+        thread.id === active.id ? { ...thread, consultation_status: consultation?.status ?? thread.consultation_status } : thread
+      ));
       return;
     }
-    setConsultation(data as ConsultationRecord);
+
+    const nextConsultation = data as ConsultationRecord;
+    setConsultation(nextConsultation);
     setThreads((current) => current.map((thread) =>
-      thread.id === active.id ? { ...thread, consultation_status: "active" } : thread
+      thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread
     ));
+
+    void sendPushNotification(active.participantId, 'Consultation active', 'A consultation has started for this chat.', {
+      preferenceKey: 'consults',
+      type: 'consultation_status',
+      conversation_id: active.id,
+      status: 'active',
+    });
   };
 
   const handleEndConsultationByVet = async () => {
@@ -1977,6 +2110,14 @@ export default function ChatScreen() {
       Alert.alert("Order update failed", error.message);
       return;
     }
+
+    void sendPushNotification(active.participantId, 'Order status updated', `Order status changed to ${newStatus}.`, {
+      preferenceKey: 'orders',
+      type: 'order_status',
+      order_id: activeOrder.id,
+      status: newStatus,
+    });
+
     if (newStatus === "completed") {
       setActiveOrder(null);
     } else {
@@ -2192,6 +2333,12 @@ export default function ChatScreen() {
       setMessages((current) =>
         appendUniqueMessage(current, { ...confirmed, temp_id: tempId })
       );
+      void sendPushNotification(cleanReceiverId, 'New message', text, {
+        preferenceKey: 'chat',
+        type: 'chat_message',
+        conversation_id: conversationId,
+        sender_id: cleanSenderId,
+      });
       setMessage("");
       setSelectedImage(null);
       router.setParams({ initialMessage: undefined });
