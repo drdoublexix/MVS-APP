@@ -2,13 +2,63 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import type { ImagePickerAsset } from 'expo-image-picker';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (process.env.EXPO_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 const hasValidSupabaseUrl = /^https?:\/\//.test(supabaseUrl);
+const hasSupabaseAnonKey = Boolean(supabaseAnonKey);
 const clientUrl = hasValidSupabaseUrl ? supabaseUrl : 'https://placeholder.supabase.co';
-const clientKey = supabaseAnonKey || 'local-development-placeholder';
+const clientKey = hasSupabaseAnonKey ? supabaseAnonKey : 'local-development-placeholder';
 
-export const isSupabaseConfigured = hasValidSupabaseUrl && Boolean(supabaseAnonKey);
+export const isSupabaseConfigured = hasValidSupabaseUrl && hasSupabaseAnonKey;
+
+if (!isSupabaseConfigured) {
+  console.warn('[Supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. Falling back to placeholder client.');
+}
+
+const AUTH_CACHE_KEY = 'mvs_auth_cache';
+
+export type CachedAuthState = {
+  user: Record<string, any> | null;
+  profile: Record<string, any> | null;
+};
+
+export const readCachedAuthState = async (): Promise<CachedAuthState> => {
+  try {
+    const rawValue = await AsyncStorage.getItem(AUTH_CACHE_KEY);
+    if (!rawValue) return { user: null, profile: null };
+
+    const parsed = JSON.parse(rawValue) as Partial<CachedAuthState>;
+    return {
+      user: parsed.user ?? null,
+      profile: parsed.profile ?? null,
+    };
+  } catch (error) {
+    console.warn('[Auth Cache] Failed to read cached auth state:', error);
+    return { user: null, profile: null };
+  }
+};
+
+export const writeCachedAuthState = async (user: Record<string, any> | null, profile?: Record<string, any> | null) => {
+  try {
+    await AsyncStorage.setItem(
+      AUTH_CACHE_KEY,
+      JSON.stringify({
+        user: user ?? null,
+        profile: profile ?? null,
+      })
+    );
+  } catch (error) {
+    console.warn('[Auth Cache] Failed to persist cached auth state:', error);
+  }
+};
+
+export const clearCachedAuthState = async () => {
+  try {
+    await AsyncStorage.removeItem(AUTH_CACHE_KEY);
+  } catch (error) {
+    console.warn('[Auth Cache] Failed to clear cached auth state:', error);
+  }
+};
 
 export const supabase = createClient(clientUrl, clientKey, {
   auth: {
@@ -21,6 +71,11 @@ export const supabase = createClient(clientUrl, clientKey, {
 
 // Helper function to get the current authenticated user
 export const getCurrentUser = async () => {
+  const cachedState = await readCachedAuthState();
+  if (cachedState.user) {
+    return cachedState.user as Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'];
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -36,6 +91,7 @@ export const signOutUser = async () => {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
   await AsyncStorage.clear();
+  await clearCachedAuthState();
   if (typeof window !== 'undefined') {
     window.localStorage.clear();
   }

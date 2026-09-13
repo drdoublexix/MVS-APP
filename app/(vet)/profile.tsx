@@ -21,7 +21,7 @@ import {
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
+import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
 type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
 
@@ -117,48 +117,74 @@ export default function VetProfileScreen() {
   };
 
   useEffect(() => {
-    void getCurrentUser()
-      .then(async (user) => {
-        if (user) {
-          const { data: profileData } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
-          const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
-          setAvatarUrl(activeAvatar);
+    void (async () => {
+      const cachedState = await readCachedAuthState();
+      const cachedUser = cachedState.user as any;
+      const cachedProfile = cachedState.profile as any;
 
-          setProfile((current) => ({
-            name: user.user_metadata?.full_name || user.user_metadata?.name || 'Dr. Veterinarian',
-            email: user.email || '',
-            phone: user.user_metadata?.phone || '',
-            specialty: user.user_metadata?.specialty || '',
-            clinic: user.user_metadata?.clinic || '',
-            licenseNumber: user.user_metadata?.license_number || '',
-            avatar: activeAvatar || '',
-            bankName: '',
-            bankCode: '',
-            accountNumber: '',
-            accountName: '',
-            flutterwaveSubaccountId: '',
-            latitude: current.latitude,
-            longitude: current.longitude,
-            city: current.city,
-            state: current.state,
-          }));
+      if (cachedUser) {
+        const cachedAvatar = cachedProfile?.avatar_url || cachedUser.user_metadata?.avatar_url || cachedUser.user_metadata?.picture || null;
+        setAvatarUrl(cachedAvatar);
+        setProfile((current) => ({
+          name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Dr. Veterinarian',
+          email: cachedUser.email || cachedProfile?.email || '',
+          phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
+          specialty: cachedProfile?.specialty || cachedUser.user_metadata?.specialty || '',
+          clinic: cachedProfile?.clinic || cachedUser.user_metadata?.clinic || '',
+          licenseNumber: cachedProfile?.license_number || cachedUser.user_metadata?.license_number || '',
+          avatar: cachedAvatar || '',
+          bankName: current.bankName,
+          bankCode: current.bankCode,
+          accountNumber: current.accountNumber,
+          accountName: current.accountName,
+          flutterwaveSubaccountId: current.flutterwaveSubaccountId,
+          latitude: current.latitude,
+          longitude: current.longitude,
+          city: current.city,
+          state: current.state,
+        }));
+      }
 
-          void supabase.from('profiles').select('phone_number, latitude, longitude, city, state').eq('id', user.id).maybeSingle().then(({ data }) => {
-            if (data) setProfile((prev) => ({ ...prev, phone: data.phone_number || prev.phone, latitude: data.latitude ?? null, longitude: data.longitude ?? null, city: data.city || '', state: data.state || '' }));
-          });
+      const user = await getCurrentUser();
+      if (!user) return;
 
-          void requestDeviceLocation().then((location) => {
-            if (location) setProfile((prev) => ({ ...prev, ...location }));
-          }).catch((error) => console.warn('[Vet Profile] Location unavailable:', error));
+      const { data: profileData } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
+      const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+      setAvatarUrl(activeAvatar);
 
-          void supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle().then(({ data }) => {
-            if (data) setProfile((prev) => ({ ...prev, bankName: data.bank_name || '', bankCode: data.bank_code || '', accountNumber: data.account_number || '', accountName: data.account_name || '', flutterwaveSubaccountId: data.flutterwave_subaccount_id || '' }));
-          });
+      setProfile((current) => ({
+        name: user.user_metadata?.full_name || user.user_metadata?.name || 'Dr. Veterinarian',
+        email: user.email || '',
+        phone: user.user_metadata?.phone || '',
+        specialty: user.user_metadata?.specialty || '',
+        clinic: user.user_metadata?.clinic || '',
+        licenseNumber: user.user_metadata?.license_number || '',
+        avatar: activeAvatar || '',
+        bankName: current.bankName,
+        bankCode: current.bankCode,
+        accountNumber: current.accountNumber,
+        accountName: current.accountName,
+        flutterwaveSubaccountId: current.flutterwaveSubaccountId,
+        latitude: current.latitude,
+        longitude: current.longitude,
+        city: current.city,
+        state: current.state,
+      }));
 
-          void loadNotificationPreferences(user.id);
-        }
-      })
-      .catch(() => undefined);
+      void supabase.from('profiles').select('phone_number, latitude, longitude, city, state').eq('id', user.id).maybeSingle().then(({ data }) => {
+        if (data) setProfile((prev) => ({ ...prev, phone: data.phone_number || prev.phone, latitude: data.latitude ?? null, longitude: data.longitude ?? null, city: data.city || '', state: data.state || '' }));
+      });
+
+      void requestDeviceLocation().then((location) => {
+        if (location) setProfile((prev) => ({ ...prev, ...location }));
+      }).catch((error) => console.warn('[Vet Profile] Location unavailable:', error));
+
+      void supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle().then(({ data }) => {
+        if (data) setProfile((prev) => ({ ...prev, bankName: data.bank_name || '', bankCode: data.bank_code || '', accountNumber: data.account_number || '', accountName: data.account_name || '', flutterwaveSubaccountId: data.flutterwave_subaccount_id || '' }));
+      });
+
+      void loadNotificationPreferences(user.id);
+    })().catch(() => undefined);
   }, []);
 
   const saveProfile = async () => {

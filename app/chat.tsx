@@ -345,7 +345,7 @@ function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose:
       <View style={styles.profileModalBackdrop}>
         <View style={styles.protectionModal}>
           <View style={styles.profileModalHeader}>
-            <Text style={styles.protectionModalTitle}>🛡️ MVS Buyer Protection & 48-Hour Refund Policy</Text>
+            <Text style={styles.protectionModalTitle}>🛡️ MVS User Protection & 48-Hour Refund Policy</Text>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close buyer protection">
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -756,152 +756,197 @@ export default function ChatScreen() {
     }, [refreshUnreadCounts])
   );
 
-  useEffect(() => {
-    let mounted = true;
-    const loadInbox = async () => {
-      try {
-        const user = await getCurrentUser();
-        const cleanUserId = normalizeUuid(user?.id);
-        if (!cleanUserId) return;
-        const roleResult = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", cleanUserId)
-          .maybeSingle();
-        const { data, error } = await supabase
-          .from("messages")
-          .select("*")
-          .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        const rows = (data || []) as RealtimeMessage[];
-        const participantIds = [
-          ...new Set(
-            rows
-              .map((row) =>
-                normalizeUuid(
-                  row.sender_id === cleanUserId
-                    ? row.receiver_id
-                    : row.sender_id
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      const loadInbox = async () => {
+        try {
+          const user = await getCurrentUser();
+          const cleanUserId = normalizeUuid(user?.id);
+          if (!cleanUserId) return;
+          const roleResult = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", cleanUserId)
+            .maybeSingle();
+          const { data, error } = await supabase
+            .from("messages")
+            .select("*")
+            .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
+            .order("created_at", { ascending: false });
+          if (error) throw error;
+          const rows = (data || []) as RealtimeMessage[];
+          const participantIds = [
+            ...new Set(
+              rows
+                .map((row) =>
+                  normalizeUuid(
+                    row.sender_id === cleanUserId
+                      ? row.receiver_id
+                      : row.sender_id
+                  )
                 )
-              )
-              .filter((id): id is string => Boolean(id))
-          ),
-        ];
-        const consultations = roleResult.data?.role === "merchant"
-          ? { data: [], error: null }
-          : await supabase
-              .from("consultations")
-              .select(
-                "conversation_id, client_id, vet_id, merchant_id, status, deleted_by_user_ids"
-              )
-              .or(
-                `client_id.eq.${cleanUserId},vet_id.eq.${cleanUserId},merchant_id.eq.${cleanUserId}`
-              );
-        if (consultations.error) throw consultations.error;
-        const consultationRows = (consultations.data || []) as {
-          conversation_id: string;
-          client_id: string | null;
-          vet_id: string | null;
-          merchant_id: string | null;
-          status: ConsultationStatus;
-          deleted_by_user_ids: string[] | null;
-        }[];
-        const consultationParticipantIds = consultationRows.flatMap((row) =>
-          [row.client_id, row.vet_id, row.merchant_id]
-            .map((id) => normalizeUuid(id))
-            .filter((id): id is string => Boolean(id) && id !== cleanUserId)
-        );
-        const allParticipantIds = [
-          ...new Set([...participantIds, ...consultationParticipantIds]),
-        ];
-        const profiles =
-          allParticipantIds.length > 0
-            ? await supabase
-                .from("profiles")
-                .select("id, full_name, email, role, business_name, location, business_number, phone_number")
-                .in("id", allParticipantIds)
-            : { data: [], error: null };
-        if (profiles.error) throw profiles.error;
-        const profileMap = new Map(
-          (profiles.data || []).map((profile) => [profile.id, profile])
-        );
-        const grouped = new Map<string, RealtimeMessage[]>();
-        for (const row of rows) {
-          const participantId = normalizeUuid(
-            row.sender_id === cleanUserId ? row.receiver_id : row.sender_id
-          );
-          if (!participantId || !profileMap.has(participantId)) continue;
-          grouped.set(participantId, [
-            ...(grouped.get(participantId) || []),
-            row,
-          ]);
-        }
-        const consultationStatusMap = new Map(
-          consultationRows.map((consultation) => [
-            consultation.conversation_id,
-            consultation.status as ConsultationStatus,
-          ])
-        );
-        const deletedByUserMap = new Map(
-          consultationRows.map((consultation) => [
-            consultation.conversation_id,
-            Array.isArray(consultation.deleted_by_user_ids)
-              ? consultation.deleted_by_user_ids
-              : [],
-          ])
-        );
-        if (!mounted) return;
-        setCurrentUserId(cleanUserId);
-        setUserRole(roleResult.data?.role || "client");
-        const rawThreads = allParticipantIds.map((participantId) => {
-          const profile = profileMap.get(participantId);
-          const conversationId = conversationIdFor(cleanUserId, participantId);
-          const participantMessages = grouped.get(participantId) || [];
-          const latestMessage = [...participantMessages].sort((first, second) =>
-            second.created_at.localeCompare(first.created_at)
-          )[0];
-          const messageDeletedByUserIds = latestMessage
-            ? (latestMessage as RealtimeMessage & {
-                deleted_by_user_ids?: string[] | null;
-              }).deleted_by_user_ids
-            : undefined;
-          return {
-            id: conversationId,
-            participantId,
-            participantName: profile?.full_name || profile?.email || "Contact",
-            participantRole: profile?.role || "user",
-            recipientProfile: profile as RecipientProfile,
-            consultation_status: consultationStatusMap.get(conversationId),
-            deleted_by_user_ids:
-              participantMessages.length > 0
-                ? Array.isArray(messageDeletedByUserIds)
-                  ? messageDeletedByUserIds
-                  : []
-                : deletedByUserMap.get(conversationId) || [],
-            messages: [...participantMessages].sort((first, second) =>
-              first.created_at.localeCompare(second.created_at)
+                .filter((id): id is string => Boolean(id))
             ),
-          };
-        });
-        const activeThreads = rawThreads
-          .filter((thread) => !thread.deleted_by_user_ids.includes(cleanUserId))
-          .sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first));
-        setThreads(activeThreads);
-      } catch (error) {
-        console.error("[Chat] Failed to load conversations:", error);
-        if (mounted) {
-          setThreads([]);
+          ];
+          const consultations = roleResult.data?.role === "merchant"
+            ? { data: [], error: null }
+            : await supabase
+                .from("consultations")
+                .select(
+                  "conversation_id, client_id, vet_id, merchant_id, status, deleted_by_user_ids"
+                )
+                .or(
+                  `client_id.eq.${cleanUserId},vet_id.eq.${cleanUserId},merchant_id.eq.${cleanUserId}`
+                );
+          if (consultations.error) throw consultations.error;
+          const consultationRows = (consultations.data || []) as {
+            conversation_id: string;
+            client_id: string | null;
+            vet_id: string | null;
+            merchant_id: string | null;
+            status: ConsultationStatus;
+            deleted_by_user_ids: string[] | null;
+          }[];
+          const consultationParticipantIds = consultationRows.flatMap((row) =>
+            [row.client_id, row.vet_id, row.merchant_id]
+              .map((id) => normalizeUuid(id))
+              .filter((id): id is string => Boolean(id) && id !== cleanUserId)
+          );
+          const allParticipantIds = [
+            ...new Set([...participantIds, ...consultationParticipantIds]),
+          ];
+          const profiles =
+            allParticipantIds.length > 0
+              ? await supabase
+                  .from("profiles")
+                  .select("id, full_name, email, role, business_name, location, business_number, phone_number")
+                  .in("id", allParticipantIds)
+              : { data: [], error: null };
+          if (profiles.error) throw profiles.error;
+          const profileMap = new Map(
+            (profiles.data || []).map((profile) => [profile.id, profile])
+          );
+          const grouped = new Map<string, RealtimeMessage[]>();
+          for (const row of rows) {
+            const participantId = normalizeUuid(
+              row.sender_id === cleanUserId ? row.receiver_id : row.sender_id
+            );
+            if (!participantId || !profileMap.has(participantId)) continue;
+            grouped.set(participantId, [
+              ...(grouped.get(participantId) || []),
+              row,
+            ]);
+          }
+          const consultationStatusMap = new Map(
+            consultationRows.map((consultation) => [
+              consultation.conversation_id,
+              consultation.status as ConsultationStatus,
+            ])
+          );
+          const deletedByUserMap = new Map(
+            consultationRows.map((consultation) => [
+              consultation.conversation_id,
+              Array.isArray(consultation.deleted_by_user_ids)
+                ? consultation.deleted_by_user_ids
+                : [],
+            ])
+          );
+          if (!mounted) return;
+          setCurrentUserId(cleanUserId);
+          setUserRole(roleResult.data?.role || "client");
+          const rawThreads = allParticipantIds.map((participantId) => {
+            const profile = profileMap.get(participantId);
+            const conversationId = conversationIdFor(cleanUserId, participantId);
+            const participantMessages = grouped.get(participantId) || [];
+            const latestMessage = [...participantMessages].sort((first, second) =>
+              second.created_at.localeCompare(first.created_at)
+            )[0];
+            const messageDeletedByUserIds = latestMessage
+              ? (latestMessage as RealtimeMessage & {
+                  deleted_by_user_ids?: string[] | null;
+                }).deleted_by_user_ids
+              : undefined;
+            return {
+              id: conversationId,
+              participantId,
+              participantName: profile?.full_name || profile?.email || "Contact",
+              participantRole: profile?.role || "user",
+              recipientProfile: profile as RecipientProfile,
+              consultation_status: consultationStatusMap.get(conversationId),
+              deleted_by_user_ids:
+                participantMessages.length > 0
+                  ? Array.isArray(messageDeletedByUserIds)
+                    ? messageDeletedByUserIds
+                    : []
+                  : deletedByUserMap.get(conversationId) || [],
+              messages: [...participantMessages].sort((first, second) =>
+                first.created_at.localeCompare(second.created_at)
+              ),
+            };
+          });
+          const activeThreads = rawThreads
+            .filter((thread) => !thread.deleted_by_user_ids.includes(cleanUserId))
+            .sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first));
+          setThreads(activeThreads);
+        } catch (error) {
+          console.error("[Chat] Failed to load conversations:", error);
+          if (mounted) {
+            setThreads([]);
+          }
+        } finally {
+          if (mounted) setLoading(false);
         }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    void loadInbox();
+      };
+
+      void loadInbox();
+      return () => {
+        mounted = false;
+      };
+    }, [])
+  );
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const consultationChannel = supabase
+      .channel('public:consultations')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'consultations' },
+        (payload) => {
+          const consultation = payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus };
+          if (!consultation?.conversation_id) return;
+          setThreads((current) =>
+            current.map((thread) =>
+              thread.id === consultation.conversation_id
+                ? { ...thread, consultation_status: consultation.status ?? thread.consultation_status }
+                : thread
+            )
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'consultations' },
+        (payload) => {
+          const consultation = payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus };
+          if (!consultation?.conversation_id) return;
+          setThreads((current) =>
+            current.map((thread) =>
+              thread.id === consultation.conversation_id
+                ? { ...thread, consultation_status: consultation.status ?? thread.consultation_status }
+                : thread
+            )
+          );
+        }
+      )
+      .subscribe();
+
     return () => {
-      mounted = false;
+      void supabase.removeChannel(consultationChannel);
     };
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -2689,7 +2734,7 @@ function ChatRoom({
         ) : null}
         {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
           <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-            <Text style={styles.completeButtonText}>🛡️ Buyer Protection</Text>
+            <Text style={styles.completeButtonText}>🛡️ User Protection</Text>
           </TouchableOpacity>
         ) : null}
           </ScrollView>
@@ -3414,7 +3459,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           ) : null}
           {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
             <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-              <Text style={styles.completeButtonText}>🛡️ Buyer Protection</Text>
+              <Text style={styles.completeButtonText}>🛡️ User Protection</Text>
             </TouchableOpacity>
           ) : null}
           </ScrollView>

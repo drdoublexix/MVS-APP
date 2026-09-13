@@ -1,10 +1,41 @@
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForPushNotifications } from '../lib/notifications';
-import { supabase } from '../lib/supabase';
+import { readCachedAuthState, supabase, writeCachedAuthState } from '../lib/supabase';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  state = {
+    hasError: false,
+    error: null,
+  };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[App Error Boundary] Unhandled runtime error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaProvider style={styles.boundaryContainer}>
+          <View style={styles.boundaryContent}>
+            <Text style={styles.boundaryTitle}>Something went wrong</Text>
+            <Text style={styles.boundaryText}>The app hit an unexpected error. Please reopen the app or try again.</Text>
+          </View>
+        </SafeAreaProvider>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function RootAuthGate() {
   const [loading, setLoading] = useState(true);
@@ -21,6 +52,50 @@ function RootAuthGate() {
 
   useEffect(() => {
     let mounted = true;
+    let splashFallbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const hideSplashSafely = async () => {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (error) {
+        console.warn('[Splash Screen] hideAsync failed gracefully:', error);
+      }
+    };
+
+    const finalizeLoading = async () => {
+      if (splashFallbackTimer) {
+        clearTimeout(splashFallbackTimer);
+      }
+      if (mounted) {
+        setLoading(false);
+      }
+      await hideSplashSafely();
+    };
+
+    try {
+      void SplashScreen.preventAutoHideAsync().catch((error) => {
+        console.warn('[Splash Screen] preventAutoHideAsync failed gracefully:', error);
+      });
+    } catch (error) {
+      console.warn('[Splash Screen] preventAutoHideAsync threw:', error);
+    }
+
+    splashFallbackTimer = setTimeout(() => {
+      void hideSplashSafely();
+    }, 3000);
+
+    const hydrateCachedAuth = async () => {
+      const cachedState = await readCachedAuthState();
+      if (!mounted) return;
+      if (cachedState.user) {
+        setAuthUser(cachedState.user as Session['user']);
+      }
+      if (cachedState.profile) {
+        setProfile(cachedState.profile as { role?: string | null; full_name?: string | null; avatar_url?: string | null; email?: string | null });
+      }
+    };
+
+    void hydrateCachedAuth();
 
     const checkAuthAndRoute = async (session: Session | null, event?: AuthChangeEvent) => {
       const logoutRequested = typeof window !== 'undefined' && window.localStorage.getItem('mvs_logout_requested') === '1';
@@ -29,11 +104,15 @@ function RootAuthGate() {
           window.localStorage.removeItem('mvs_logout_requested');
         }
         if (mounted) router.replace('/(auth)/login');
+        void finalizeLoading();
         return;
       }
 
       console.log('[AUTH ROUTER] checkAuthAndRoute event:', event, 'email:', session?.user?.email);
       if (mounted) setAuthUser(session?.user || null);
+
+      const cachedState = await readCachedAuthState();
+      const cachedProfile = cachedState.profile || profile;
 
       const href = typeof window !== 'undefined' ? window.location.href : '';
       const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -59,18 +138,22 @@ function RootAuthGate() {
       if (isInsideApplication) return;
 
       try {
-        const { data: profile, error } = await supabase
+        const { data: profileData, error } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, full_name, email, avatar_url')
           .eq('id', session.user.id)
           .maybeSingle();
 
-        console.log('[AUTH ROUTER] Profile query result:', { profile, error });
-        if (mounted) setProfile(profile || null);
+        console.log('[AUTH ROUTER] Profile query result:', { profileData, error });
+        const resolvedProfile = profileData || cachedProfile || null;
+        if (mounted) setProfile(resolvedProfile);
+        if (session.user) {
+          await writeCachedAuthState(session.user, resolvedProfile || session.user.user_metadata || null);
+        }
 
         const pendingRole = typeof window !== 'undefined' ? window.localStorage.getItem('mvs_pending_signup_role') : null;
         // STRICT ROLE RESOLUTION: Prioritize database role first
-        let userRole = profile?.role;
+        let userRole = resolvedProfile?.role || profileData?.role;
 
         if (!userRole) {
           // If no role exists yet, use metadata only. Profile creation belongs to signup.
@@ -117,6 +200,7 @@ function RootAuthGate() {
         router.replace('/reset-password');
         queueMicrotask(() => {
           if (mounted) setLoading(false);
+          void hideSplashSafely();
         });
         return;
       }
@@ -135,6 +219,7 @@ function RootAuthGate() {
         }
         if (mounted) router.replace('/(auth)/login');
         if (mounted) setLoading(false);
+        void hideSplashSafely();
         return;
       }
 
@@ -147,11 +232,12 @@ function RootAuthGate() {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         void supabase
           .from('profiles')
-          .select('role, full_name, email')
+          .select('role, full_name, email, avatar_url')
           .eq('id', session.user.id)
           .maybeSingle()
-          .then(({ data }) => {
+          .then(async ({ data }) => {
             if (mounted) setProfile(data || null);
+            await writeCachedAuthState(session.user, data || session.user.user_metadata || null);
           });
       }
 
@@ -165,12 +251,15 @@ function RootAuthGate() {
 
       checkAuthAndRoute(session, event).finally(() => {
         isAuthInitialized.current = true;
-        if (mounted) setLoading(false);
+        void finalizeLoading();
       });
     });
 
     return () => {
       mounted = false;
+      if (splashFallbackTimer) {
+        clearTimeout(splashFallbackTimer);
+      }
       authListener.subscription.unsubscribe();
     };
   }, [router]);
@@ -202,21 +291,49 @@ function RootAuthGate() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider style={{ flex: 1, width: '100%', height: '100%', backgroundColor: '#0B132B' }}>
-      <RootAuthGate />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
-        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(client)" options={{ headerShown: false }} />
-        <Stack.Screen name="(vet)" options={{ headerShown: false }} />
-        <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
-      </Stack>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider style={{ flex: 1, width: '100%', height: '100%', backgroundColor: '#0B132B' }}>
+        <RootAuthGate />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+          }}
+        >
+          <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
+          <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+          <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(client)" options={{ headerShown: false }} />
+          <Stack.Screen name="(vet)" options={{ headerShown: false }} />
+          <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
+        </Stack>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
+
+const styles = StyleSheet.create({
+  boundaryContainer: {
+    flex: 1,
+    backgroundColor: '#0B132B',
+  },
+  boundaryContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: '#0B132B',
+  },
+  boundaryTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  boundaryText: {
+    color: '#CBD5E1',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+});

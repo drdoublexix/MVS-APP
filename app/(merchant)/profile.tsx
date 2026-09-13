@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
+import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -169,68 +169,90 @@ export default function MerchantProfileScreen() {
   };
 
   useEffect(() => {
-    void getCurrentUser()
-      .then(async (user) => {
-        if (user) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('avatar_url, business_name, location, business_number, phone_number')
-            .eq('id', user.id)
-            .single();
+    void (async () => {
+      const cachedState = await readCachedAuthState();
+      const cachedUser = cachedState.user as any;
+      const cachedProfile = cachedState.profile as any;
 
-          const activeAvatar =
-            profileData?.avatar_url ||
-            user.user_metadata?.avatar_url ||
-            user.user_metadata?.picture ||
-            null;
+      if (cachedUser) {
+        const cachedAvatar = cachedProfile?.avatar_url || cachedUser.user_metadata?.avatar_url || cachedUser.user_metadata?.picture || null;
+        setAvatarUrl(cachedAvatar);
+        setProfile({
+          name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Merchant',
+          email: cachedUser.email || cachedProfile?.email || '',
+          phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
+          business: cachedProfile?.business_name || cachedUser.user_metadata?.business || '',
+          location: cachedProfile?.location || cachedUser.user_metadata?.location || '',
+          businessNumber: cachedProfile?.business_number || cachedUser.user_metadata?.business_number || '',
+          avatar: cachedAvatar || '',
+          bankName: '',
+          bankCode: '',
+          accountNumber: '',
+          accountName: '',
+          flutterwaveSubaccountId: '',
+        });
+      }
 
-          setAvatarUrl(activeAvatar);
-          setProfile({
-            name: user.user_metadata?.full_name || user.user_metadata?.name || 'Merchant',
-            email: user.email || '',
-            phone: profileData?.phone_number || user.user_metadata?.phone || '',
-            business: profileData?.business_name || user.user_metadata?.business || '',
-            location: profileData?.location || user.user_metadata?.location || '',
-            businessNumber: profileData?.business_number || user.user_metadata?.business_number || '',
-            avatar: activeAvatar || '',
-            bankName: '',
-            bankCode: '',
-            accountNumber: '',
-            accountName: '',
-            flutterwaveSubaccountId: '',
-          });
+      const user = await getCurrentUser();
+      if (!user) return;
 
-          void supabase
-            .from('profiles')
-            .select('phone_number')
-            .eq('id', user.id)
-            .maybeSingle()
-            .then(({ data }) => {
-              if (data?.phone_number) setProfile((prev) => ({ ...prev, phone: data.phone_number }));
-            });
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('avatar_url, business_name, location, business_number, phone_number')
+        .eq('id', user.id)
+        .single();
 
-          void supabase
-            .from('profiles')
-            .select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id')
-            .eq('id', user.id)
-            .maybeSingle()
-            .then(({ data }) => {
-              if (data) {
-                setProfile((prev) => ({
-                  ...prev,
-                  bankName: data.bank_name || '',
-                  bankCode: data.bank_code || '',
-                  accountNumber: data.account_number || '',
-                  accountName: data.account_name || '',
-                  flutterwaveSubaccountId: data.flutterwave_subaccount_id || '',
-                }));
-              }
-            });
+      const activeAvatar =
+        profileData?.avatar_url ||
+        user.user_metadata?.avatar_url ||
+        user.user_metadata?.picture ||
+        null;
 
-          void loadNotificationPreferences(user.id);
-        }
-      })
-      .catch(() => undefined);
+      setAvatarUrl(activeAvatar);
+      setProfile({
+        name: user.user_metadata?.full_name || user.user_metadata?.name || 'Merchant',
+        email: user.email || '',
+        phone: profileData?.phone_number || user.user_metadata?.phone || '',
+        business: profileData?.business_name || user.user_metadata?.business || '',
+        location: profileData?.location || user.user_metadata?.location || '',
+        businessNumber: profileData?.business_number || user.user_metadata?.business_number || '',
+        avatar: activeAvatar || '',
+        bankName: '',
+        bankCode: '',
+        accountNumber: '',
+        accountName: '',
+        flutterwaveSubaccountId: '',
+      });
+
+      void supabase
+        .from('profiles')
+        .select('phone_number')
+        .eq('id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.phone_number) setProfile((prev) => ({ ...prev, phone: data.phone_number }));
+        });
+
+      void supabase
+        .from('profiles')
+        .select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id')
+        .eq('id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setProfile((prev) => ({
+              ...prev,
+              bankName: data.bank_name || '',
+              bankCode: data.bank_code || '',
+              accountNumber: data.account_number || '',
+              accountName: data.account_name || '',
+              flutterwaveSubaccountId: data.flutterwave_subaccount_id || '',
+            }));
+          }
+        });
+
+      void loadNotificationPreferences(user.id);
+    })().catch(() => undefined);
   }, []);
 
   const saveProfile = async () => {

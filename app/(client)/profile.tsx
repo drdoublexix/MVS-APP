@@ -11,7 +11,7 @@ import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { calculatePetAgeInWeeks } from '../../lib/petAge';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
+import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -119,6 +119,26 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     void (async () => {
+      const cachedState = await readCachedAuthState();
+      const cachedUser = cachedState.user as any;
+      const cachedProfile = cachedState.profile as any;
+
+      if (cachedUser) {
+        const cachedAvatar = cachedProfile?.avatar_url || cachedProfile?.avatar || cachedUser.user_metadata?.avatar_url || cachedUser.user_metadata?.picture || null;
+        setUser(cachedUser);
+        setCurrentUserId(cachedUser.id);
+        setAvatarUrl(cachedAvatar);
+        setProfile((current) => ({
+          ...(current || {}),
+          name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Pet Owner',
+          phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
+          email: cachedUser.email || cachedProfile?.email || '',
+          avatar_url: cachedAvatar || '',
+          loyalty_points: Number(cachedProfile?.loyalty_points) || 0,
+          vip_discount_active_until: cachedProfile?.vip_discount_active_until || null,
+        }));
+      }
+
       const { data: { user: authUser } } = await supabase.auth.getUser();
       const currentUser = authUser || await getCurrentUser();
       if (!currentUser) return;

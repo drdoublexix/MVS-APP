@@ -8,7 +8,7 @@ import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
+import { getCurrentUser, normalizeUuid, readCachedAuthState, supabase } from '../../lib/supabase';
 
 interface Message {
   id?: string;
@@ -50,9 +50,29 @@ export default function ClientHome() {
     }, [])
   );
 
-  useEffect(() => {
-    void getCurrentUser().then(setUser).catch(() => setUser(null));
+  const hydrateUser = useCallback(async () => {
+    const cachedState = await readCachedAuthState();
+    if (cachedState.user) {
+      setUser(cachedState.user as Awaited<ReturnType<typeof getCurrentUser>>);
+    }
+
+    try {
+      const freshUser = await getCurrentUser();
+      setUser(freshUser);
+    } catch {
+      setUser(null);
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void hydrateUser();
+    }, [hydrateUser])
+  );
+
+  useEffect(() => {
+    void hydrateUser();
+  }, [hydrateUser]);
 
   useEffect(() => {
     // 1. Fetch marketplace products

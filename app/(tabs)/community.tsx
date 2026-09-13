@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, RefreshControl, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, supabase } from '../../lib/supabase';
+import { getCurrentUser, readCachedAuthState, supabase } from '../../lib/supabase';
 
 type Profile = { full_name: string | null; avatar_url: string | null; role: string | null };
 type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null };
@@ -47,6 +47,11 @@ export default function CommunityScreen() {
   useEffect(() => {
     let mounted = true;
     const initialize = async () => {
+      const cachedState = await readCachedAuthState();
+      if (mounted && cachedState.user) {
+        setCurrentUserId(cachedState.user.id || null);
+      }
+
       const user = await getCurrentUser();
       if (mounted) setCurrentUserId(user?.id || null);
       await loadMessages();

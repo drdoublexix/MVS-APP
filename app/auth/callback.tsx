@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { getRoleNavPath, supabase, type AppRole } from '../../lib/supabase';
+import { getRoleNavPath, supabase, writeCachedAuthState, type AppRole } from '../../lib/supabase';
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
@@ -19,7 +19,13 @@ export default function AuthCallbackScreen() {
       user: {
         id: string;
         email?: string | null;
-        user_metadata?: { full_name?: string; name?: string; display_name?: string };
+        user_metadata?: {
+          full_name?: string;
+          name?: string;
+          display_name?: string;
+          avatar_url?: string | null;
+          picture?: string | null;
+        };
       },
       roleOverride: string | string[] | undefined = requestedRole,
     ) => {
@@ -46,6 +52,14 @@ export default function AuthCallbackScreen() {
             title: finalRole === 'vet' ? 'Dr.' : null,
           }, { onConflict: 'id' });
         if (upsertError) throw upsertError;
+
+        await writeCachedAuthState(user, {
+          id: user.id,
+          email: user.email,
+          full_name: fullName,
+          role: finalRole,
+          avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+        });
 
         if (typeof window !== 'undefined') localStorage.removeItem('mvs_selected_role');
 
