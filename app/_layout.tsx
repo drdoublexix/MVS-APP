@@ -2,7 +2,8 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import 'react-native-get-random-values';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForPushNotifications } from '../lib/notifications';
 import { readCachedAuthState, supabase, writeCachedAuthState } from '../lib/supabase';
@@ -124,9 +125,9 @@ function RootAuthGate() {
     void hydrateCachedAuth();
 
     const checkAuthAndRoute = async (session: Session | null, event?: AuthChangeEvent) => {
-      const logoutRequested = typeof window !== 'undefined' && window.localStorage.getItem('mvs_logout_requested') === '1';
+      const logoutRequested = Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' && window.localStorage.getItem('mvs_logout_requested') === '1';
       if (logoutRequested) {
-        if (typeof window !== 'undefined') {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.removeItem('mvs_logout_requested');
         }
         if (mounted) router.replace('/(auth)/login');
@@ -140,8 +141,8 @@ function RootAuthGate() {
       const cachedState = await readCachedAuthState();
       const cachedProfile = cachedState.profile || profile;
 
-      const href = typeof window !== 'undefined' ? window.location.href : '';
-      const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+      const href = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
+      const pathname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : '';
       const isAuthPage = /\/(?:signup|login|reset-password)(?:\/|$)/.test(pathname) || /\/auth\/(?:signup|login)(?:\/|$)/.test(pathname);
       const isOAuthCallback = /\/auth\/callback(?:[/?#]|$)/.test(href) || pathname.includes('/auth/callback');
 
@@ -177,7 +178,7 @@ function RootAuthGate() {
           await writeCachedAuthState(session.user, resolvedProfile || session.user.user_metadata || null);
         }
 
-        const pendingRole = typeof window !== 'undefined' ? window.localStorage.getItem('mvs_pending_signup_role') : null;
+        const pendingRole = Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' ? window.localStorage.getItem('mvs_pending_signup_role') : null;
         // STRICT ROLE RESOLUTION: Prioritize database role first
         let userRole = resolvedProfile?.role || profileData?.role;
 
@@ -187,7 +188,7 @@ function RootAuthGate() {
         }
 
         // Always clean up pending signup role after role determination
-        if (pendingRole && typeof window !== 'undefined') {
+        if (pendingRole && Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.removeItem('mvs_pending_signup_role');
         }
 
@@ -215,7 +216,7 @@ function RootAuthGate() {
       }
     };
 
-    if (typeof window !== 'undefined') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const hash = window.location.hash || '';
       const search = window.location.search || '';
       const combined = `${hash}${search}`;
@@ -240,7 +241,7 @@ function RootAuthGate() {
           setAuthUser(null);
           setProfile(null);
         }
-        if (typeof window !== 'undefined') {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.setItem('mvs_logout_requested', '1');
         }
         if (mounted) router.replace('/(auth)/login');
