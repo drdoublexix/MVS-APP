@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import webPush from "https://esm.sh/web-push@3.0.0";
+import webPush from "npm:web-push@3.6.7";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 const expoPushUrl = "https://exp.host/--/api/v2/push/send";
-const vapidPublicKey = Deno.env.get("EXPO_PUBLIC_VAPID_KEY");
+const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY") || Deno.env.get("EXPO_PUBLIC_VAPID_KEY");
 const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY");
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {

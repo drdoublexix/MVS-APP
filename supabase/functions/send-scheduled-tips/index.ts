@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import webPush from 'https://esm.sh/web-push@3.0.0';
+import webPush from 'npm:web-push@3.6.7';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-const VAPID_PUBLIC_KEY = Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
+const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
 
 const MONDAY_TIPS = [

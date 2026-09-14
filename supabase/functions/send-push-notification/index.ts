@@ -82,7 +82,7 @@ serve(async (req) => {
     }
 
     if (profile.web_push_subscription) {
-      const vapidPublicKey = Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
+      const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY') || Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
       const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
 
       if (vapidPublicKey && vapidPrivateKey) {
