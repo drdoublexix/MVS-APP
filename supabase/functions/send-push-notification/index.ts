@@ -23,7 +23,7 @@ serve(async (req) => {
   }
 
   try {
-    const { recipientId, title, body, data } = (await req.json()) as PushPayload;
+    const { recipientId, title, body, data: payloadData } = (await req.json()) as PushPayload;
 
     if (!recipientId || !title || !body) {
       return new Response(JSON.stringify({ error: 'Missing required parameters: recipientId, title, or body.' }), {
@@ -32,20 +32,18 @@ serve(async (req) => {
       });
     }
 
-    // Initialize Supabase admin client
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Fetch recipient tokens from profiles table
-    const { data, error: profileError } = await supabaseAdmin
+    const { data: profileRows, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('expo_push_token, web_push_subscription')
       .eq('id', recipientId)
       .limit(1);
 
-    const profile = Array.isArray(data) ? data[0] ?? null : null;
+    const profile = Array.isArray(profileRows) ? profileRows[0] ?? null : null;
 
     if (profileError || !profile) {
       return new Response(JSON.stringify({ error: 'Profile not found for user.' }), {
@@ -57,6 +55,11 @@ serve(async (req) => {
     const deliveryResult: Record<string, unknown> = {
       expo: null,
       web: null,
+    };
+
+    const notificationData = {
+      ...(payloadData || {}),
+      url: payloadData?.url || '/',
     };
 
     if (profile.expo_push_token) {
@@ -71,10 +74,7 @@ serve(async (req) => {
           sound: 'default',
           title,
           body,
-          data: {
-            ...(data || {}),
-            url: data?.url || '/',
-          },
+          data: notificationData,
         }),
       });
 
@@ -97,10 +97,7 @@ serve(async (req) => {
           const browserPayload = JSON.stringify({
             title,
             body,
-            data: {
-              ...(data || {}),
-              url: data?.url || '/',
-            },
+            data: notificationData,
           });
 
           await webPush.sendNotification(parsedSubscription, browserPayload);

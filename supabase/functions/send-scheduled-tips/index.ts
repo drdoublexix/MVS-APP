@@ -1,4 +1,10 @@
+// @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import webPush from 'https://esm.sh/web-push@3.0.0';
+
+const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const VAPID_PUBLIC_KEY = Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
+const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
 
 const MONDAY_TIPS = [
   "Fresh week, happy tails! Make sure your pet's water bowl is clean and full today. 🐾",
@@ -114,44 +120,83 @@ const FRIDAY_TIPS = [
   "Consult a licensed vet on MVS instantly if you notice any health changes! 🩺"
 ];
 
+const sendExpoNotification = async (token: string, title: string, body: string) => {
+  const response = await fetch(EXPO_PUSH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: token,
+      sound: 'default',
+      title,
+      body,
+      data: { url: '/' },
+    }),
+  });
+
+  return response.json();
+};
+
+const sendWebNotification = async (subscriptionString: string, title: string, body: string) => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    throw new Error('Web push VAPID keys are not configured for this Edge Function.');
+  }
+
+  const parsedSubscription = JSON.parse(subscriptionString);
+  webPush.setVapidDetails('mailto:admin@mvsapp.com.ng', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  await webPush.sendNotification(parsedSubscription, JSON.stringify({
+    title,
+    body,
+    data: { url: '/' },
+  }));
+};
+
 Deno.serve(async () => {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
-  const day = new Date().getDay(); // 1 = Mon, 3 = Wed, 5 = Fri
+  const day = new Date().getDay();
   let pool = MONDAY_TIPS;
   if (day === 3) pool = WEDNESDAY_TIPS;
   if (day === 5) pool = FRIDAY_TIPS;
 
-  // Pick a random tip from the day's pool
   const tip = pool[Math.floor(Math.random() * pool.length)];
 
-  const { data: profiles } = await supabase
+  const { data: profiles, error } = await supabase
     .from('profiles')
-    .select('expo_push_token')
-    .not('expo_push_token', 'is', null);
+    .select('id, expo_push_token, web_push_subscription');
 
-  if (!profiles || profiles.length === 0) {
+  if (error) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  }
+
+  const recipients = (profiles || []).filter((profile) => profile.expo_push_token || profile.web_push_subscription);
+
+  if (recipients.length === 0) {
     return new Response(JSON.stringify({ message: 'No tokens found' }), { status: 200 });
   }
 
-  const messages = profiles
-    .filter((p: { expo_push_token: string | null }) => p.expo_push_token)
-    .map((p: { expo_push_token: string | null }) => ({
-      to: p.expo_push_token,
-      sound: 'default',
-      title: 'MVS Pet Care Tip 🐾',
-      body: tip,
-    }));
+  const deliveryResults = [];
 
-  const response = await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(messages),
-  });
+  for (const profile of recipients) {
+    const outcome: Record<string, unknown> = { userId: profile.id };
+    try {
+      if (profile.expo_push_token) {
+        const expoResult = await sendExpoNotification(profile.expo_push_token, 'MVS Pet Care Tip 🐾', tip);
+        outcome.expo = expoResult;
+      }
 
-  const resData = await response.json();
-  return new Response(JSON.stringify({ sent: messages.length, result: resData }), { status: 200 });
+      if (profile.web_push_subscription) {
+        await sendWebNotification(profile.web_push_subscription, 'MVS Pet Care Tip 🐾', tip);
+        outcome.web = { sent: true };
+      }
+    } catch (error) {
+      outcome.error = error instanceof Error ? error.message : String(error);
+    }
+
+    deliveryResults.push(outcome);
+  }
+
+  return new Response(JSON.stringify({ sent: recipients.length, results: deliveryResults }), { status: 200 });
 });
