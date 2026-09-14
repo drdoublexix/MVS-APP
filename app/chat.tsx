@@ -12,6 +12,7 @@ import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ViewStyle } from "react-native";
 import {
   ActivityIndicator,
   Alert,
@@ -47,6 +48,7 @@ import {
   type RealtimeMessage,
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
+import { useVisualViewport } from "../lib/useVisualViewport";
 
 type ChatParams = {
   conversationId?: string;
@@ -484,6 +486,7 @@ const styles = {
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { padding: 16 },
   messages: { padding: 16, flexGrow: 1 },
+  messageList: { flex: 1, overflow: "hidden" },
   messageRow: { marginBottom: 10 },
   thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
@@ -533,8 +536,15 @@ const styles = {
   locationHint: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
   locationCancel: { alignItems: "center", paddingVertical: 12, marginTop: 4 },
   locationCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
-  composer: { padding: 12, borderTopWidth: 1, borderTopColor: "#334155", gap: 8 },
-  composerRow: { flexDirection: "row", gap: 8, minHeight: 44 },
+  composer: {
+    padding: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#334155",
+    gap: 8,
+    flexShrink: 0,
+  },
+  composerRow: { flexDirection: "row", gap: 8, minHeight: 44, alignItems: "flex-end" },
   selectedAttachment: { flexDirection: "row", alignItems: "center", gap: 8 },
   selectedAttachmentImage: { width: 56, height: 56, borderRadius: 8 },
   recordingAction: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
@@ -598,6 +608,63 @@ const contextMenuProps = (onDelete: () => void) =>
 export default function ChatScreen() {
   const params = useLocalSearchParams<ChatParams>();
   const router = useRouter();
+  const visualViewportHeight = useVisualViewport();
+  const mobileWebRootStyle: ViewStyle = {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    height: visualViewportHeight ?? 0,
+  };
+
+  const dismissActiveWebKeyboard = (event?: { target?: unknown }) => {
+    if (Platform.OS !== "web" || typeof document === "undefined") {
+      return;
+    }
+
+    const target = event?.target as HTMLElement | null;
+    if (
+      target instanceof HTMLElement &&
+      ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
+    ) {
+      return;
+    }
+
+    const activeElement = document.activeElement as HTMLElement | null;
+    if (
+      activeElement &&
+      activeElement !== document.body &&
+      typeof activeElement.blur === "function"
+    ) {
+      activeElement.blur();
+    }
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") {
+      return;
+    }
+
+    const handlePointerDown = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) {
+        return;
+      }
+
+      dismissActiveWebKeyboard({ target });
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, []);
+
   const conversationIdParam = firstParam(params.conversationId);
   const recipientIdParam = firstParam(params.recipientId);
   const merchantIdParam = firstParam(params.merchantId);
@@ -1077,56 +1144,68 @@ export default function ChatScreen() {
     let cancelled = false;
 
     const ensureCategoryConsultation = async () => {
-      const optimisticConsultation: ConsultationRecord = {
-        id: `temp-${active.id}`,
-        conversation_id: active.id,
-        client_id: currentUserId,
-        vet_id: active.participantId,
-        status: "active",
-      };
+      try {
+        const { data: existingConsultations, error: lookupError } = await supabase
+          .from("consultations")
+          .select("id, conversation_id, client_id, vet_id, status")
+          .eq("conversation_id", active.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-      if (!cancelled) {
-        setConsultation((current) => (current?.status === "active" ? current : optimisticConsultation));
+        if (lookupError) {
+          throw lookupError;
+        }
+
+        const existingConsultation = existingConsultations?.[0] as ConsultationRecord | undefined;
+
+        if (cancelled) return;
+
+        if (existingConsultation) {
+          setConsultation(existingConsultation);
+          setThreads((current) =>
+            current.map((thread) =>
+              thread.id === active.id
+                ? { ...thread, consultation_status: existingConsultation.status }
+                : thread
+            )
+          );
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("consultations")
+          .upsert(
+            {
+              conversation_id: active.id,
+              client_id: currentUserId,
+              vet_id: active.participantId,
+              status: "active",
+              created_at: new Date().toISOString(),
+            },
+            { onConflict: "conversation_id" }
+          )
+          .select("id, conversation_id, client_id, vet_id, status")
+          .single();
+
+        if (cancelled) return;
+
+        if (error) {
+          console.error("[Consultation] Failed to initialise active consultation from category route:", error);
+          return;
+        }
+
+        const nextConsultation = data as ConsultationRecord;
+        setConsultation(nextConsultation);
         setThreads((current) =>
           current.map((thread) =>
             thread.id === active.id
-              ? { ...thread, consultation_status: "active" }
+              ? { ...thread, consultation_status: nextConsultation.status }
               : thread
           )
         );
-      }
-
-      const { data, error } = await supabase
-        .from("consultations")
-        .upsert(
-          {
-            conversation_id: active.id,
-            client_id: currentUserId,
-            vet_id: active.participantId,
-            status: "active",
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: "conversation_id" }
-        )
-        .select("id, conversation_id, client_id, vet_id, status")
-        .single();
-
-      if (cancelled) return;
-
-      if (error) {
+      } catch (error) {
         console.error("[Consultation] Failed to initialise active consultation from category route:", error);
-        return;
       }
-
-      const nextConsultation = data as ConsultationRecord;
-      setConsultation(nextConsultation);
-      setThreads((current) =>
-        current.map((thread) =>
-          thread.id === active.id
-            ? { ...thread, consultation_status: nextConsultation.status }
-            : thread
-        )
-      );
     };
 
     void ensureCategoryConsultation();
@@ -1170,7 +1249,6 @@ export default function ChatScreen() {
           .from("consultations")
           .select("id, conversation_id, client_id, vet_id, status")
           .eq("conversation_id", active.id)
-          .not("status", "in", '("completed")')
           .order("created_at", { ascending: false })
           .limit(1);
         if (lookupError) throw lookupError;
@@ -2456,7 +2534,7 @@ export default function ChatScreen() {
     );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={Platform.OS === "web" ? { ...styles.container, ...mobileWebRootStyle } : styles.container}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Messages</Text>
@@ -2705,6 +2783,18 @@ function ChatRoom({
 }) {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
+  const visualViewportHeight = useVisualViewport();
+  const mobileWebRootStyle: ViewStyle = {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    height: visualViewportHeight ?? 0,
+  };
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   useEffect(
     () => () => {
@@ -2797,7 +2887,7 @@ function ChatRoom({
     );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={Platform.OS === "web" ? [styles.container, mobileWebRootStyle] : styles.container}>
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
         <TouchableOpacity onPress={onBack}>
@@ -2914,6 +3004,7 @@ function ChatRoom({
       ) : null}
       <ScrollView
         ref={messagesScrollRef}
+        style={styles.messageList}
         onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
         contentContainerStyle={styles.messages}
       >
@@ -3577,6 +3668,18 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
+  const visualViewportHeight = useVisualViewport();
+  const mobileWebRootStyle: ViewStyle = {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    height: visualViewportHeight ?? 0,
+  };
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const isConsultActive = consultation.status === "active";
   const isPetParent =
@@ -3588,7 +3691,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={Platform.OS === "web" ? { ...styles.container, ...mobileWebRootStyle } : styles.container}>
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
         <TouchableOpacity onPress={onBack}>
@@ -3725,6 +3828,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       ) : null}
       <ScrollView
         ref={messagesScrollRef}
+        style={styles.messageList}
         onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
         contentContainerStyle={styles.messages}
       >
