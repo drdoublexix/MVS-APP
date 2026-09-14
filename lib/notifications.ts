@@ -1,5 +1,5 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { supabase } from './supabase';
 
 Notifications.setNotificationHandler({
@@ -15,6 +15,16 @@ Notifications.setNotificationHandler({
 const ANDROID_CHANNEL_ID = 'default';
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
 const EXPO_PROJECT_ID = '5013bac6-0c3a-4c17-b268-e477a44b';
+
+const showWebPermissionAlert = () => {
+  if (Platform.OS !== 'web') return;
+
+  Alert.alert(
+    'Enable notifications',
+    'Notifications are currently blocked for this browser. Please allow notifications in your browser/site settings, then sign in again to receive chat and reminder alerts.',
+    [{ text: 'OK' }]
+  );
+};
 
 const saveWebPushSubscription = async (userId: string): Promise<string | null> => {
   if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
@@ -70,6 +80,7 @@ export const registerForPushNotifications = async (userId: string): Promise<stri
 
       if (permission !== 'granted') {
         console.log('[Notifications] Web notification permission denied.');
+        showWebPermissionAlert();
         return null;
       }
 

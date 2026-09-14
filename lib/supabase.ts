@@ -84,12 +84,35 @@ export const getCurrentUser = async () => {
 
 // Helper function to sign out
 export const signOutUser = async () => {
+  const currentUser = await getCurrentUser().catch(() => null);
+
   if (typeof window !== 'undefined') {
     window.localStorage.setItem('mvs_logout_requested', '1');
   }
 
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+
+  try {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      const existingSubscription = await registration.pushManager.getSubscription();
+      if (existingSubscription) {
+        await existingSubscription.unsubscribe();
+      }
+    }
+  } catch (cleanupError) {
+    console.warn('[Auth SignOut] Failed to unsubscribe web push subscription:', cleanupError);
+  }
+
+  if (currentUser?.id) {
+    try {
+      await supabase.from('profiles').update({ web_push_subscription: null }).eq('id', currentUser.id);
+    } catch (profileError) {
+      console.warn('[Auth SignOut] Failed to clear web push subscription from profile:', profileError);
+    }
+  }
+
   await AsyncStorage.clear();
   await clearCachedAuthState();
   if (typeof window !== 'undefined') {
