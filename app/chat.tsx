@@ -3031,6 +3031,31 @@ function ChatComposer({
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messageInputRef = useRef<TextInput>(null);
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSend = async () => {
+    const trimmedText = message.trim();
+
+    if (isSending || (!trimmedText && !selectedImageUri)) {
+      return;
+    }
+
+    const pendingMessage = message;
+    setIsSending(true);
+    setMessage('');
+
+    try {
+      await onSend();
+    } catch (error) {
+      console.error('[ChatComposer] Failed to send message:', error);
+      setMessage(pendingMessage);
+    } finally {
+      setIsSending(false);
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 0);
+    }
+  };
 
   return (
     <View style={styles.composer}>
@@ -3075,14 +3100,14 @@ function ChatComposer({
             {message.trim() || selectedImageUri ? (
               <TouchableOpacity
                 style={styles.send}
-                onPress={() => {
-                  onSend();
-                  setTimeout(() => {
-                    messageInputRef.current?.focus();
-                  }, 0);
-                }}
+                onPress={() => void handleSend()}
+                disabled={isSending || (!message.trim() && !selectedImageUri)}
               >
-                <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
+                {isSending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <MaterialCommunityIcons name="send" size={19} color="#FFFFFF" />
+                )}
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.voiceIdleMic} onPressIn={() => void voiceNoteControls.onStartRecording()}>
