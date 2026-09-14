@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import webPush from 'https://esm.sh/web-push@3.0.0';
+import webPush from 'npm:web-push@3.6.7';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
