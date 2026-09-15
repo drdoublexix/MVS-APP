@@ -32,6 +32,7 @@ export default function ClientHome() {
   const [aiSession, setAiSession] = useState<AiSession | null>(null);
   const [productOrderStatuses, setProductOrderStatuses] = useState<Record<string, string>>({});
   const [user, setUser] = useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
+  const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
 
   const firstName = user?.user_metadata?.full_name?.split(' ')[0] || user?.user_metadata?.first_name || 'there';
@@ -40,7 +41,18 @@ export default function ClientHome() {
     const user = await getCurrentUser();
     if (!user || !normalizeUuid(product.merchantId)) return;
     const conversationId = `conv_${[user.id, product.merchantId].sort().join('_')}`;
-    router.push({ pathname: '/chat', params: { conversationId, productId: product.id, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
+    router.push({ pathname: '/chat', params: { conversationId, productId: product.id, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} for ₦${product.price}.`, inquiryKey: `${product.id}-${Date.now()}` } });
+  };
+
+  const openProductDetails = (product: (typeof products)[number]) => {
+    setSelectedProduct(product);
+  };
+
+  const proceedToBuy = async () => {
+    if (!selectedProduct) return;
+    const product = selectedProduct;
+    setSelectedProduct(null);
+    await inquireAboutProduct(product);
   };
 
   useFocusEffect(
@@ -255,12 +267,10 @@ export default function ClientHome() {
           {products.map((product) => {
             const badge = getOrderBadge(productOrderStatuses[String(product.id)]);
             return (
-              <View key={product.id} style={styles.product}>
-                <TouchableOpacity onPress={() => inquireAboutProduct(product)}>
-                  <View style={styles.productImage}>
-                    {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.productPhoto} /> : <MaterialCommunityIcons name={product.icon as any} size={38} color="#CBD5E1" />}
-                  </View>
-                </TouchableOpacity>
+              <TouchableOpacity key={product.id} style={styles.product} onPress={() => openProductDetails(product)} activeOpacity={0.85}>
+                <View style={styles.productImage}>
+                  {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.productPhoto} /> : <MaterialCommunityIcons name={product.icon as any} size={38} color="#CBD5E1" />}
+                </View>
                 <Text style={styles.productName}>{product.name}</Text>
                 <Text style={styles.productPrice}>{naira(product.price)}</Text>
                 <Text style={styles.muted}>{product.merchant}</Text>
@@ -269,13 +279,37 @@ export default function ClientHome() {
                     <Text style={styles.orderBadgeText}>{badge.label}</Text>
                   </View>
                 )}
-                <TouchableOpacity style={styles.inquireButton} onPress={() => inquireAboutProduct(product)}><Text style={styles.inquireText}>Inquire / Buy</Text></TouchableOpacity>
-              </View>
+                <View style={styles.inquireButton}><Text style={styles.inquireText}>View Details</Text></View>
+              </TouchableOpacity>
             );
           })}
         </View>
 
       </ScrollView>
+
+      <Modal visible={selectedProduct !== null} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
+        <View style={styles.productModalOverlay}>
+          <View style={styles.productModal}>
+            <View style={styles.productModalHeader}>
+              <Text style={styles.productModalTitle}>Product Details</Text>
+              <TouchableOpacity onPress={() => setSelectedProduct(null)} accessibilityLabel="Close product details">
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            {selectedProduct?.imageUrl ? <Image source={{ uri: selectedProduct.imageUrl }} style={styles.productModalImage} resizeMode="cover" /> : null}
+            <Text style={styles.productModalName}>{selectedProduct?.name}</Text>
+            <Text style={styles.productModalLabel}>Description</Text>
+            <Text style={styles.productModalText}>{selectedProduct?.description || 'No description available.'}</Text>
+            <View style={styles.productModalMeta}>
+              <View style={styles.flex}><Text style={styles.productModalLabel}>Price</Text><Text style={styles.productModalPrice}>{selectedProduct ? naira(selectedProduct.price) : ''}</Text></View>
+              <View style={styles.flex}><Text style={styles.productModalLabel}>Category</Text><Text style={styles.productModalText}>{selectedProduct?.category || 'General'}</Text></View>
+            </View>
+            <TouchableOpacity style={styles.proceedButton} onPress={() => void proceedToBuy()}>
+              <Text style={styles.proceedButtonText}>Proceed to Buy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={aiVisible} animationType="slide" transparent onRequestClose={() => setAiVisible(false)}>
         <KeyboardAvoidingView style={styles.aiOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -455,6 +489,18 @@ const styles = StyleSheet.create({
   orderBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   inquireButton: { backgroundColor: '#10B981', borderRadius: 8, paddingVertical: 9, alignItems: 'center', marginTop: 10 },
   inquireText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  productModalOverlay: { flex: 1, backgroundColor: '#00000099', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  productModal: { width: '100%', maxWidth: 440, maxHeight: '85%', backgroundColor: '#1E293B', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#334155' },
+  productModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  productModalTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
+  productModalImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 14, backgroundColor: '#0F172A' },
+  productModalName: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  productModalLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '700', marginTop: 14, marginBottom: 4 },
+  productModalText: { color: '#CBD5E1', fontSize: 14, lineHeight: 20 },
+  productModalMeta: { flexDirection: 'row', gap: 20 },
+  productModalPrice: { color: '#10B981', fontSize: 18, fontWeight: '700' },
+  proceedButton: { backgroundColor: '#10B981', borderRadius: 9, paddingVertical: 13, alignItems: 'center', marginTop: 22 },
+  proceedButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   supportFab: { position: 'absolute', bottom: 24, right: 20, zIndex: 9999, width: 56, height: 56, borderRadius: 28, backgroundColor: '#005F53', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   backButton: { borderColor: '#3B82F6', borderWidth: 1, borderRadius: 9, padding: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 30 },
   backText: { color: '#3B82F6', fontWeight: '600' },

@@ -6,6 +6,7 @@ export type MarketplaceProduct = {
   name: string;
   price: number;
   merchant: string;
+  businessName?: string;
   merchantId: string;
   icon: string;
   category: string;
@@ -18,12 +19,13 @@ const normalizeProduct = (product: any): MarketplaceProduct => ({
   id: String(product.id),
   name: product.name || 'Pet Product',
   price: Number(product.price || 0),
-  merchant: product.profiles?.full_name || product.merchant || 'MVS Merchant',
+  merchant: product.profiles?.business_name || product.business_name || 'Nil',
+  businessName: product.profiles?.business_name || product.business_name || 'Nil',
   merchantId: normalizeUuid(String(product.merchant_id || product.merchantId || '')) || '',
   icon: product.icon || 'package',
   category: product.category || 'General',
   stock: Number(product.stock || 0),
-  imageUrl: product.image_url || product.imageUrl || undefined,
+  imageUrl: product.image_url || product.imageUrl || product.image || product.photo_url || undefined,
   description: product.description || '',
 });
 
@@ -60,13 +62,13 @@ export const fetchMarketplaceProducts = async () => {
   const rows = data || [];
   const merchantIds = [...new Set(rows.map((product) => String(product.merchant_id || '')).filter(Boolean))];
   const { data: profiles, error: profilesError } = merchantIds.length > 0
-    ? await supabase.from('profiles').select('id, full_name, email').in('id', merchantIds)
+    ? await supabase.from('profiles').select('id, business_name').in('id', merchantIds)
     : { data: [], error: null };
   if (profilesError) console.warn('[Marketplace] Failed to fetch merchant names:', profilesError);
-  const merchantNames = new Map((profiles || []).map((profile) => [profile.id, profile.full_name || profile.email || 'MVS Merchant']));
+  const merchantBusinessNames = new Map((profiles || []).map((profile) => [profile.id, profile.business_name || 'Nil']));
   const nextProducts = rows.map((product) => normalizeProduct({
     ...product,
-    merchant: merchantNames.get(String(product.merchant_id)) || product.merchant,
+    business_name: merchantBusinessNames.get(String(product.merchant_id)) || product.business_name,
   }));
   products = nextProducts;
   notify();

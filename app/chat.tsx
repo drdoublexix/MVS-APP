@@ -71,6 +71,7 @@ type ChatParams = {
   productName?: string;
   productPrice?: string;
   starterMessage?: string;
+  inquiryKey?: string;
   resetThread?: string;
 };
 
@@ -650,6 +651,9 @@ const styles = {
   videoPreviewAction: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 },
   videoPreviewActionText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
   videoPreview: { width: "100%", height: "70%" },
+  imagePreviewOverlay: { flex: 1, backgroundColor: "#000000", justifyContent: "center", alignItems: "center" },
+  imagePreview: { width: "100%", height: "100%" },
+  imagePreviewClose: { position: "absolute", top: 48, right: 16, zIndex: 2, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099" },
 } as const;
 
 const appendUniqueMessage = (
@@ -760,6 +764,7 @@ export default function ChatScreen() {
   const productNameParam = firstParam(params.productName);
   const initialMessageParam = firstParam(params.initialMessage);
   const starterMessageParam = firstParam(params.starterMessage);
+  const inquiryKeyParam = firstParam(params.inquiryKey);
   const resetThreadParam = firstParam(params.resetThread);
   const [currentUserId, setCurrentUserId] = useState("");
   const [userRole, setUserRole] = useState("client");
@@ -1424,6 +1429,11 @@ export default function ChatScreen() {
       cancelled = true;
     };
   }, [initialMessageParam, categoryParam, vetParam]);
+
+  useEffect(() => {
+    if (!inquiryKeyParam || !starterMessageParam) return;
+    setMessage(starterMessageParam);
+  }, [inquiryKeyParam, starterMessageParam]);
 
   useEffect(() => {
     if (!active || !isUuid(currentUserId) || !isUuid(active.participantId))
@@ -2872,6 +2882,7 @@ function ChatRoom({
   }, [messages.length]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const isPetParent = userRole === "client" || consultation?.client_id === currentUserId;
   const isVetClientThread =
     (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
@@ -2963,7 +2974,7 @@ function ChatRoom({
           </Text>
           <Text style={styles.subtitle}>
             {active.productName
-              ? `${active.participantName} Â· Marketplace`
+              ? `${active.participantName} - Marketplace`
               : active.participantName}
           </Text>
         </View>
@@ -3093,11 +3104,13 @@ function ChatRoom({
                 onPress={() => {
                   if (item.location_data) {
                     openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                  } else if (item.media_type === "image" && item.media_url) {
+                    setSelectedImagePreview(item.media_url);
                   } else if (item.media_type === "video" && item.media_url) {
                     setVideoPreviewUrl(item.media_url);
                   }
                 }}
-                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "video" && item.media_url)}
+                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "image" && item.media_url) && !(item.media_type === "video" && item.media_url)}
                 style={[
                   styles.bubble,
                   item.media_type === "video" && item.media_url ? styles.videoBubble : null,
@@ -3174,6 +3187,7 @@ function ChatRoom({
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
+      <ImagePreviewModal imageUrl={selectedImagePreview} onClose={() => setSelectedImagePreview(null)} />
       <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
@@ -3526,6 +3540,19 @@ function VideoPreviewModal({ videoUrl, onClose }: { videoUrl: string | null; onC
   );
 }
 
+function ImagePreviewModal({ imageUrl, onClose }: { imageUrl: string | null; onClose: () => void }) {
+  return (
+    <Modal visible={Boolean(imageUrl)} animationType="fade" presentationStyle="fullScreen" transparent onRequestClose={onClose}>
+      <Pressable style={styles.imagePreviewOverlay} onPress={onClose} accessibilityLabel="Close image preview">
+        <Image source={imageUrl ? { uri: imageUrl } : undefined} style={styles.imagePreview} resizeMode="contain" />
+        <TouchableOpacity style={styles.imagePreviewClose} onPress={onClose} accessibilityLabel="Close image preview">
+          <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function AttachmentOptions({
   attachmentVisible,
   locationVisible,
@@ -3842,6 +3869,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   }, [messages.length]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const isConsultActive = consultation.status === "active";
   const isPetParent =
     currentUserId === consultation.client_id || userRole === "client";
@@ -3868,7 +3896,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           </Text>
           <Text style={styles.subtitle}>
             {active.productName
-              ? `${active.participantName} Â· Marketplace`
+              ? `${active.participantName} - Marketplace`
               : active.participantName}
           </Text>
         </View>
@@ -4012,11 +4040,13 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                 onPress={() => {
                   if (item.location_data) {
                     openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                  } else if (item.media_type === "image" && item.media_url) {
+                    setSelectedImagePreview(item.media_url);
                   } else if (item.media_type === "video" && item.media_url) {
                     setVideoPreviewUrl(item.media_url);
                   }
                 }}
-                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "video" && item.media_url)}
+                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "image" && item.media_url) && !(item.media_type === "video" && item.media_url)}
                 style={[
                   styles.bubble,
                   item.media_type === "video" && item.media_url ? styles.videoBubble : null,
@@ -4093,6 +4123,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
+      <ImagePreviewModal imageUrl={selectedImagePreview} onClose={() => setSelectedImagePreview(null)} />
       <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} initialItems={invoiceItems} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />

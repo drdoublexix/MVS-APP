@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
@@ -23,6 +23,7 @@ interface AiSession {
 export default function VetDashboardScreen() {
   const router = useRouter();
   const { products } = useMarketplace();
+  const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
   const [totalPatients, setTotalPatients] = useState(0);
   const [overallRating, setOverallRating] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
@@ -180,7 +181,14 @@ export default function VetDashboardScreen() {
     const user = await getCurrentUser();
     if (!user || !normalizeUuid(product.merchantId)) return;
     const conversationId = `conv_${[user.id, product.merchantId].sort().join('_')}`;
-    router.push({ pathname: '/(vet)/chat', params: { conversationId, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} listed for ₦${product.price}.` } });
+    router.push({ pathname: '/(vet)/chat', params: { conversationId, merchantId: product.merchantId, merchantName: product.merchant, productName: product.name, productPrice: String(product.price), starterMessage: `Hi! I would like to inquire about purchasing ${product.name} for ₦${product.price}.`, inquiryKey: `${product.id}-${Date.now()}` } });
+  };
+
+  const proceedToBuy = async () => {
+    if (!selectedProduct) return;
+    const product = selectedProduct;
+    setSelectedProduct(null);
+    await inquireAboutProduct(product);
   };
 
   const askAiAssistant = async (isRetry = false) => {
@@ -257,9 +265,23 @@ export default function VetDashboardScreen() {
 
         <Text style={styles.sectionTitle}>Global Marketplace</Text>
         <View style={styles.marketplace}>
-          {products.map((product) => <View key={product.id} style={styles.marketProduct}><MaterialCommunityIcons name={product.icon as any} size={24} color="#CBD5E1" /><Text style={styles.marketName} numberOfLines={1}>{product.name}</Text><Text style={styles.marketPrice}>₦{product.price.toLocaleString('en-NG')}</Text><Text style={styles.muted}>{product.merchant}</Text><TouchableOpacity style={{ backgroundColor: '#10B981', borderRadius: 8, paddingVertical: 8, alignItems: 'center', marginTop: 10 }} onPress={() => inquireAboutProduct(product)}><Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Inquire / Buy</Text></TouchableOpacity></View>)}
+          {products.map((product) => <TouchableOpacity key={product.id} style={styles.marketProduct} activeOpacity={0.85} onPress={() => setSelectedProduct(product)}>{product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.marketProductImage} /> : <View style={styles.marketProductPlaceholder}><MaterialCommunityIcons name={product.icon as any} size={24} color="#CBD5E1" /></View>}<Text style={styles.marketName} numberOfLines={1}>{product.name}</Text><Text style={styles.marketPrice}>₦{product.price.toLocaleString('en-NG')}</Text><Text style={styles.muted}>{product.merchant}</Text><View style={styles.marketDetailsButton}><Text style={styles.marketDetailsText}>View Details</Text></View></TouchableOpacity>)}
         </View>
       </ScrollView>
+
+      <Modal visible={selectedProduct !== null} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
+        <View style={styles.productModalOverlay}>
+          <View style={styles.productModal}>
+            <View style={styles.productModalHeader}><Text style={styles.productModalTitle}>Product Details</Text><TouchableOpacity onPress={() => setSelectedProduct(null)} accessibilityLabel="Close product details"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View>
+            {selectedProduct?.imageUrl ? <Image source={{ uri: selectedProduct.imageUrl }} style={styles.productModalImage} resizeMode="cover" /> : null}
+            <Text style={styles.productModalName}>{selectedProduct?.name}</Text>
+            <Text style={styles.productModalLabel}>Description</Text>
+            <Text style={styles.productModalText}>{selectedProduct?.description || 'No description available.'}</Text>
+            <View style={styles.productModalMeta}><View style={styles.modalColumn}><Text style={styles.productModalLabel}>Price</Text><Text style={styles.productModalPrice}>{selectedProduct ? `₦${selectedProduct.price.toLocaleString('en-NG')}` : ''}</Text></View><View style={styles.modalColumn}><Text style={styles.productModalLabel}>Category</Text><Text style={styles.productModalText}>{selectedProduct?.category || 'General'}</Text></View></View>
+            <TouchableOpacity style={styles.proceedButton} onPress={() => void proceedToBuy()}><Text style={styles.proceedButtonText}>Proceed to Buy</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={aiVisible} animationType="slide" transparent onRequestClose={() => setAiVisible(false)}>
         <KeyboardAvoidingView style={styles.aiOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -435,6 +457,23 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 12 },
   marketplace: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   marketProduct: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 12 },
+  marketProductImage: { width: '100%', height: 96, borderRadius: 8, resizeMode: 'cover' },
+  marketProductPlaceholder: { width: '100%', height: 96, borderRadius: 8, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
   marketName: { color: '#FFFFFF', fontWeight: '600', fontSize: 12, marginTop: 8 },
   marketPrice: { color: '#3B82F6', fontWeight: '700', fontSize: 14, marginTop: 4 },
+  marketDetailsButton: { backgroundColor: '#10B981', borderRadius: 8, paddingVertical: 8, alignItems: 'center', marginTop: 10 },
+  marketDetailsText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  productModalOverlay: { flex: 1, backgroundColor: '#00000099', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  productModal: { width: '100%', maxWidth: 440, maxHeight: '85%', backgroundColor: '#1E293B', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#334155' },
+  productModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  productModalTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
+  productModalImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 14, backgroundColor: '#0F172A' },
+  productModalName: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  productModalLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '700', marginTop: 14, marginBottom: 4 },
+  productModalText: { color: '#CBD5E1', fontSize: 14, lineHeight: 20 },
+  productModalMeta: { flexDirection: 'row', gap: 20 },
+  modalColumn: { flex: 1 },
+  productModalPrice: { color: '#10B981', fontSize: 18, fontWeight: '700' },
+  proceedButton: { backgroundColor: '#10B981', borderRadius: 9, paddingVertical: 13, alignItems: 'center', marginTop: 22 },
+  proceedButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
