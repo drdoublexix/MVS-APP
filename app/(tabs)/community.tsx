@@ -37,6 +37,14 @@ export default function CommunityScreen() {
   const maximumInputHeight = 132;
   const inputLineHeight = 22;
 
+  const scrollToLatest = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToEnd({ animated: false });
+      });
+    });
+  };
+
   const handleInputContentSizeChange = (event: any) => {
     const contentHeight = event.nativeEvent.contentSize.height;
     setInputHeight(Math.min(Math.max(contentHeight + 4, compactInputHeight), maximumInputHeight));
@@ -102,7 +110,7 @@ export default function CommunityScreen() {
   }, [loadMessages]);
 
   useEffect(() => {
-    if (messages.length > 0) listRef.current?.scrollToEnd({ animated: false });
+    if (messages.length > 0) scrollToLatest();
   }, [messages.length]);
 
   useEffect(() => () => {
@@ -221,7 +229,7 @@ export default function CommunityScreen() {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView style={styles.keyboardRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
       <View style={styles.banner}><Text style={styles.heroTitle}>MVS Community Hub</Text><Text style={styles.kicker}>MVS COMMUNITY</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
-      <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={() => { if (messages.length) listRef.current?.scrollToEnd({ animated: false }); }} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <Text style={styles.empty}>Be the first to say hello.</Text>} />
+      <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={scrollToLatest} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={scrollToLatest} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <Text style={styles.empty}>Be the first to say hello.</Text>} />
       {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
       <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
       <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
@@ -288,6 +296,6 @@ const styles = StyleSheet.create({
   composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
   iconButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   inputShell: { flex: 1, minHeight: 42, maxHeight: 132, justifyContent: 'center', borderWidth: 1, borderColor: '#334155', borderRadius: 22, paddingHorizontal: 15, paddingVertical: 6, backgroundColor: '#1E293B' },
-  input: { flex: 1, color: '#FFFFFF', paddingVertical: 0, paddingHorizontal: 0, backgroundColor: 'transparent', fontSize: 16, textAlignVertical: 'top' },
+  input: { flex: 1, color: '#FFFFFF', paddingVertical: 0, paddingHorizontal: 0, backgroundColor: 'transparent', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}), fontSize: 16, textAlignVertical: 'top' },
   sendButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#10B981' },
 });

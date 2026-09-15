@@ -17,6 +17,66 @@ if (!isSupabaseConfigured) {
 
 const AUTH_CACHE_KEY = 'mvs_auth_cache';
 
+export type NetworkStatus = 'retrying' | 'offline' | 'recovered';
+type NetworkStatusListener = (status: NetworkStatus) => void;
+
+const networkStatusListeners = new Set<NetworkStatusListener>();
+
+export const subscribeToNetworkStatus = (listener: NetworkStatusListener) => {
+  networkStatusListeners.add(listener);
+  return () => {
+    networkStatusListeners.delete(listener);
+  };
+};
+
+const notifyNetworkStatus = (status: NetworkStatus) => {
+  networkStatusListeners.forEach((listener) => listener(status));
+};
+
+const getErrorStatus = (error: any): number | undefined => {
+  const status = error?.status ?? error?.statusCode ?? error?.response?.status;
+  return typeof status === 'number' ? status : undefined;
+};
+
+const isTransientSupabaseError = (error: any) => {
+  const status = getErrorStatus(error);
+  if (status === 502 || status === 503 || status === 504 || status === 408 || status === 429) return true;
+  const message = String(error?.message || error || '').toLowerCase();
+  return /network|timeout|timed out|fetch failed|failed to fetch|connection|offline|gateway/.test(message);
+};
+
+export const safeSupabaseCall = async <T>(
+  apiCall: () => PromiseLike<{ data: T | null; error: any }>,
+): Promise<T> => {
+  const maxRetries = 3;
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const { data, error } = await apiCall();
+      if (!error) {
+        if (attempt > 0) notifyNetworkStatus('recovered');
+        return data as T;
+      }
+      lastError = error;
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (!isTransientSupabaseError(lastError) || attempt === maxRetries) {
+      if (attempt > 0) notifyNetworkStatus('offline');
+      throw lastError;
+    }
+
+    const delayMs = 1000 * (2 ** attempt);
+    console.warn(`[Supabase] Temporary request failure. Retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${maxRetries}).`);
+    notifyNetworkStatus('retrying');
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  throw lastError || new Error('Supabase request failed.');
+};
+
 export type CachedAuthState = {
   user: Record<string, any> | null;
   profile: Record<string, any> | null;
@@ -186,7 +246,7 @@ export type RealtimeMessage = {
   sender_id: string;
   receiver_id: string;
   content: string;
-  message_type: 'text' | 'invoice' | 'location_exact' | 'location_live';
+  message_type: 'text' | 'video' | 'invoice' | 'location_exact' | 'location_live';
   location_data?: {
     latitude: number;
     longitude: number;

@@ -6,7 +6,7 @@ import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 
 import 'react-native-get-random-values';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForPushNotifications } from '../lib/notifications';
-import { readCachedAuthState, supabase, writeCachedAuthState } from '../lib/supabase';
+import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, writeCachedAuthState } from '../lib/supabase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null }> {
   state: { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null } = {
@@ -153,6 +153,13 @@ function RootAuthGate() {
 
       if (!session?.user) {
         console.log('[AUTH ROUTER] No session:', { href, pathname, isAuthPage });
+        if (cachedState.user) {
+          if (mounted) {
+            setAuthUser(cachedState.user as Session['user']);
+            if (cachedState.profile) setProfile(cachedState.profile as { role?: string | null; full_name?: string | null; avatar_url?: string | null; email?: string | null });
+          }
+          return;
+        }
         if (isAuthPage) return;
         if (mounted) {
           router.replace('/(auth)/login');
@@ -165,13 +172,18 @@ function RootAuthGate() {
       if (isInsideApplication) return;
 
       try {
-        const { data: profileData, error } = await supabase
-          .from('profiles')
-          .select('role, full_name, email, avatar_url')
-          .eq('id', session.user.id)
-          .maybeSingle();
+        let profileData: { role?: string | null; full_name?: string | null; email?: string | null; avatar_url?: string | null } | null = null;
+        try {
+          profileData = await safeSupabaseCall(() => supabase
+            .from('profiles')
+            .select('role, full_name, email, avatar_url')
+            .eq('id', session.user.id)
+            .maybeSingle());
+        } catch (profileError) {
+          console.warn('[Auth Layout] Profile unavailable; using cached profile:', profileError);
+        }
 
-        console.log('[AUTH ROUTER] Profile query result:', { profileData, error });
+        console.log('[AUTH ROUTER] Profile query result:', { profileData });
         const resolvedProfile = profileData || cachedProfile || null;
         if (mounted) setProfile(resolvedProfile);
         if (session.user) {
@@ -212,6 +224,11 @@ function RootAuthGate() {
         }
       } catch (err) {
         console.error('[Auth Layout] Error in auth layout guard:', err);
+        if (mounted && cachedProfile) {
+          setProfile(cachedProfile);
+          void finalizeLoading();
+          return;
+        }
         if (mounted) router.replace('/(auth)/login');
       }
     };
@@ -257,14 +274,17 @@ function RootAuthGate() {
       }
 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        void supabase
+        void safeSupabaseCall(() => supabase
           .from('profiles')
           .select('role, full_name, email, avatar_url')
           .eq('id', session.user.id)
-          .maybeSingle()
-          .then(async ({ data }) => {
+          .maybeSingle())
+          .then(async (data) => {
             if (mounted) setProfile(data || null);
             await writeCachedAuthState(session.user, data || session.user.user_metadata || null);
+          })
+          .catch((error) => {
+            console.warn('[Auth Layout] Profile refresh unavailable; retaining cached auth state:', error);
           });
       }
 
@@ -321,6 +341,7 @@ export default function RootLayout() {
     <ErrorBoundary>
       <SafeAreaProvider style={{ flex: 1, width: '100%', height: '100%', backgroundColor: '#0B132B' }}>
         <RootAuthGate />
+        <NetworkStatusBanner />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -336,6 +357,23 @@ export default function RootLayout() {
         </Stack>
       </SafeAreaProvider>
     </ErrorBoundary>
+  );
+}
+
+function NetworkStatusBanner() {
+  const [status, setStatus] = useState<'retrying' | 'offline' | null>(null);
+
+  useEffect(() => subscribeToNetworkStatus((nextStatus) => {
+    setStatus(nextStatus === 'recovered' ? null : nextStatus);
+  }), []);
+
+  if (!status) return null;
+  return (
+    <View style={styles.networkBanner}>
+      <Text style={styles.networkBannerText}>
+        {status === 'retrying' ? 'Connection hiccup. Retrying...' : 'Connection unavailable. Your saved session is still active.'}
+      </Text>
+    </View>
   );
 }
 
@@ -371,5 +409,23 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     lineHeight: 18,
     fontFamily: 'monospace',
+  },
+  networkBanner: {
+    position: 'absolute',
+    top: 8,
+    left: 16,
+    right: 16,
+    zIndex: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  networkBannerText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

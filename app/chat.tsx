@@ -8,9 +8,12 @@ import {
   useAudioPlayerStatus,
   useAudioRecorder,
 } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { ShieldCheck, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -43,6 +46,7 @@ import {
   getCurrentUser,
   isUuid,
   normalizeUuid,
+  safeSupabaseCall,
   sendRealtimeMessage,
   subscribeToMessages,
   supabase,
@@ -543,7 +547,7 @@ const styles = {
   title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { padding: 16 },
-  messages: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12, flexGrow: 1 },
+  messages: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12, flexGrow: 1, flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
   messageList: { flex: 1 },
   messageRow: { marginBottom: 10 },
   thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
@@ -559,9 +563,12 @@ const styles = {
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
   bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
+  videoBubble: { cursor: "pointer" },
   outgoing: { alignSelf: "flex-end", backgroundColor: "#0E7490" },
   incoming: { alignSelf: "flex-start", backgroundColor: "#1E293B" },
   attachment: { width: 220, height: 180, borderRadius: 10, marginBottom: 8 },
+  videoAttachment: { width: 220, height: 140, borderRadius: 10, marginBottom: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#0E7490", gap: 6 },
+  videoAttachmentText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   voiceNoteBubble: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 210 },
   voicePlayButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
   voiceProgressArea: { flex: 1, gap: 4 },
@@ -574,6 +581,7 @@ const styles = {
   voiceSpeedButton: { minWidth: 34, paddingHorizontal: 5, paddingVertical: 4, borderRadius: 6, backgroundColor: "#334155", alignItems: "center" },
   voiceSpeedText: { color: "#A7F3D0", fontSize: 11, fontWeight: "700" },
   locationCard: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 220, padding: 2 },
+  locationTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   locationTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   locationAddress: { color: "#CBD5E1", fontSize: 12, marginTop: 3 },
   locationCoordinates: { color: "#94A3B8", fontSize: 11, marginTop: 4 },
@@ -624,7 +632,7 @@ const styles = {
   recordingTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   recordingLabel: { color: "#94A3B8", fontSize: 13 },
   attach: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#475569", alignItems: "center", justifyContent: "center" },
-  input: { backgroundColor: "transparent", borderWidth: 0, color: "#FFFFFF", fontSize: 16, paddingVertical: 0, paddingHorizontal: 0, textAlignVertical: "top" },
+  input: { backgroundColor: "transparent", borderWidth: 0, ...(Platform.OS === "web" ? { outlineStyle: "none" } as any : {}), color: "#FFFFFF", fontSize: 16, paddingVertical: 0, paddingHorizontal: 0, textAlignVertical: "top" },
   send: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
   voiceIdleMic: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#0E7490", alignItems: "center", justifyContent: "center" },
   recordingBar: { flex: 1, borderRadius: 8, backgroundColor: "#172554", flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
@@ -636,6 +644,12 @@ const styles = {
   deleteButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
   cancelButton: { backgroundColor: "#475569", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
   cancelButtonText: { color: "#FFFFFF", fontWeight: "600", fontSize: 12 },
+  videoPreviewOverlay: { flex: 1, backgroundColor: "#000000", justifyContent: "center" },
+  videoPreviewHeader: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, paddingTop: 48 },
+  videoPreviewTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  videoPreviewAction: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 },
+  videoPreviewActionText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
+  videoPreview: { width: "100%", height: "70%" },
 } as const;
 
 const appendUniqueMessage = (
@@ -691,7 +705,6 @@ export default function ChatScreen() {
     flexDirection: "column",
     height: visualViewportHeight ?? 0,
   };
-
   const dismissActiveWebKeyboard = (event?: { target?: unknown }) => {
     if (Platform.OS !== "web" || typeof document === "undefined") {
       return;
@@ -917,24 +930,22 @@ export default function ChatScreen() {
             });
           }
 
-          const [roleResult, messageResult] = await Promise.all([
-            supabase
+          const [roleData, rows] = await Promise.all([
+            safeSupabaseCall<{ role: string | null } | null>(() => supabase
               .from("profiles")
               .select("role")
               .eq("id", cleanUserId)
-              .maybeSingle(),
-            supabase
+              .maybeSingle()),
+            safeSupabaseCall(() => supabase
               .from("messages")
               .select("*")
               .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
-              .order("created_at", { ascending: false }),
+              .order("created_at", { ascending: false })),
           ]);
-          const { data, error } = messageResult;
-          if (error) throw error;
-          const rows = (data || []) as RealtimeMessage[];
+          const messageRows = (rows || []) as RealtimeMessage[];
           const participantIds = [
             ...new Set(
-              rows
+              messageRows
                 .map((row) =>
                   normalizeUuid(
                     row.sender_id === cleanUserId
@@ -945,18 +956,17 @@ export default function ChatScreen() {
                 .filter((id): id is string => Boolean(id))
             ),
           ];
-          const consultations = roleResult.data?.role === "merchant"
-            ? { data: [], error: null }
-            : await supabase
+          const consultationRowsData = roleData?.role === "merchant"
+            ? []
+            : await safeSupabaseCall(() => supabase
                 .from("consultations")
                 .select(
                   "conversation_id, client_id, vet_id, merchant_id, status, deleted_by_user_ids"
                 )
                 .or(
                   `client_id.eq.${cleanUserId},vet_id.eq.${cleanUserId},merchant_id.eq.${cleanUserId}`
-                );
-          if (consultations.error) throw consultations.error;
-          const consultationRows = (consultations.data || []) as {
+                    ));
+                  const consultationRows = (consultationRowsData || []) as {
             conversation_id: string;
             client_id: string | null;
             vet_id: string | null;
@@ -974,17 +984,16 @@ export default function ChatScreen() {
           ];
           const profiles =
             allParticipantIds.length > 0
-              ? await supabase
+              ? await safeSupabaseCall(() => supabase
                   .from("profiles")
                   .select("id, full_name, email, role, business_name, location, business_number, phone_number")
-                  .in("id", allParticipantIds)
-              : { data: [], error: null };
-          if (profiles.error) throw profiles.error;
+                  .in("id", allParticipantIds))
+              : [];
           const profileMap = new Map(
-            (profiles.data || []).map((profile) => [profile.id, profile])
+            (profiles || []).map((profile) => [profile.id, profile])
           );
           const grouped = new Map<string, RealtimeMessage[]>();
-          for (const row of rows) {
+          for (const row of messageRows) {
             const participantId = normalizeUuid(
               row.sender_id === cleanUserId ? row.receiver_id : row.sender_id
             );
@@ -1010,7 +1019,7 @@ export default function ChatScreen() {
           );
           if (!mounted) return;
           setCurrentUserId(cleanUserId);
-          setUserRole(roleResult.data?.role || "client");
+          setUserRole(roleData?.role || "client");
           const rawThreads = allParticipantIds.map((participantId) => {
             const profile = profileMap.get(participantId);
             const conversationId = conversationIdFor(cleanUserId, participantId);
@@ -2438,7 +2447,7 @@ export default function ChatScreen() {
       sender_id: cleanSenderId,
       receiver_id: cleanReceiverId,
       content: text,
-      message_type: "text",
+      message_type: uploaded?.mediaType === "video" ? "video" : "text",
       metadata: {
         sender_name: senderEmail,
         sender_email: senderEmail,
@@ -2455,7 +2464,7 @@ export default function ChatScreen() {
         sender_id: cleanSenderId,
         receiver_id: cleanReceiverId,
         content: text,
-        message_type: "text",
+        message_type: uploaded?.mediaType === "video" ? "video" : "text",
         metadata: optimistic.metadata,
         media_url: uploaded?.publicUrl,
         media_type: uploaded?.mediaType,
@@ -2490,7 +2499,7 @@ export default function ChatScreen() {
     if (uploading) return;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
+        mediaTypes: ["images", "videos"],
         selectionLimit: 1,
       });
       if (result.canceled || !result.assets[0]) return;
@@ -2836,7 +2845,6 @@ function ChatRoom({
   onCreatePrescription: (draft: PrescriptionDraft) => Promise<void>;
   voiceNoteControls: VoiceNoteControls;
 }) {
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
@@ -2852,19 +2860,18 @@ function ChatRoom({
     flexDirection: "column",
     height: visualViewportHeight ?? 0,
   };
-  const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
-  useEffect(
-    () => () => {
-      if (pressTimer.current) clearTimeout(pressTimer.current);
-    },
-    []
-  );
-
-  const startDeletePress = (item: RealtimeMessage) => {
-    if (item.sender_id !== currentUserId) return;
-    pressTimer.current = setTimeout(() => onDeleteMessage(item), 600);
+  const scrollToLatest = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        messagesScrollRef.current?.scrollToEnd({ animated: false });
+      });
+    });
   };
-
+  useEffect(() => {
+    if (messages.length > 0) scrollToLatest();
+  }, [messages.length]);
+  const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const isPetParent = userRole === "client" || consultation?.client_id === currentUserId;
   const isVetClientThread =
     (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
@@ -2876,13 +2883,6 @@ function ChatRoom({
   const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
   const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
   const roomConsultation = consultation;
-
-  const cancelDeletePress = () => {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-  };
 
   if (roomConsultation)
     return (
@@ -3072,8 +3072,9 @@ function ChatRoom({
       <ScrollView
         ref={messagesScrollRef}
         style={styles.messageList}
-        onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
-        contentContainerStyle={[styles.messages, { paddingBottom: 96 + bottomTabOffset }]}
+        onLayout={scrollToLatest}
+        onContentSizeChange={scrollToLatest}
+        contentContainerStyle={styles.messages}
       >
         {messages.length === 0 ? (
           <Text style={styles.empty}>
@@ -3087,16 +3088,19 @@ function ChatRoom({
                   ? contextMenuProps(() => onDeleteMessage(item))
                   : {})}
                 activeOpacity={0.8}
-                onPressIn={() => startDeletePress(item)}
-                onPressOut={cancelDeletePress}
+                onLongPress={item.sender_id === currentUserId ? () => onDeleteMessage(item) : undefined}
+                delayLongPress={2000}
                 onPress={() => {
                   if (item.location_data) {
                     openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                  } else if (item.media_type === "video" && item.media_url) {
+                    setVideoPreviewUrl(item.media_url);
                   }
                 }}
-                disabled={item.sender_id !== currentUserId && !item.location_data}
+                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "video" && item.media_url)}
                 style={[
                   styles.bubble,
+                  item.media_type === "video" && item.media_url ? styles.videoBubble : null,
                   item.sender_id === currentUserId
                     ? styles.outgoing
                     : styles.incoming,
@@ -3107,6 +3111,12 @@ function ChatRoom({
                     source={{ uri: item.media_url }}
                     style={styles.attachment}
                   />
+                ) : null}
+                {item.media_url && item.media_type === "video" ? (
+                  <View style={styles.videoAttachment}>
+                    <MaterialCommunityIcons name="play-circle" size={46} color="#FFFFFF" />
+                    <Text style={styles.videoAttachmentText}>Tap to watch video</Text>
+                  </View>
                 ) : null}
                 {item.message_type === "invoice" ? (
                   <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
@@ -3164,6 +3174,7 @@ function ChatRoom({
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
+      <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
@@ -3457,13 +3468,61 @@ function LocationMessage({ item }: { item: RealtimeMessage }) {
     <View style={styles.locationCard}>
       <MaterialCommunityIcons name="map-marker" size={22} color="#34D399" />
       <View style={styles.flex}>
-        <Text style={styles.locationTitle}>ðŸ“ Shared Location</Text>
+        <View style={styles.locationTitleRow}>
+          <MaterialCommunityIcons name="map-marker" size={18} color="#34D399" />
+          <Text style={styles.locationTitle}>Shared Location</Text>
+        </View>
         {location.addressName ? <Text style={styles.locationAddress}>{location.addressName}</Text> : null}
         <Text style={styles.locationCoordinates}>
           {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
         </Text>
       </View>
     </View>
+  );
+}
+
+function VideoPreviewModal({ videoUrl, onClose }: { videoUrl: string | null; onClose: () => void }) {
+  const player = useVideoPlayer(videoUrl, (videoPlayer) => {
+    videoPlayer.loop = false;
+  });
+
+  const saveVideo = async () => {
+    if (!videoUrl) return;
+    try {
+      if (Platform.OS === "web") {
+        await Linking.openURL(videoUrl);
+        return;
+      }
+      if (!FileSystem.cacheDirectory) throw new Error("Temporary storage is unavailable.");
+      const localUri = `${FileSystem.cacheDirectory}mvs-video-${Date.now()}.mp4`;
+      const download = await FileSystem.downloadAsync(videoUrl, localUri);
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Video downloaded", "The video was downloaded to the app storage, but sharing is unavailable on this device.");
+        return;
+      }
+      await Sharing.shareAsync(download.uri, { mimeType: "video/mp4", dialogTitle: "Save video" });
+    } catch (error) {
+      Alert.alert("Save failed", error instanceof Error ? error.message : "Could not save the video.");
+    }
+  };
+
+  return (
+    <Modal visible={Boolean(videoUrl)} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={styles.videoPreviewOverlay}>
+        <View style={styles.videoPreviewHeader}>
+          <Text style={styles.videoPreviewTitle}>Video</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TouchableOpacity style={styles.videoPreviewAction} onPress={() => void saveVideo()}>
+              <Text style={styles.videoPreviewActionText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.videoPreviewAction} onPress={onClose} accessibilityLabel="Close video preview">
+              <MaterialCommunityIcons name="close" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <VideoView player={player} style={styles.videoPreview} nativeControls contentFit="contain" fullscreenOptions={{ enable: true }} />
+      </View>
+    </Modal>
   );
 }
 
@@ -3496,7 +3555,7 @@ function AttachmentOptions({
             <Text style={styles.locationSheetTitle}>Share with this contact</Text>
             <TouchableOpacity style={styles.locationOption} onPress={() => { onCloseAttachment(); onSendPhoto(); }}>
               <MaterialCommunityIcons name="image-outline" size={22} color="#34D399" />
-              <Text style={styles.locationOptionText}>Send Photo</Text>
+              <Text style={styles.locationOptionText}>Send Media</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.locationOption} onPress={onOpenLocation}>
               <MaterialCommunityIcons name="map-marker-outline" size={22} color="#34D399" />
@@ -3771,7 +3830,18 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     flexDirection: "column",
     height: visualViewportHeight ?? 0,
   };
+  const scrollToLatest = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        messagesScrollRef.current?.scrollToEnd({ animated: false });
+      });
+    });
+  };
+  useEffect(() => {
+    if (messages.length > 0) scrollToLatest();
+  }, [messages.length]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const isConsultActive = consultation.status === "active";
   const isPetParent =
     currentUserId === consultation.client_id || userRole === "client";
@@ -3921,8 +3991,9 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       <ScrollView
         ref={messagesScrollRef}
         style={styles.messageList}
-        onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
-        contentContainerStyle={[styles.messages, { paddingBottom: 96 + bottomTabOffset }]}
+        onLayout={scrollToLatest}
+        onContentSizeChange={scrollToLatest}
+        contentContainerStyle={styles.messages}
       >
         {messages.length === 0 ? (
           <Text style={styles.empty}>
@@ -3936,20 +4007,19 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                   ? contextMenuProps(() => onDeleteMessage(item))
                   : {})}
                 activeOpacity={0.8}
-                onPressIn={item.location_data ? undefined : () => {
-                  if (item.sender_id === currentUserId)
-                    setTimeout(() => onDeleteMessage(item), 600);
-                }}
-                onLongPress={item.location_data ? () => onDeleteMessage(item) : undefined}
-                delayLongPress={item.location_data ? 300 : undefined}
+                onLongPress={item.sender_id === currentUserId ? () => onDeleteMessage(item) : undefined}
+                delayLongPress={2000}
                 onPress={() => {
                   if (item.location_data) {
                     openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                  } else if (item.media_type === "video" && item.media_url) {
+                    setVideoPreviewUrl(item.media_url);
                   }
                 }}
-                disabled={item.sender_id !== currentUserId && !item.location_data}
+                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "video" && item.media_url)}
                 style={[
                   styles.bubble,
+                  item.media_type === "video" && item.media_url ? styles.videoBubble : null,
                   item.sender_id === currentUserId
                     ? styles.outgoing
                     : styles.incoming,
@@ -3960,6 +4030,12 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                     source={{ uri: item.media_url }}
                     style={styles.attachment}
                   />
+                ) : null}
+                {item.media_url && item.media_type === "video" ? (
+                  <View style={styles.videoAttachment}>
+                    <MaterialCommunityIcons name="play-circle" size={46} color="#FFFFFF" />
+                    <Text style={styles.videoAttachmentText}>Tap to watch video</Text>
+                  </View>
                 ) : null}
                 {item.message_type === "invoice" ? (
                   <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
@@ -4017,6 +4093,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
+      <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} initialItems={invoiceItems} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
