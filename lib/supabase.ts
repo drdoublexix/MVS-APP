@@ -303,7 +303,7 @@ export const deleteRealtimeMessage = async (messageId: string, userId: string) =
 
 export type ConsultationStatus = 'active' | 'completed';
 
-export const ensureConsultationRecord = async (conversationId: string, currentUserId: string, recipientId: string, currentUserRole: string, recipientRole: string) => {
+export const ensureConsultationRecord = async (conversationId: string, currentUserId: string, recipientId: string, currentUserRole: string, recipientRole: string, serviceType?: string, activateExisting = true) => {
   const currentRole = normalizeRole(currentUserRole);
   const normalizedRecipientRole = normalizeRole(recipientRole);
   if (!['client', 'vet'].includes(currentRole) || !['client', 'vet'].includes(normalizedRecipientRole)) return null;
@@ -312,27 +312,42 @@ export const ensureConsultationRecord = async (conversationId: string, currentUs
   const vetId = currentRole === 'vet' ? currentUserId : recipientId;
   const { data: existing, error: lookupError } = await supabase
     .from('consultations')
-    .select('id, status')
+    .select('id, conversation_id, client_id, vet_id, status, service_type')
     .eq('conversation_id', conversationId)
     .maybeSingle();
   if (lookupError) throw lookupError;
-  if (existing) return existing as { id: string; status: ConsultationStatus };
+  if (existing) {
+    if (!activateExisting) return existing as { id: string; conversation_id: string; client_id: string; vet_id: string; status: ConsultationStatus; service_type?: string | null };
+    const { data, error } = await supabase
+      .from('consultations')
+      .update({
+        client_id: clientId,
+        vet_id: vetId,
+        status: 'active',
+        ...(serviceType ? { service_type: serviceType } : {}),
+      })
+      .eq('id', existing.id)
+      .select('id, conversation_id, client_id, vet_id, status, service_type')
+      .single();
+    if (error) throw error;
+    return data as { id: string; conversation_id: string; client_id: string; vet_id: string; status: ConsultationStatus; service_type?: string | null };
+  }
 
   const { data, error } = await supabase
     .from('consultations')
-    .insert({ conversation_id: conversationId, client_id: clientId, vet_id: vetId, status: 'active' })
-    .select('id, status')
+    .insert({ conversation_id: conversationId, client_id: clientId, vet_id: vetId, status: 'active', ...(serviceType ? { service_type: serviceType } : {}) })
+    .select('id, conversation_id, client_id, vet_id, status, service_type')
     .single();
   if (error) {
     const { data: concurrent } = await supabase
       .from('consultations')
-      .select('id, status')
+      .select('id, conversation_id, client_id, vet_id, status, service_type')
       .eq('conversation_id', conversationId)
       .maybeSingle();
-    if (concurrent) return concurrent as { id: string; status: ConsultationStatus };
+    if (concurrent) return concurrent as { id: string; conversation_id: string; client_id: string; vet_id: string; status: ConsultationStatus; service_type?: string | null };
     throw error;
   }
-  return data as { id: string; status: ConsultationStatus };
+  return data as { id: string; conversation_id: string; client_id: string; vet_id: string; status: ConsultationStatus; service_type?: string | null };
 };
 
 export const getConversationMessages = async (conversationId: string) => {

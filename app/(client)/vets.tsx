@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
-import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
+import { ensureConsultationRecord, getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
 type VetProfile = {
   id: string;
@@ -23,12 +23,9 @@ type VetProfile = {
   distanceKm: number | null;
 };
 
-type Category = 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'General Inquiry' | 'Others';
+type Category = 'Online Consultation' | 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'General Inquiry' | 'Others';
 
-const categories: Category[] = ['Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
-const standardVetSelect = 'id, full_name, role, avatar_url, specialty, latitude, longitude, city, state';
-const coreVetSelect = 'id, full_name, role, avatar_url, specialty';
-
+const categories: Category[] = ['Online Consultation', 'Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
 const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
   if (!avatarPath) return null;
   if (/^https?:\/\//i.test(avatarPath)) return avatarPath;
@@ -189,21 +186,28 @@ export default function VetsScreen() {
 
     const conversationId = `conv_${[userId, doctorId].sort().join('_')}`;
 
-    const { error } = await supabase
-      .from('consultations')
-      .upsert(
-        {
-          conversation_id: conversationId,
-          client_id: userId,
-          vet_id: doctorId,
-          status: 'active',
-          created_at: new Date().toISOString(),
-        },
-        { onConflict: 'conversation_id' }
-      );
-
-    if (error) {
+    try {
+      await ensureConsultationRecord(conversationId, userId, doctorId, 'client', 'vet', category);
+    } catch (error) {
       console.warn('[Consultation] Failed to initialise active consultation from vet modal:', error);
+      Alert.alert('Unable to start consultation', error instanceof Error ? error.message : 'Please try again.');
+      return;
+    }
+
+    try {
+      const { error: pushError } = await supabase.functions.invoke('send-push-notification', {
+        body: {
+          recipientId: doctorId,
+          title: 'New Consultation Request',
+          body: category,
+        },
+      });
+
+      if (pushError) {
+        console.warn('[Consultation] Failed to send consultation request push notification:', pushError);
+      }
+    } catch (pushError) {
+      console.warn('[Consultation] Push notification invocation failed:', pushError);
     }
 
     setIntakeVet(null);

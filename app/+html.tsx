@@ -11,8 +11,9 @@ export default function Root({ children }: { children: ReactNode }) {
           content="width=device-width, initial-scale=1.0, viewport-fit=cover"
         />
         <style>{`
-          html, body {
+          html, body, #root {
             overscroll-behavior-y: none;
+            background-color: #08111F;
           }
 
           body {

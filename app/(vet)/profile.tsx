@@ -105,7 +105,6 @@ export default function VetProfileScreen() {
 
   const [password, setPassword] = useState({ next: '', confirm: '' });
 
-  const role = 'veterinarian';
   const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
     { key: 'consultations', label: 'Consultation Updates / New Consult Requests' },
     { key: 'chat', label: 'Chat Messages / Patient Messages' },
@@ -388,7 +387,7 @@ export default function VetProfileScreen() {
     try {
       await sendPasswordResetLink(profile.email);
       Alert.alert('Reset link sent', 'Check your email to choose a new password.');
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Could not send reset link');
     }
   };
@@ -613,7 +612,7 @@ export default function VetProfileScreen() {
             <View style={styles.locationHeader}>
               <Text style={styles.modalTitle}>Choose location</Text>
               <TouchableOpacity onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}>
-                <Text style={styles.secondaryText}>✕</Text>
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
             <TouchableOpacity style={styles.save} onPress={() => { void detectAndSaveLocation(); }} disabled={locationLoading}>

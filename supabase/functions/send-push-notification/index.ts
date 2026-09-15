@@ -23,10 +23,12 @@ serve(async (req) => {
   }
 
   try {
-    const { recipientId, title, body, data: payloadData } = (await req.json()) as PushPayload;
+    const requestBody = (await req.json()) as Partial<PushPayload> & { user_id?: string };
+    const recipientId = requestBody.recipientId || requestBody.user_id;
+    const { title, body, data: payloadData } = requestBody;
 
     if (!recipientId || !title || !body) {
-      return new Response(JSON.stringify({ error: 'Missing required parameters: recipientId, title, or body.' }), {
+      return new Response(JSON.stringify({ error: 'Missing required parameters: recipientId/user_id, title, or body.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

@@ -1,4 +1,5 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   AudioModule,
   RecordingPresets,
@@ -11,6 +12,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { PayWithFlutterwave } from "flutterwave-react-native";
+import { ShieldCheck, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
@@ -28,6 +30,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
@@ -155,6 +158,56 @@ type ConsultationRecord = {
   vet_id: string;
   merchant_id?: string | null;
   status: ConsultationStatus;
+  service_type?: string | null;
+};
+
+const consultationCachePrefix = "mvs_consultation_cache:";
+const consultationMemoryCache = new Map<string, ConsultationRecord>();
+
+const rememberConsultation = (consultation: ConsultationRecord) => {
+  consultationMemoryCache.set(consultation.conversation_id, consultation);
+  void AsyncStorage.setItem(
+    `${consultationCachePrefix}${consultation.conversation_id}`,
+    JSON.stringify(consultation)
+  ).catch(() => undefined);
+};
+
+const readCachedConsultation = async (conversationId: string): Promise<ConsultationRecord | null> => {
+  const memoryValue = consultationMemoryCache.get(conversationId);
+  if (memoryValue) return memoryValue;
+  try {
+    const storedValue = await AsyncStorage.getItem(`${consultationCachePrefix}${conversationId}`);
+    if (!storedValue) return null;
+    const parsedValue = JSON.parse(storedValue) as ConsultationRecord;
+    if (parsedValue?.conversation_id !== conversationId || !parsedValue?.status) return null;
+    consultationMemoryCache.set(conversationId, parsedValue);
+    return parsedValue;
+  } catch {
+    return null;
+  }
+};
+
+const inboxCachePrefix = "mvs_inbox_cache:";
+const inboxMemoryCache = new Map<string, Thread[]>();
+
+const rememberInboxThreads = (userId: string, threads: Thread[]) => {
+  inboxMemoryCache.set(userId, threads);
+  void AsyncStorage.setItem(`${inboxCachePrefix}${userId}`, JSON.stringify(threads)).catch(() => undefined);
+};
+
+const readCachedInboxThreads = async (userId: string): Promise<Thread[] | null> => {
+  const memoryValue = inboxMemoryCache.get(userId);
+  if (memoryValue) return memoryValue;
+  try {
+    const storedValue = await AsyncStorage.getItem(`${inboxCachePrefix}${userId}`);
+    if (!storedValue) return null;
+    const parsedValue = JSON.parse(storedValue) as Thread[];
+    if (!Array.isArray(parsedValue)) return null;
+    inboxMemoryCache.set(userId, parsedValue);
+    return parsedValue;
+  } catch {
+    return null;
+  }
 };
 
 type InvoiceMetadata = {
@@ -176,10 +229,12 @@ type InvoiceProps = {
 };
 
 type InvoiceItem = { id: string; description: string; amount: number };
-type Category = "Emergency Request" | "Vaccination" | "Routine Checks" | "General Inquiry" | "Others";
+type Category = "Online Consultation" | "Emergency Request" | "Vaccination" | "Routine Checks" | "General Inquiry" | "Others";
 
 const getCategoryInitialMessage = (category: Category, vetName: string) => {
   switch (category) {
+    case "Online Consultation":
+      return `Hello Dr. ${vetName}, I would like to book an online consultation for my `;
     case "Emergency Request":
       return `Hello Dr. ${vetName}, I have an urgent medical emergency regarding my pet: `;
     case "Vaccination":
@@ -194,7 +249,7 @@ const getCategoryInitialMessage = (category: Category, vetName: string) => {
 };
 
 const isCategory = (value: string | undefined): value is Category =>
-  value === "Emergency Request" || value === "Vaccination" || value === "Routine Checks" || value === "General Inquiry" || value === "Others";
+  value === "Online Consultation" || value === "Emergency Request" || value === "Vaccination" || value === "Routine Checks" || value === "General Inquiry" || value === "Others";
 
 type OrderStatus = "pending" | "processing" | "dispatched" | "delivered";
 type ActiveOrder = {
@@ -348,7 +403,10 @@ function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose:
       <View style={styles.profileModalBackdrop}>
         <View style={styles.protectionModal}>
           <View style={styles.profileModalHeader}>
-            <Text style={styles.protectionModalTitle}>ðŸ›¡ï¸ MVS User Protection & 48-Hour Refund Policy</Text>
+            <View style={styles.protectionTitle}>
+              <ShieldCheck size={18} color="#FFFFFF" />
+              <Text style={styles.protectionModalTitle}>MVS User Protection & 48-Hour Refund Policy</Text>
+            </View>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close buyer protection">
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -455,6 +513,7 @@ const styles = {
   profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
   protectionModal: { width: "100%", maxWidth: 420, maxHeight: "88%", backgroundColor: "#1E293B", borderColor: "#92400E", borderWidth: 1, borderRadius: 14, padding: 20 },
   protectionModalTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700", flex: 1, marginRight: 12 },
+    protectionTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 },
   protectionHeading: { color: "#FBBF24", fontSize: 13, fontWeight: "700", marginTop: 14 },
   protectionText: { color: "#CBD5E1", fontSize: 14, lineHeight: 21, marginTop: 5 },
   protectionCloseButton: { backgroundColor: "#B45309", borderRadius: 8, padding: 11, alignItems: "center", marginTop: 20 },
@@ -472,8 +531,7 @@ const styles = {
   farmRecordsScroll: { flexGrow: 0, maxHeight: "85%" },
   farmRecordsContent: { paddingBottom: 4 },
   farmSoapHistory: { borderTopWidth: 1, borderTopColor: "#334155", marginTop: 8, paddingTop: 8, gap: 3 },
-  patientClose: { alignSelf: "flex-end", padding: 8 },
-  patientCloseText: { color: "#FFFFFF", fontWeight: "700" },
+  patientClose: { alignSelf: "flex-end", alignItems: "center", justifyContent: "center", padding: 8 },
   patientHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
   patientTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   patientPet: { borderTopWidth: 1, borderTopColor: "#334155", paddingVertical: 14 },
@@ -485,8 +543,8 @@ const styles = {
   title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { padding: 16 },
-  messages: { padding: 16, flexGrow: 1 },
-  messageList: { flex: 1, overflow: "hidden" },
+  messages: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12, flexGrow: 1 },
+  messageList: { flex: 1 },
   messageRow: { marginBottom: 10 },
   thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
@@ -537,25 +595,38 @@ const styles = {
   locationCancel: { alignItems: "center", paddingVertical: 12, marginTop: 4 },
   locationCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
   composer: {
-    padding: 12,
-    paddingBottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     borderTopWidth: 1,
     borderTopColor: "#334155",
     gap: 8,
     flexShrink: 0,
+    backgroundColor: "#0F172A",
   },
-  composerRow: { flexDirection: "row", gap: 8, minHeight: 44, alignItems: "flex-end" },
+  composerRow: { flexDirection: "row", gap: 8, minHeight: 42, alignItems: "center" },
+  composerInputShell: {
+    flex: 1,
+    minHeight: 42,
+    maxHeight: 132,
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    justifyContent: "center",
+  },
   selectedAttachment: { flexDirection: "row", alignItems: "center", gap: 8 },
   selectedAttachmentImage: { width: 56, height: 56, borderRadius: 8 },
-  recordingAction: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  recordingAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   recordingStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   recordingDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444" },
   recordingTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   recordingLabel: { color: "#94A3B8", fontSize: 13 },
-  attach: { width: 44, borderRadius: 8, backgroundColor: "#475569", alignItems: "center", justifyContent: "center" },
-  input: { backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 8, color: "#FFFFFF", padding: 11, fontSize: 16 },
-  send: { width: 44, borderRadius: 8, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
-  voiceIdleMic: { width: 44, borderRadius: 8, backgroundColor: "#0E7490", alignItems: "center", justifyContent: "center" },
+  attach: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#475569", alignItems: "center", justifyContent: "center" },
+  input: { backgroundColor: "transparent", borderWidth: 0, color: "#FFFFFF", fontSize: 16, paddingVertical: 0, paddingHorizontal: 0, textAlignVertical: "top" },
+  send: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
+  voiceIdleMic: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#0E7490", alignItems: "center", justifyContent: "center" },
   recordingBar: { flex: 1, borderRadius: 8, backgroundColor: "#172554", flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
   unreadBadge: { minWidth: 24, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", marginLeft: 8 },
   unreadBadgeText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
@@ -700,6 +771,7 @@ export default function ChatScreen() {
   const [consultation, setConsultation] = useState<ConsultationRecord | null>(
     null
   );
+  const [consultationLoading, setConsultationLoading] = useState(true);
   const [invoiceVisible, setInvoiceVisible] = useState(false);
   const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
@@ -827,21 +899,37 @@ export default function ChatScreen() {
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
+      let freshInboxLoaded = false;
       const loadInbox = async () => {
         try {
           const user = await getCurrentUser();
           const cleanUserId = normalizeUuid(user?.id);
           if (!cleanUserId) return;
-          const roleResult = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", cleanUserId)
-            .maybeSingle();
-          const { data, error } = await supabase
-            .from("messages")
-            .select("*")
-            .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
-            .order("created_at", { ascending: false });
+          const cachedThreads = inboxMemoryCache.get(cleanUserId);
+          if (cachedThreads) {
+            setThreads(cachedThreads);
+            setLoading(false);
+          } else {
+            void readCachedInboxThreads(cleanUserId).then((storedThreads) => {
+              if (!mounted || freshInboxLoaded || !storedThreads) return;
+              setThreads(storedThreads);
+              setLoading(false);
+            });
+          }
+
+          const [roleResult, messageResult] = await Promise.all([
+            supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", cleanUserId)
+              .maybeSingle(),
+            supabase
+              .from("messages")
+              .select("*")
+              .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
+              .order("created_at", { ascending: false }),
+          ]);
+          const { data, error } = messageResult;
           if (error) throw error;
           const rows = (data || []) as RealtimeMessage[];
           const participantIds = [
@@ -956,12 +1044,11 @@ export default function ChatScreen() {
           const activeThreads = rawThreads
             .filter((thread) => !thread.deleted_by_user_ids.includes(cleanUserId))
             .sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first));
+          rememberInboxThreads(cleanUserId, activeThreads);
+          freshInboxLoaded = true;
           setThreads(activeThreads);
         } catch (error) {
           console.error("[Chat] Failed to load conversations:", error);
-          if (mounted) {
-            setThreads([]);
-          }
         } finally {
           if (mounted) setLoading(false);
         }
@@ -987,6 +1074,9 @@ export default function ChatScreen() {
             ? (payload.old as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus })
             : (payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus });
           if (!consultation?.conversation_id) return;
+          if (payload.eventType !== 'DELETE' && consultation.status) {
+            rememberConsultation(consultation as ConsultationRecord);
+          }
 
           setThreads((current) =>
             current.map((thread) =>
@@ -994,20 +1084,13 @@ export default function ChatScreen() {
                 ? {
                     ...thread,
                     consultation_status:
-                      payload.eventType === 'DELETE'
-                        ? undefined
-                        : (consultation.status ?? thread.consultation_status),
+                      consultation.status ?? thread.consultation_status,
                   }
                 : thread
             )
           );
 
           if (payload.eventType === 'DELETE') {
-            setConsultation((current) =>
-              current?.conversation_id === consultation.conversation_id
-                ? null
-                : current
-            );
             return;
           }
 
@@ -1075,10 +1158,12 @@ export default function ChatScreen() {
               ...thread,
               messages: nextMessages,
             };
-            return [
+            const nextThreads = [
               updatedThread,
               ...current.filter((_, index) => index !== threadIndex),
             ];
+            rememberInboxThreads(currentUserId, nextThreads);
+            return nextThreads;
           });
         }
       )
@@ -1136,84 +1221,6 @@ export default function ChatScreen() {
     categoryParam,
   ]);
 
-  useEffect(() => {
-    if (!active || !currentUserId || !categoryParam || userRole !== "client" || !isUuid(active.participantId) || !["vet", "veterinarian"].includes(active.participantRole)) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const ensureCategoryConsultation = async () => {
-      try {
-        const { data: existingConsultations, error: lookupError } = await supabase
-          .from("consultations")
-          .select("id, conversation_id, client_id, vet_id, status")
-          .eq("conversation_id", active.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (lookupError) {
-          throw lookupError;
-        }
-
-        const existingConsultation = existingConsultations?.[0] as ConsultationRecord | undefined;
-
-        if (cancelled) return;
-
-        if (existingConsultation) {
-          setConsultation(existingConsultation);
-          setThreads((current) =>
-            current.map((thread) =>
-              thread.id === active.id
-                ? { ...thread, consultation_status: existingConsultation.status }
-                : thread
-            )
-          );
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("consultations")
-          .upsert(
-            {
-              conversation_id: active.id,
-              client_id: currentUserId,
-              vet_id: active.participantId,
-              status: "active",
-              created_at: new Date().toISOString(),
-            },
-            { onConflict: "conversation_id" }
-          )
-          .select("id, conversation_id, client_id, vet_id, status")
-          .single();
-
-        if (cancelled) return;
-
-        if (error) {
-          console.error("[Consultation] Failed to initialise active consultation from category route:", error);
-          return;
-        }
-
-        const nextConsultation = data as ConsultationRecord;
-        setConsultation(nextConsultation);
-        setThreads((current) =>
-          current.map((thread) =>
-            thread.id === active.id
-              ? { ...thread, consultation_status: nextConsultation.status }
-              : thread
-          )
-        );
-      } catch (error) {
-        console.error("[Consultation] Failed to initialise active consultation from category route:", error);
-      }
-    };
-
-    void ensureCategoryConsultation();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [active, categoryParam, currentUserId, userRole]);
 
   useEffect(() => {
     if (!active?.participantId) {
@@ -1239,28 +1246,83 @@ export default function ChatScreen() {
       !active ||
       !currentUserId ||
       !["client", "veterinarian", "vet"].includes(userRole) ||
-      !["client", "veterinarian"].includes(active.participantRole)
+      !["client", "veterinarian", "vet"].includes(active.participantRole)
     )
-      return;
+      {
+        setConsultationLoading(false);
+        return;
+      }
     let mounted = true;
+    let queryResolved = false;
+    const cachedConsultation = consultationMemoryCache.get(active.id);
+    if (cachedConsultation) {
+      setConsultation(cachedConsultation);
+      setThreads((current) => current.map((thread) =>
+        thread.id === active.id
+          ? { ...thread, consultation_status: cachedConsultation.status }
+          : thread
+      ));
+    }
+    setConsultationLoading(!cachedConsultation);
+    void readCachedConsultation(active.id).then((storedConsultation) => {
+      if (!mounted || queryResolved || cachedConsultation || !storedConsultation) return;
+      setConsultation(storedConsultation);
+      setConsultationLoading(false);
+      setThreads((current) => current.map((thread) =>
+        thread.id === active.id
+          ? { ...thread, consultation_status: storedConsultation.status }
+          : thread
+      ));
+    });
     const loadConsultation = async () => {
       try {
         const { data: activeConsultations, error: lookupError } = await supabase
           .from("consultations")
-          .select("id, conversation_id, client_id, vet_id, status")
+          .select("id, conversation_id, client_id, vet_id, status, service_type")
           .eq("conversation_id", active.id)
+          .eq(userRole === "client" ? "client_id" : "vet_id", currentUserId)
+          .eq(userRole === "client" ? "vet_id" : "client_id", active.participantId)
+          .eq("status", "active")
           .order("created_at", { ascending: false })
           .limit(1);
         if (lookupError) throw lookupError;
 
-        const existingConsultation = activeConsultations?.[0];
+        let existingConsultation = activeConsultations?.[0];
+        if (!existingConsultation) {
+          const { data: latestConsultations, error: latestLookupError } = await supabase
+            .from("consultations")
+            .select("id, conversation_id, client_id, vet_id, status, service_type")
+            .eq("conversation_id", active.id)
+            .eq(userRole === "client" ? "client_id" : "vet_id", currentUserId)
+            .eq(userRole === "client" ? "vet_id" : "client_id", active.participantId)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          if (latestLookupError) throw latestLookupError;
+          existingConsultation = latestConsultations?.[0];
+        }
         if (existingConsultation) {
-          if (mounted) setConsultation(existingConsultation as ConsultationRecord);
+          const resolvedConsultation = existingConsultation as ConsultationRecord;
+          rememberConsultation(resolvedConsultation);
+          if (mounted) {
+            setConsultation(resolvedConsultation);
+            setThreads((current) =>
+              current.map((thread) =>
+                thread.id === active.id
+                  ? { ...thread, consultation_status: resolvedConsultation.status }
+                  : thread
+              )
+            );
+          }
           return;
         }
-        if (mounted) setConsultation(null);
+        if (mounted) {
+          setConsultation((current) => current?.status === "active" ? current : null);
+        }
       } catch (error) {
         console.error("[Consultation] Failed to ensure consultation:", error);
+      } finally {
+        queryResolved = true;
+        if (mounted) setConsultationLoading(false);
       }
     };
     void loadConsultation();
@@ -1270,14 +1332,18 @@ export default function ChatScreen() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "consultations", filter: `conversation_id=eq.${active.id}` },
         (payload) => {
-          if (mounted) setConsultation(payload.new as ConsultationRecord);
+          const nextConsultation = payload.new as ConsultationRecord;
+          rememberConsultation(nextConsultation);
+          if (mounted) setConsultation(nextConsultation);
         }
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "consultations", filter: `conversation_id=eq.${active.id}` },
         (payload) => {
-          if (mounted) setConsultation(payload.new as ConsultationRecord);
+          const nextConsultation = payload.new as ConsultationRecord;
+          rememberConsultation(nextConsultation);
+          if (mounted) setConsultation(nextConsultation);
         }
       )
       .subscribe();
@@ -1898,18 +1964,23 @@ export default function ChatScreen() {
 
   const updateConsultation = async (status: ConsultationStatus) => {
     let currentConsultation = consultation;
-    if (!currentConsultation) return;
-
-    const previousStatus = currentConsultation.status;
-    setConsultation((current) => (current ? { ...current, status } : current));
+    if (!currentConsultation || ![currentConsultation.client_id, currentConsultation.vet_id].includes(currentUserId)) return;
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("consultations")
         .update({ status })
         .eq("id", currentConsultation.id)
-        .eq("conversation_id", currentConsultation.conversation_id);
+        .eq("conversation_id", currentConsultation.conversation_id)
+        .select("id, conversation_id, client_id, vet_id, merchant_id, status, service_type")
+        .single();
       if (error) throw error;
+      const updatedConsultation = data as ConsultationRecord;
+      rememberConsultation(updatedConsultation);
+      setConsultation(updatedConsultation);
+      setThreads((current) => current.map((thread) =>
+        thread.id === currentConsultation.conversation_id ? { ...thread, consultation_status: status } : thread
+      ));
 
       const recipientUserId = currentUserId === currentConsultation.client_id
         ? currentConsultation.vet_id
@@ -1922,7 +1993,6 @@ export default function ChatScreen() {
         status,
       });
     } catch (error) {
-      setConsultation((current) => (current ? { ...current, status: previousStatus } : current));
       Alert.alert(
         "Unable to update consultation",
         error instanceof Error ? error.message : "Please try again."
@@ -1947,45 +2017,23 @@ export default function ChatScreen() {
       return;
     }
 
-    const optimisticConsultation: ConsultationRecord = {
-      id: `temp-${active.id}`,
-      conversation_id: active.id,
-      client_id: currentUserId,
-      vet_id: active.participantId,
-      status: "active",
-    };
-
-    setConsultation(optimisticConsultation);
-    setThreads((current) => current.map((thread) =>
-      thread.id === active.id ? { ...thread, consultation_status: "active" } : thread
-    ));
-
-    const { data, error } = await supabase
-      .from("consultations")
-      .upsert(
-        {
-          conversation_id: active.id,
-          client_id: currentUserId,
-          vet_id: active.participantId,
-          status: "active",
-          created_at: new Date().toISOString(),
-        },
-        { onConflict: "conversation_id" }
-      )
-      .select("id, conversation_id, client_id, vet_id, status")
-      .single();
-
-    if (error) {
+    let nextConsultation: ConsultationRecord;
+    try {
+      nextConsultation = await ensureConsultationRecord(
+        active.id,
+        currentUserId,
+        active.participantId,
+        userRole,
+        active.participantRole,
+        consultation?.service_type || (isCategory(categoryParam) ? categoryParam : undefined)
+      ) as ConsultationRecord;
+    } catch (error) {
       console.error("[Consultation] Failed to start consultation:", error);
-      Alert.alert("Unable to start consultation", error.message);
-      setConsultation((current) => (current?.status === "active" ? null : current));
-      setThreads((current) => current.map((thread) =>
-        thread.id === active.id ? { ...thread, consultation_status: consultation?.status ?? thread.consultation_status } : thread
-      ));
+      Alert.alert("Unable to start consultation", error instanceof Error ? error.message : "Please try again.");
       return;
     }
 
-    const nextConsultation = data as ConsultationRecord;
+    rememberConsultation(nextConsultation);
     setConsultation(nextConsultation);
     setThreads((current) => current.map((thread) =>
       thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread
@@ -2352,7 +2400,7 @@ export default function ChatScreen() {
     }
     if (
       ["client", "veterinarian", "vet"].includes(userRole) &&
-      ["client", "veterinarian"].includes(active.participantRole)
+      ["client", "veterinarian", "vet"].includes(active.participantRole)
     ) {
       try {
         const consultation = await ensureConsultationRecord(
@@ -2360,16 +2408,20 @@ export default function ChatScreen() {
           cleanSenderId,
           cleanReceiverId,
           userRole,
-          active.participantRole
+          active.participantRole,
+          undefined,
+          false
         );
         if (consultation) {
-          setConsultation({
+          const resolvedConsultation: ConsultationRecord = {
             id: consultation.id,
             conversation_id: conversationId,
             client_id: userRole === "client" ? cleanSenderId : cleanReceiverId,
             vet_id: userRole === "client" ? cleanReceiverId : cleanSenderId,
             status: consultation.status,
-          });
+          };
+          rememberConsultation(resolvedConsultation);
+          setConsultation(resolvedConsultation);
         }
       } catch (error) {
         console.error(
@@ -2485,6 +2537,7 @@ export default function ChatScreen() {
         onConfirmDelete={confirmDeleteMessage}
         onCancelDelete={() => setDeleteCandidate(null)}
         consultation={consultation}
+        consultationLoading={consultationLoading}
         onToggleConsultation={handleToggleConsultation}
         onStartConsultation={handleStartConsultation}
         onEndConsultationByVet={handleEndConsultationByVet}
@@ -2693,6 +2746,7 @@ function ChatRoom({
   onConfirmDelete,
   onCancelDelete,
   consultation,
+  consultationLoading,
   onToggleConsultation,
   onStartConsultation,
   onEndConsultationByVet,
@@ -2750,6 +2804,7 @@ function ChatRoom({
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
   consultation: ConsultationRecord | null;
+  consultationLoading: boolean;
   onToggleConsultation: () => void;
   onStartConsultation: () => Promise<void>;
   onEndConsultationByVet: () => void;
@@ -2784,6 +2839,8 @@ function ChatRoom({
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
   const visualViewportHeight = useVisualViewport();
+  const safeAreaInsets = useSafeAreaInsets();
+  const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
   const mobileWebRootStyle: ViewStyle = {
     position: "absolute",
     top: 0,
@@ -2813,6 +2870,9 @@ function ChatRoom({
     (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
     (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
   const consultationStatus = consultation?.status || null;
+  const consultationPending = consultationLoading || (
+    isVetClientThread && consultation?.conversation_id !== active.id
+  );
   const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
   const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
   const roomConsultation = consultation;
@@ -2947,7 +3007,9 @@ function ChatRoom({
             <Text style={styles.completeButtonText}>Prescribe</Text>
           </TouchableOpacity>
         ) : null}
-        {isVetClientThread && consultationStatus === "active" ? (
+        {isVetClientThread && consultationPending ? (
+          <Text style={styles.consultationEndedBadge}>Checking consultation...</Text>
+        ) : isVetClientThread && consultationStatus === "active" ? (
           <>
             <TouchableOpacity
               style={styles.completeButton}
@@ -2971,14 +3033,19 @@ function ChatRoom({
         ) : null}
         {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
           <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-            <Text style={styles.completeButtonText}>ðŸ›¡ï¸ User Protection</Text>
+            <ShieldCheck size={16} color="#FFFFFF" />
+            <Text style={styles.completeButtonText}>MVS User Protection</Text>
           </TouchableOpacity>
         ) : null}
           </ScrollView>
         </View>
       </View>
       <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
-      {isVetClientThread && consultationStatus ? (
+      {isVetClientThread && consultationPending ? (
+        <View style={[styles.consultationBanner, styles.consultationCompleted]}>
+          <Text style={styles.consultationText}>Checking consultation status...</Text>
+        </View>
+      ) : isVetClientThread && consultationStatus ? (
         <View
           style={[
             styles.consultationBanner,
@@ -3006,7 +3073,7 @@ function ChatRoom({
         ref={messagesScrollRef}
         style={styles.messageList}
         onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
-        contentContainerStyle={styles.messages}
+        contentContainerStyle={[styles.messages, { paddingBottom: 96 + bottomTabOffset }]}
       >
         {messages.length === 0 ? (
           <Text style={styles.empty}>
@@ -3083,6 +3150,7 @@ function ChatRoom({
         onAttach={onAttach}
         onSend={onSend}
         uploading={uploading}
+        bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
       />
       <AttachmentOptions
@@ -3110,6 +3178,7 @@ function ChatComposer({
   onAttach,
   onSend,
   uploading,
+  bottomInset,
   voiceNoteControls,
 }: {
   message: string;
@@ -3119,10 +3188,25 @@ function ChatComposer({
   onAttach: () => void;
   onSend: () => void;
   uploading: boolean;
+  bottomInset: number;
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messageInputRef = useRef<TextInput>(null);
   const [isSending, setIsSending] = useState(false);
+  const [inputHeight, setInputHeight] = useState(42);
+  const compactInputHeight = 42;
+  const maximumInputHeight = 132;
+  const inputLineHeight = 22;
+
+  const handleInputContentSizeChange = (event: any) => {
+    const contentHeight = event.nativeEvent.contentSize.height;
+    const nextHeight = Math.min(
+      Math.max(contentHeight + 4, compactInputHeight),
+      maximumInputHeight
+    );
+
+    setInputHeight(nextHeight);
+  };
 
   const handleSend = async () => {
     const trimmedText = message.trim();
@@ -3134,6 +3218,7 @@ function ChatComposer({
     const pendingMessage = message;
     setIsSending(true);
     setMessage('');
+    setInputHeight(compactInputHeight);
 
     try {
       await onSend();
@@ -3149,7 +3234,7 @@ function ChatComposer({
   };
 
   return (
-    <View style={styles.composer}>
+    <View style={[styles.composer, { marginBottom: bottomInset }]}>
       {selectedImageUri ? (
         <View style={styles.selectedAttachment}>
           <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
@@ -3158,7 +3243,7 @@ function ChatComposer({
           </TouchableOpacity>
         </View>
       ) : null}
-      <View style={styles.composerRow}>
+      <View style={[styles.composerRow, { minHeight: compactInputHeight }]}>
         {voiceNoteControls.recording ? (
           <View style={styles.recordingBar}>
             <TouchableOpacity onPress={() => void voiceNoteControls.onCancelRecording()} style={styles.recordingAction}>
@@ -3178,16 +3263,20 @@ function ChatComposer({
             <TouchableOpacity style={styles.attach} onPress={onAttach} disabled={uploading}>
               <MaterialCommunityIcons name="paperclip" size={21} color="#FFFFFF" />
             </TouchableOpacity>
-            <TextInput
-              ref={messageInputRef}
-              value={message}
-              onChangeText={setMessage}
-              selection={message ? { start: message.length, end: message.length } : undefined}
-              placeholder="Write a message..."
-              placeholderTextColor="#64748B"
-              style={[styles.input, styles.flex]}
-              multiline
-            />
+            <View style={[styles.composerInputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}>
+              <TextInput
+                ref={messageInputRef}
+                value={message}
+                onChangeText={setMessage}
+                selection={message ? { start: message.length, end: message.length } : undefined}
+                placeholder="Write a message..."
+                placeholderTextColor="#64748B"
+                style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]}
+                multiline
+                scrollEnabled={inputHeight >= maximumInputHeight}
+                onContentSizeChange={handleInputContentSizeChange}
+              />
+            </View>
             {message.trim() || selectedImageUri ? (
               <TouchableOpacity
                 style={styles.send}
@@ -3320,7 +3409,7 @@ function PrescriptionModal({
         <View style={styles.prescriptionModal}>
           <View style={styles.invoiceModalHeader}>
             <Text style={styles.invoiceModalTitle}>Write Prescription</Text>
-            <TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose} accessibilityLabel="Close prescription"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}>
             {([
@@ -3450,7 +3539,7 @@ function AttachmentOptions({
 function PatientFileOverlay({ visible, loading, pets, activePetId, records, userRole, onSelectPet, onClose }: { visible: boolean; loading: boolean; pets: PatientPet[]; activePetId: string | null; records: MedicalRecord[]; userRole: string; onSelectPet: (petId: string) => void; onClose: () => void }) {
   const [historyVersion, setHistoryVersion] = useState(0);
   if (!visible) return null;
-  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose}><Text style={styles.patientCloseText}>Close âœ•</Text></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<TouchableOpacity onPress={() => onSelectPet(pet.id)}><Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? "  â€¢ Selected" : ""}</Text></TouchableOpacity><Text style={styles.patientDetail}>{pet.type} Â· {pet.breed || "Breed unknown"} Â· {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>{activePetId === pet.id ? <><Text style={styles.patientLabel}>SOAP History</Text>{records.length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.map((record) => <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}><Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text><Text style={styles.patientLabel}>Vitals</Text><Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg Â· Temp: {record.temperature_c ?? "-"} Â°C Â· Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text><Text style={styles.patientLabel}>Assessment</Text><Text style={styles.patientDetail}>{record.assessment}</Text><Text style={styles.patientLabel}>Subjective</Text><Text style={styles.patientDetail}>{record.subjective}</Text><Text style={styles.patientLabel}>Objective</Text><Text style={styles.patientDetail}>{record.objective || "-"}</Text><Text style={styles.patientLabel}>Plan</Text><Text style={styles.patientDetail}>{record.plan}</Text></View>)}</> : null}<PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
+  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close patient file"><X size={22} color="#FFFFFF" /></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<TouchableOpacity onPress={() => onSelectPet(pet.id)}><Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? "  â€¢ Selected" : ""}</Text></TouchableOpacity><Text style={styles.patientDetail}>{pet.type} Â· {pet.breed || "Breed unknown"} Â· {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>{activePetId === pet.id ? <><Text style={styles.patientLabel}>SOAP History</Text>{records.length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.map((record) => <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}><Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text><Text style={styles.patientLabel}>Vitals</Text><Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg Â· Temp: {record.temperature_c ?? "-"} Â°C Â· Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text><Text style={styles.patientLabel}>Assessment</Text><Text style={styles.patientDetail}>{record.assessment}</Text><Text style={styles.patientLabel}>Subjective</Text><Text style={styles.patientDetail}>{record.subjective}</Text><Text style={styles.patientLabel}>Objective</Text><Text style={styles.patientDetail}>{record.objective || "-"}</Text><Text style={styles.patientLabel}>Plan</Text><Text style={styles.patientDetail}>{record.plan}</Text></View>)}</> : null}<PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
 }
 
 function ConsultationTypeModal({ visible, onClose, onPet, onFarm }: { visible: boolean; onClose: () => void; onPet: () => void; onFarm: () => void }) {
@@ -3458,19 +3547,19 @@ function ConsultationTypeModal({ visible, onClose, onPet, onFarm }: { visible: b
 }
 
 function FarmRecordsModal({ visible, loading, records, selectFarm, onClose, onSelectFarm }: { visible: boolean; loading: boolean; records: FarmRecord[]; selectFarm: boolean; onClose: () => void; onSelectFarm: (farmId: string) => void }) {
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.patientOverlay}><View style={styles.farmRecordsSheet}><View style={styles.patientHeader}><Text style={styles.patientTitle}>Farm & Livestock Records</Text><TouchableOpacity onPress={onClose} style={styles.patientClose}><Text style={styles.patientCloseText}>Close</Text></TouchableOpacity></View>{loading ? <ActivityIndicator color="#10B981" /> : records.length === 0 ? <Text style={styles.empty}>No farm records found for this client.</Text> : <ScrollView style={styles.farmRecordsScroll} contentContainerStyle={styles.farmRecordsContent}>{records.map((farm) => <View key={farm.id} style={styles.farmRecordCard}><TouchableOpacity disabled={!selectFarm} onPress={selectFarm ? () => onSelectFarm(farm.id) : undefined}><Text style={styles.primary}>{farm.species}</Text><Text style={styles.farmRecordDetail}>Breed: {farm.breed || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Flock Size: {farm.flock_size ?? 0}</Text><Text style={styles.farmRecordDetail}>Location: {farm.location || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Restock Date: {farm.restock_date || "Not specified"}</Text>{farm.soapRecords?.length ? <View><Text style={styles.farmRecordHistory}>SOAP History</Text>{farm.soapRecords.map((soap) => <View key={soap.id} style={styles.farmSoapHistory}><Text style={styles.farmRecordDetail}>{new Date(soap.created_at).toLocaleDateString()}</Text>{soap.subjective ? <Text style={styles.farmRecordDetail}>Symptoms: {soap.subjective}</Text> : null}{soap.objective ? <Text style={styles.farmRecordDetail}>Findings: {soap.objective}</Text> : null}{soap.tentative_diagnosis ? <Text style={styles.farmRecordDetail}>Tentative Diagnosis: {soap.tentative_diagnosis}</Text> : null}{soap.plan ? <Text style={styles.farmRecordDetail}>Plan: {soap.plan}</Text> : null}</View>)}</View> : <Text style={styles.farmRecordDetail}>No SOAP history</Text>}</TouchableOpacity></View>)}</ScrollView>}</View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.patientOverlay}><View style={styles.farmRecordsSheet}><View style={styles.patientHeader}><Text style={styles.patientTitle}>Farm & Livestock Records</Text><TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close farm records"><X size={22} color="#FFFFFF" /></TouchableOpacity></View>{loading ? <ActivityIndicator color="#10B981" /> : records.length === 0 ? <Text style={styles.empty}>No farm records found for this client.</Text> : <ScrollView style={styles.farmRecordsScroll} contentContainerStyle={styles.farmRecordsContent}>{records.map((farm) => <View key={farm.id} style={styles.farmRecordCard}><TouchableOpacity disabled={!selectFarm} onPress={selectFarm ? () => onSelectFarm(farm.id) : undefined}><Text style={styles.primary}>{farm.species}</Text><Text style={styles.farmRecordDetail}>Breed: {farm.breed || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Flock Size: {farm.flock_size ?? 0}</Text><Text style={styles.farmRecordDetail}>Location: {farm.location || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Restock Date: {farm.restock_date || "Not specified"}</Text>{farm.soapRecords?.length ? <View><Text style={styles.farmRecordHistory}>SOAP History</Text>{farm.soapRecords.map((soap) => <View key={soap.id} style={styles.farmSoapHistory}><Text style={styles.farmRecordDetail}>{new Date(soap.created_at).toLocaleDateString()}</Text>{soap.subjective ? <Text style={styles.farmRecordDetail}>Symptoms: {soap.subjective}</Text> : null}{soap.objective ? <Text style={styles.farmRecordDetail}>Findings: {soap.objective}</Text> : null}{soap.tentative_diagnosis ? <Text style={styles.farmRecordDetail}>Tentative Diagnosis: {soap.tentative_diagnosis}</Text> : null}{soap.plan ? <Text style={styles.farmRecordDetail}>Plan: {soap.plan}</Text> : null}</View>)}</View> : <Text style={styles.farmRecordDetail}>No SOAP history</Text>}</TouchableOpacity></View>)}</ScrollView>}</View></View></Modal>;
 }
 
 function FarmSoapModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: FarmSoapDraft) => Promise<void> }) {
   const [draft, setDraft] = useState<FarmSoapDraft>({ subjective: "", objective: "", tentative_diagnosis: "", plan: "" });
   const update = (field: keyof FarmSoapDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={styles.prescriptionModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Farm Consultation Summary</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}>{(["subjective", "objective", "tentative_diagnosis", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Farm Findings" : field === "tentative_diagnosis" ? "Tentative Diagnosis" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={styles.prescriptionModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Farm Consultation Summary</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close farm consultation"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}>{(["subjective", "objective", "tentative_diagnosis", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Farm Findings" : field === "tentative_diagnosis" ? "Tentative Diagnosis" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
 function SoapConsultationModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: SoapDraft) => Promise<void> }) {
   const [draft, setDraft] = useState<SoapDraft>({ weightKg: "", temperatureC: "", heartRateBpm: "", subjective: "", objective: "", assessment: "", plan: "" });
   const update = (field: keyof SoapDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (Â°C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close SOAP consultation"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (Â°C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
 function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeMessage; currentUserId: string; onPayInvoice: (orderId: string) => Promise<void> }) {
@@ -3549,7 +3638,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     void onSubmit(total, note.trim() || itemNote, normalizedItems);
   };
 
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Close</Text></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={item.id} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity style={styles.invoiceDeleteButton} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => { const nextItemNumber = current.reduce((max, currentItem) => Math.max(max, Number(currentItem.id) || 0), 0) + 1; return [...current, { id: String(nextItemNumber), description: `Item ${nextItemNumber}`, amount: 1000 }]; })}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Total: NGN {subtotal.toLocaleString("en-NG")}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close invoice"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={item.id} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity style={styles.invoiceDeleteButton} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => { const nextItemNumber = current.reduce((max, currentItem) => Math.max(max, Number(currentItem.id) || 0), 0) + 1; return [...current, { id: String(nextItemNumber), description: `Item ${nextItemNumber}`, amount: 1000 }]; })}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Total: NGN {subtotal.toLocaleString("en-NG")}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
  function ConsultationChatRoom({
@@ -3669,6 +3758,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
   const visualViewportHeight = useVisualViewport();
+  const safeAreaInsets = useSafeAreaInsets();
+  const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
   const mobileWebRootStyle: ViewStyle = {
     position: "absolute",
     top: 0,
@@ -3787,7 +3878,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           ) : null}
           {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
             <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-              <Text style={styles.completeButtonText}>ðŸ›¡ï¸ User Protection</Text>
+              <ShieldCheck size={16} color="#FFFFFF" />
+              <Text style={styles.completeButtonText}>MVS User Protection</Text>
             </TouchableOpacity>
           ) : null}
           </ScrollView>
@@ -3830,7 +3922,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         ref={messagesScrollRef}
         style={styles.messageList}
         onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
-        contentContainerStyle={styles.messages}
+        contentContainerStyle={[styles.messages, { paddingBottom: 96 + bottomTabOffset }]}
       >
         {messages.length === 0 ? (
           <Text style={styles.empty}>
@@ -3911,6 +4003,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         onAttach={onAttach}
         onSend={onSend}
         uploading={uploading}
+        bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
       />
       <AttachmentOptions

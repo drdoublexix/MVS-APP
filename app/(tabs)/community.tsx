@@ -29,9 +29,18 @@ export default function CommunityScreen() {
   const [sending, setSending] = useState(false);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [deletingMessage, setDeletingMessage] = useState(false);
+  const [inputHeight, setInputHeight] = useState(42);
   const deletePressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<CommunityMessage>>(null);
   const composerInputRef = useRef<TextInput>(null);
+  const compactInputHeight = 42;
+  const maximumInputHeight = 132;
+  const inputLineHeight = 22;
+
+  const handleInputContentSizeChange = (event: any) => {
+    const contentHeight = event.nativeEvent.contentSize.height;
+    setInputHeight(Math.min(Math.max(contentHeight + 4, compactInputHeight), maximumInputHeight));
+  };
 
   const loadMessages = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -128,6 +137,7 @@ export default function CommunityScreen() {
       const { error } = await supabase.from('community_messages').insert({ user_id: user.id, content: trimmedContent, media_urls: mediaUrls });
       if (error) throw error;
       setContent('');
+      setInputHeight(compactInputHeight);
       setPendingImages([]);
       setTimeout(() => {
         composerInputRef.current?.focus();
@@ -213,7 +223,7 @@ export default function CommunityScreen() {
       <View style={styles.banner}><Text style={styles.heroTitle}>MVS Community Hub</Text><Text style={styles.kicker}>MVS COMMUNITY</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
       <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={() => { if (messages.length) listRef.current?.scrollToEnd({ animated: false }); }} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <Text style={styles.empty}>Be the first to say hello.</Text>} />
       {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
-      <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={styles.input} editable={!sending} multiline maxLength={2000} /><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
+      <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
       <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmCard}>
@@ -275,8 +285,9 @@ const styles = StyleSheet.create({
   empty: { color: '#94A3B8', textAlign: 'center', marginTop: 30 },
   pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
   pendingImage: { width: 52, height: 52, borderRadius: 8 },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
+  composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
   iconButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, maxHeight: 110, minHeight: 42, borderWidth: 1, borderColor: '#334155', borderRadius: 22, color: '#FFFFFF', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#1E293B', fontSize: 16 },
+  inputShell: { flex: 1, minHeight: 42, maxHeight: 132, justifyContent: 'center', borderWidth: 1, borderColor: '#334155', borderRadius: 22, paddingHorizontal: 15, paddingVertical: 6, backgroundColor: '#1E293B' },
+  input: { flex: 1, color: '#FFFFFF', paddingVertical: 0, paddingHorizontal: 0, backgroundColor: 'transparent', fontSize: 16, textAlignVertical: 'top' },
   sendButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#10B981' },
 });

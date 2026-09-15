@@ -76,7 +76,7 @@ export function LogoutButton() {
       } else {
         router.replace('/(auth)/login');
       }
-    } catch (err: any) {
+    } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.location.replace('/login');
       } else {
@@ -159,7 +159,6 @@ export default function MerchantProfileScreen() {
     payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
   });
 
-  const role = 'merchant';
   const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
     { key: 'orders', label: 'New Orders / Order Updates' },
     { key: 'chat', label: 'Customer Inquiries / Chat Messages' },
@@ -422,7 +421,7 @@ export default function MerchantProfileScreen() {
     try {
       await sendPasswordResetLink(profile.email);
       Alert.alert('Reset link sent', 'Check your email to choose a new password.');
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Could not send reset link');
     }
   };

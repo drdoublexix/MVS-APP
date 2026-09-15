@@ -60,7 +60,7 @@ export default function MerchantLayout() {
       />
       <Tabs.Screen
         name="chat"
-        listeners={{ tabPress: () => router.navigate({ pathname: '/chat', params: { resetThread: String(Date.now()) } }) }}
+        listeners={{ tabPress: () => router.navigate('/chat') }}
         options={{
           title: 'Chats',
           tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined,

@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -98,7 +99,7 @@ export default function CreateCommunityPostModal({ visible, onClose, onCreated }
           <View style={styles.header}>
             <Text style={styles.heading}>New community post</Text>
             <TouchableOpacity onPress={onClose} disabled={submitting} accessibilityLabel="Close">
-              <Text style={styles.close}>Close</Text>
+              <MaterialCommunityIcons name="close" size={24} color="#0F766E" />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

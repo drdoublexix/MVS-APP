@@ -49,7 +49,7 @@ export default function ClientLayout() {
       />
       <Tabs.Screen
         name="chat"
-        listeners={{ tabPress: () => router.navigate({ pathname: '/chat', params: { resetThread: String(Date.now()) } }) }}
+        listeners={{ tabPress: () => router.navigate('/chat') }}
         options={{
           title: 'Chat',
           tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined,
