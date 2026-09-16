@@ -215,7 +215,7 @@ const readCachedInboxThreads = async (userId: string): Promise<Thread[] | null> 
 };
 
 type InvoiceMetadata = {
-  order_id: string;
+  invoice_id: string;
   amount: number;
   items?: InvoiceItem[];
   note?: string;
@@ -1447,28 +1447,28 @@ export default function ChatScreen() {
         .order("created_at", { ascending: true });
       if (error || !mounted) return;
       const loadedMessages = (data || []) as RealtimeMessage[];
-      const orderIds = loadedMessages
+      const invoiceIds = loadedMessages
         .filter((item) => item.message_type === "invoice")
-        .map((item) => (item.metadata as Partial<InvoiceMetadata> | null)?.order_id)
-        .filter((orderId): orderId is string => Boolean(orderId));
+        .map((item) => (item.metadata as Partial<InvoiceMetadata> | null)?.invoice_id)
+        .filter((invoiceId): invoiceId is string => Boolean(invoiceId));
       const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
-      if (orderIds.length === 0 || !isMerchantConversation) {
+      if (invoiceIds.length === 0 || !isMerchantConversation) {
         setMessages(loadedMessages);
         return;
       }
-      const { data: orders, error: ordersError } = await supabase
-        .from("orders")
+      const { data: invoices, error: invoicesError } = await supabase
+        .from("invoices")
         .select("id, status")
-        .in("id", orderIds);
-      if (ordersError) {
-        console.error("Error loading invoice statuses:", ordersError);
+        .in("id", invoiceIds);
+      if (invoicesError) {
+        console.error("Error loading invoice statuses:", invoicesError);
         setMessages(loadedMessages);
         return;
       }
-      const orderStatusMap = new Map(orders?.map((order) => [order.id, order.status]) || []);
+      const invoiceStatusMap = new Map(invoices?.map((invoice) => [invoice.id, invoice.status]) || []);
       setMessages(loadedMessages.map((item) => {
-        const orderId = (item.metadata as Partial<InvoiceMetadata> | null)?.order_id;
-        const status = orderId ? orderStatusMap.get(orderId) : undefined;
+        const invoiceId = (item.metadata as Partial<InvoiceMetadata> | null)?.invoice_id;
+        const status = invoiceId ? invoiceStatusMap.get(invoiceId) : undefined;
         return status ? { ...item, metadata: { ...item.metadata, status } } : item;
       }));
     };
@@ -2183,13 +2183,13 @@ export default function ChatScreen() {
       const { data: sellerProfile, error: sellerProfileError } = await supabase.from("profiles").select("flutterwave_subaccount_id").eq("id", currentUserId).maybeSingle();
       if (sellerProfileError) console.warn("[Invoice] Seller Flutterwave subaccount unavailable:", sellerProfileError.message);
       else sellerSubaccountId = sellerProfile?.flutterwave_subaccount_id || undefined;
-      const { data: order, error } = await supabase
-        .from("orders")
-        .insert({ conversation_id: active.id, merchant_id: currentUserId, buyer_id: active.participantId, amount, platform_fee: amount * 0.10, vendor_payout: amount * 0.90, payout_status: "unsettled", status: "pending" })
+      const { data: invoice, error } = await supabase
+        .from("invoices")
+        .insert({ conversation_id: active.id, merchant_id: currentUserId, buyer_id: active.participantId, amount, note: cleanNote || null, items, status: "pending" })
         .select("id, amount, status")
         .single();
       if (error) throw error;
-      const invoiceMetadata: InvoiceMetadata = { order_id: order.id, amount: Number(order.amount), items, note: cleanNote || undefined, seller_name: sellerName, seller_subaccount_id: sellerSubaccountId, status: "pending" };
+      const invoiceMetadata: InvoiceMetadata = { invoice_id: invoice.id, amount: Number(invoice.amount), items, note: cleanNote || undefined, seller_name: sellerName, seller_subaccount_id: sellerSubaccountId, status: "pending" };
       const invoiceMessage = await sendRealtimeMessage({ conversation_id: active.id, sender_id: currentUserId, receiver_id: active.participantId, content: cleanNote || "Invoice", message_type: "invoice", metadata: invoiceMetadata });
       setMessages((current) => appendUniqueMessage(current, invoiceMessage));
       setInvoiceVisible(false);
@@ -2277,11 +2277,12 @@ export default function ChatScreen() {
     setMessages((current) => appendUniqueMessage(current, notification));
   };
 
-  const payInvoice = async (orderId: string) => {
+  const payInvoice = async (invoiceId: string) => {
     const { data, error } = await supabase
-      .from("orders")
-      .update({ status: "pending" })
-      .eq("id", orderId)
+      .from("invoices")
+      .update({ status: "paid", paid_at: new Date().toISOString() })
+      .eq("id", invoiceId)
+      .eq("status", "pending")
       .select();
     if (error) {
       console.error("Error updating order:", error);
@@ -2294,14 +2295,13 @@ export default function ChatScreen() {
     }
     const { error: loyaltyError } = await supabase.rpc("award_mvs_loyalty_points", {
       p_user_id: currentUserId,
-      p_invoice_id: orderId,
+      p_invoice_id: invoiceId,
       p_points: 100,
     });
     if (loyaltyError) {
       console.error("[Loyalty] Failed to award CarePass points:", loyaltyError);
     }
-    setMessages((current) => current.map((item) => item.metadata && item.metadata.order_id === orderId ? { ...item, metadata: { ...item.metadata, status: "paid" } } : item));
-      setActiveOrder((current) => (current?.id === orderId ? { ...current, status: "pending" } : current));
+    setMessages((current) => current.map((item) => item.metadata && item.metadata.invoice_id === invoiceId ? { ...item, metadata: { ...item.metadata, status: "paid" } } : item));
     Alert.alert("Payment Successful!", "Your invoice has been marked as paid.");
   };
 
@@ -2854,6 +2854,7 @@ function ChatRoom({
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
+  const initialScrollDone = useRef(false);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
   const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
@@ -2876,7 +2877,13 @@ function ChatRoom({
     });
   };
   useEffect(() => {
-    if (messages.length > 0) scrollToLatest();
+    initialScrollDone.current = false;
+  }, [active.id]);
+  useEffect(() => {
+    if (messages.length > 0 && !initialScrollDone.current) {
+      initialScrollDone.current = true;
+      scrollToLatest();
+    }
   }, [messages.length]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -3081,8 +3088,6 @@ function ChatRoom({
       <ScrollView
         ref={messagesScrollRef}
         style={styles.messageList}
-        onLayout={scrollToLatest}
-        onContentSizeChange={scrollToLatest}
         contentContainerStyle={styles.messages}
       >
         {messages.length === 0 ? (
@@ -3650,7 +3655,7 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
   const metadata = (item.metadata || {}) as Partial<InvoiceMetadata>;
   const [customer, setCustomer] = useState<{ email: string; name: string } | null>(null);
   const isBuyer = item.receiver_id === currentUserId && item.sender_id !== currentUserId;
-  const isPendingInvoice = metadata.status === "pending" && Boolean(metadata.order_id) && isBuyer;
+  const isPendingInvoice = metadata.status === "pending" && Boolean(metadata.invoice_id) && isBuyer;
 
   useEffect(() => {
     if (!isPendingInvoice) return;
@@ -3662,17 +3667,17 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
   const handlePaymentSuccess = (response: unknown) => {
     const paymentResponse = response as { status?: string; transaction_id?: string };
     if (paymentResponse.status === "successful" || paymentResponse.transaction_id) {
-      void onPayInvoice(metadata.order_id || "");
+      void onPayInvoice(metadata.invoice_id || "");
       return;
     }
     Alert.alert("Payment not completed", "Payment was not completed. Please try again.");
   };
 
   const handleWebPayment = () => {
-    if (!customer || !metadata.order_id) return;
+    if (!customer || !metadata.invoice_id) return;
     handleFlutterwaveWebPayment({
       public_key: FLUTTERWAVE_CONFIG.PUBLIC_KEY,
-      tx_ref: metadata.order_id,
+      tx_ref: metadata.invoice_id,
       amount: Number(metadata.amount),
       currency: "NGN",
       customer,
@@ -3682,7 +3687,7 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
     });
   };
 
-  const payButton = isPendingInvoice && customer ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.order_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
+  const payButton = isPendingInvoice && customer ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.invoice_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
 
   return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>NGN {Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
 }
@@ -3841,6 +3846,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
+  const initialScrollDone = useRef(false);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
   const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
@@ -3863,7 +3869,13 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     });
   };
   useEffect(() => {
-    if (messages.length > 0) scrollToLatest();
+    initialScrollDone.current = false;
+  }, [active.id]);
+  useEffect(() => {
+    if (messages.length > 0 && !initialScrollDone.current) {
+      initialScrollDone.current = true;
+      scrollToLatest();
+    }
   }, [messages.length]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -4017,8 +4029,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       <ScrollView
         ref={messagesScrollRef}
         style={styles.messageList}
-        onLayout={scrollToLatest}
-        onContentSizeChange={scrollToLatest}
         contentContainerStyle={styles.messages}
       >
         {messages.length === 0 ? (

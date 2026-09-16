@@ -51,8 +51,6 @@ export default function MerchantLayout() {
         name="community"
         options={{
           title: 'Community',
-          headerShown: true,
-          headerTitle: 'MVS Community Hub',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-group" color={color} size={size} />
           ),
