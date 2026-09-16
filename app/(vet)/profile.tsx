@@ -75,6 +75,7 @@ const NIGERIAN_BANKS = [
 
 export default function VetProfileScreen() {
   const router = useRouter();
+  const role = 'vet';
   const [modal, setModal] = useState<SettingsModal>(null);
   const [bankPickerVisible, setBankPickerVisible] = useState(false);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
@@ -90,6 +91,7 @@ export default function VetProfileScreen() {
     phone: '',
     specialty: '',
     clinic: '',
+    bio: '',
     licenseNumber: '',
     avatar: '',
     bankName: '',
@@ -149,6 +151,7 @@ export default function VetProfileScreen() {
           phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
           specialty: cachedProfile?.specialty || cachedUser.user_metadata?.specialty || '',
           clinic: cachedProfile?.clinic || cachedUser.user_metadata?.clinic || '',
+          bio: cachedProfile?.bio || '',
           licenseNumber: cachedProfile?.license_number || cachedUser.user_metadata?.license_number || '',
           avatar: cachedAvatar || '',
           bankName: current.bankName,
@@ -166,32 +169,29 @@ export default function VetProfileScreen() {
       const user = await getCurrentUser();
       if (!user) return;
 
-      const { data: profileData } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
+      const { data: profileData } = await supabase.from('profiles').select('avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio').eq('id', user.id).single();
       const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
       setAvatarUrl(activeAvatar);
 
       setProfile((current) => ({
         name: user.user_metadata?.full_name || user.user_metadata?.name || 'Dr. Veterinarian',
         email: user.email || '',
-        phone: user.user_metadata?.phone || '',
-        specialty: user.user_metadata?.specialty || '',
-        clinic: user.user_metadata?.clinic || '',
-        licenseNumber: user.user_metadata?.license_number || '',
+        phone: profileData?.phone_number || user.user_metadata?.phone || '',
+        specialty: profileData?.specialty || user.user_metadata?.specialty || '',
+        clinic: profileData?.clinic || user.user_metadata?.clinic || '',
+        bio: profileData?.bio || user.user_metadata?.bio || '',
+        licenseNumber: profileData?.license_number || user.user_metadata?.license_number || '',
         avatar: activeAvatar || '',
         bankName: current.bankName,
         bankCode: current.bankCode,
         accountNumber: current.accountNumber,
         accountName: current.accountName,
         flutterwaveSubaccountId: current.flutterwaveSubaccountId,
-        latitude: current.latitude,
-        longitude: current.longitude,
-        city: current.city,
-        state: current.state,
+        latitude: profileData?.latitude ?? current.latitude,
+        longitude: profileData?.longitude ?? current.longitude,
+        city: profileData?.city || current.city,
+        state: profileData?.state || current.state,
       }));
-
-      void supabase.from('profiles').select('phone_number, latitude, longitude, city, state').eq('id', user.id).maybeSingle().then(({ data }) => {
-        if (data) setProfile((prev) => ({ ...prev, phone: data.phone_number || prev.phone, latitude: data.latitude ?? null, longitude: data.longitude ?? null, city: data.city || '', state: data.state || '' }));
-      });
 
       void requestDeviceLocation().then((location) => {
         if (location) setProfile((prev) => ({ ...prev, ...location }));
@@ -211,6 +211,7 @@ export default function VetProfileScreen() {
     const cleanName = sanitizeInput(profile.name);
     const cleanSpecialty = sanitizeInput(profile.specialty);
     const cleanClinic = sanitizeInput(profile.clinic);
+    const cleanBio = sanitizeInput(profile.bio).slice(0, 238);
     const cleanLicenseNumber = sanitizeInput(profile.licenseNumber);
     const cleanCity = sanitizeInput(profile.city);
     const cleanState = sanitizeInput(profile.state);
@@ -224,6 +225,10 @@ export default function VetProfileScreen() {
     const { error: profileError } = await supabase.from('profiles').update({
       full_name: cleanName,
       phone_number: formattedPhoneNumber,
+      clinic: cleanClinic,
+      specialty: cleanSpecialty,
+      license_number: cleanLicenseNumber,
+      bio: cleanBio,
       latitude: profile.latitude,
       longitude: profile.longitude,
       city: cleanCity,
@@ -231,7 +236,8 @@ export default function VetProfileScreen() {
     }).eq('id', user.id);
 
     if (profileError) {
-      Alert.alert(profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile', profileError.code === '23505' ? 'This phone number is already associated with another MVS account.' : profileError.message);
+      console.error('[Vet Profile] Profile save failed:', profileError);
+      Alert.alert(profileError.code === '23505' ? 'Phone number unavailable' : 'Could not save profile', profileError.code === '23505' ? 'This phone number is already associated with another MVS account.' : `${profileError.message}${profileError.code ? ` (${profileError.code})` : ''}`);
       return;
     }
 
@@ -243,10 +249,11 @@ export default function VetProfileScreen() {
         specialty: cleanSpecialty,
         clinic: cleanClinic,
         license_number: cleanLicenseNumber,
+        bio: cleanBio,
       },
     });
 
-    setProfile((current) => ({ ...current, phone: formattedPhoneNumber }));
+    setProfile((current) => ({ ...current, phone: formattedPhoneNumber, clinic: cleanClinic, specialty: cleanSpecialty, licenseNumber: cleanLicenseNumber, bio: cleanBio }));
     setModal(null);
     setSuccessMessage('Profile updated successfully.');
     setTimeout(() => setSuccessMessage(null), 3000);
@@ -509,6 +516,7 @@ export default function VetProfileScreen() {
           <Text style={styles.sectionTitle}>Practice Information</Text>
           <InfoRow icon="hospital-box" label="Clinic" value={profile.clinic || 'Not set'} />
           <InfoRow icon="briefcase" label="Specialty" value={profile.specialty || 'Not set'} />
+          {role === 'vet' ? <InfoRow icon="text-box-outline" label="Bio" value={profile.bio || 'Add a short bio'} /> : null}
           <InfoRow icon="card-account-details" label="License Number" value={profile.licenseNumber || 'Not set'} />
           <InfoRow icon="phone" label="Phone" value={profile.phone || 'Not set'} />
         </View>
@@ -552,9 +560,26 @@ export default function VetProfileScreen() {
               <Field label="Full Name" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} placeholder="Dr. Your Name" />
               <Field label="Email" value={profile.email} onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))} editable={false} />
               <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
-              <Field label="Specialty" value={profile.specialty} onChangeText={(text) => setProfile((prev) => ({ ...prev, specialty: text }))} placeholder="e.g., Small Animal, Surgery" />
-              <Field label="Clinic Name" value={profile.clinic} onChangeText={(text) => setProfile((prev) => ({ ...prev, clinic: text }))} placeholder="Your clinic or hospital name" />
-              <Field label="License Number" value={profile.licenseNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, licenseNumber: text }))} placeholder="Veterinary license number" />
+              {role === 'vet' ? (
+                <>
+                  <Field label="Specialty" value={profile.specialty} onChangeText={(text) => setProfile((prev) => ({ ...prev, specialty: text }))} placeholder="e.g., Small Animal, Surgery" />
+                  <Field label="Clinic Name" value={profile.clinic} onChangeText={(text) => setProfile((prev) => ({ ...prev, clinic: text }))} placeholder="Your clinic or hospital name" />
+                  <View style={styles.field}>
+                    <Text style={styles.label}>Bio</Text>
+                    <TextInput
+                      value={profile.bio}
+                      onChangeText={(text) => setProfile((prev) => ({ ...prev, bio: text.slice(0, 238) }))}
+                      placeholder="Tell clients a little about your practice"
+                      placeholderTextColor="#64748B"
+                      maxLength={238}
+                      multiline
+                      style={[styles.input, styles.bioInput]}
+                    />
+                    <Text style={styles.characterCount}>{profile.bio.length}/238</Text>
+                  </View>
+                  <Field label="License Number" value={profile.licenseNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, licenseNumber: text }))} placeholder="Veterinary license number" />
+                </>
+              ) : null}
 
               <View style={styles.field}>
                 <Text style={styles.label}>Location</Text>
@@ -986,6 +1011,16 @@ const styles = StyleSheet.create({
     padding: 12,
     color: '#F8FAFC',
     fontSize: 15,
+  },
+  bioInput: {
+    minHeight: 96,
+    textAlignVertical: 'top',
+  },
+  characterCount: {
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'right',
+    marginTop: 4,
   },
   inputDisabled: {
     opacity: 0.6,

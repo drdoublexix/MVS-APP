@@ -1,12 +1,12 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
-  useAudioRecorder,
+    AudioModule,
+    RecordingPresets,
+    setAudioModeAsync,
+    useAudioPlayer,
+    useAudioPlayerStatus,
+    useAudioRecorder,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
@@ -19,19 +19,19 @@ import { ShieldCheck, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PetMedicalHistory from "../components/PetMedicalHistory";
@@ -41,18 +41,18 @@ import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-  deleteRealtimeMessage,
-  ensureConsultationRecord,
-  getCurrentUser,
-  isUuid,
-  normalizeUuid,
-  safeSupabaseCall,
-  sendRealtimeMessage,
-  subscribeToMessages,
-  supabase,
-  uploadChatAttachment,
-  type ConsultationStatus,
-  type RealtimeMessage,
+    deleteRealtimeMessage,
+    ensureConsultationRecord,
+    getCurrentUser,
+    isUuid,
+    normalizeUuid,
+    safeSupabaseCall,
+    sendRealtimeMessage,
+    subscribeToMessages,
+    supabase,
+    uploadChatAttachment,
+    type ConsultationStatus,
+    type RealtimeMessage,
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
@@ -91,7 +91,6 @@ type RecipientProfile = {
   role?: string | null;
   business_name?: string | null;
   location?: string | null;
-  business_number?: string | null;
   phone_number?: string | null;
 };
 
@@ -372,7 +371,7 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, rec
       }}
     >
       <MaterialCommunityIcons name="package-variant" size={16} color="#FFFFFF" />
-      <Text style={styles.completeButtonText}>Order: {label}{canUpdate && (nextStatus || isCompleteAction) ? (isCompleteAction ? " (Complete)" : " â†’") : ""}</Text>
+      <Text style={styles.completeButtonText}>Order: {label}{canUpdate && (nextStatus || isCompleteAction) ? (isCompleteAction ? " (Complete)" : " ->") : ""}</Text>
     </TouchableOpacity>
   );
 }
@@ -392,8 +391,6 @@ function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean;
           <Text style={styles.profileModalValue}>{profile?.business_name || "N/A"}</Text>
           <Text style={styles.profileModalLabel}>Location</Text>
           <Text style={styles.profileModalValue}>{profile?.location || "N/A"}</Text>
-          <Text style={styles.profileModalLabel}>Business Number</Text>
-          <Text style={styles.profileModalValue}>{profile?.business_number || "N/A"}</Text>
           <Text style={styles.profileModalLabel}>Phone Number</Text>
           <Text style={styles.profileModalValue}>{profile?.phone_number || "N/A"}</Text>
         </View>
@@ -991,7 +988,7 @@ export default function ChatScreen() {
             allParticipantIds.length > 0
               ? await safeSupabaseCall(() => supabase
                   .from("profiles")
-                  .select("id, full_name, email, role, business_name, location, business_number, phone_number")
+                  .select("id, full_name, email, role, business_name, location, phone_number")
                   .in("id", allParticipantIds))
               : [];
           const profileMap = new Map(
@@ -1191,7 +1188,7 @@ export default function ChatScreen() {
     const routeRecipient = normalizeUuid(
       recipientIdParam || merchantIdParam || vetIdParam || receiverIdParam
     );
-    const routeKey = conversationIdParam || "";
+    const routeKey = `${conversationIdParam || ""}:${inquiryKeyParam || ""}`;
     if (
       !currentUserId ||
       !routeRecipient ||
@@ -1232,6 +1229,7 @@ export default function ChatScreen() {
     productNameParam,
     initialMessageParam,
     starterMessageParam,
+    inquiryKeyParam,
     categoryParam,
   ]);
 
@@ -1244,7 +1242,7 @@ export default function ChatScreen() {
     let mounted = true;
     void supabase
       .from("profiles")
-      .select("role, business_name, location, business_number, phone_number")
+      .select("role, business_name, location, phone_number")
       .eq("id", active.participantId)
       .maybeSingle()
       .then(({ data }) => {
@@ -3000,7 +2998,7 @@ function ChatRoom({
             <Text style={styles.completeButtonText}>Patient File</Text>
           </TouchableOpacity>
         ) : null}
-        {userRole === "vet" || userRole === "veterinarian" ? (
+        {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
           <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
             <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
             <Text style={styles.completeButtonText}>Farm Records</Text>
@@ -3686,7 +3684,7 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 
   const payButton = isPendingInvoice && customer ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.order_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
 
-  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>â‚¦{Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
+  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>NGN {Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
 }
 
 const defaultInvoiceItems: InvoiceItem[] = [
@@ -3922,7 +3920,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               <Text style={styles.completeButtonText}>Patient File</Text>
             </TouchableOpacity>
           ) : null}
-          {userRole === "vet" || userRole === "veterinarian" ? (
+          {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
             <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
               <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
               <Text style={styles.completeButtonText}>Farm Records</Text>

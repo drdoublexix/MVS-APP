@@ -233,11 +233,6 @@ export default function VetDashboardScreen() {
     }
   };
 
-  const openVetChat = () => {
-    setAiVisible(false);
-    router.push('/(client)/vets');
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -326,10 +321,6 @@ export default function VetDashboardScreen() {
             <TextInput value={userQuery} onChangeText={setUserQuery} placeholder="What would you like to know?" placeholderTextColor="#64748B" multiline style={styles.aiInput} editable={!aiLoading} />
             <TouchableOpacity style={[styles.askButton, (!userQuery.trim() || aiLoading) && styles.askButtonDisabled]} onPress={() => { void askAiAssistant(); }} disabled={!userQuery.trim() || aiLoading}>
               {aiLoading ? <ActivityIndicator color="#FFFFFF" /> : <><MaterialCommunityIcons name="send" size={18} color="#FFFFFF" /><Text style={styles.askButtonText}>Ask Assistant</Text></>}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.vetCta} onPress={openVetChat}>
-              <MaterialCommunityIcons name="stethoscope" size={18} color="#10B981" />
-              <Text style={styles.vetCtaText}>Connect with a Licensed Vet Now</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>

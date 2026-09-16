@@ -126,7 +126,7 @@ export default function MerchantProfileScreen() {
     phone: '',
     business: '',
     location: '',
-    businessNumber: '',
+    cacRegNumber: '',
     avatar: '',
     bankName: '',
     bankCode: '',
@@ -211,7 +211,7 @@ export default function MerchantProfileScreen() {
           phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
           business: cachedProfile?.business_name || cachedUser.user_metadata?.business || '',
           location: cachedProfile?.location || cachedUser.user_metadata?.location || '',
-          businessNumber: cachedProfile?.business_number || cachedUser.user_metadata?.business_number || '',
+          cacRegNumber: cachedProfile?.cac_reg_number || cachedUser.user_metadata?.cac_reg_number || '',
           avatar: cachedAvatar || '',
           bankName: '',
           bankCode: '',
@@ -226,7 +226,7 @@ export default function MerchantProfileScreen() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('avatar_url, business_name, location, business_number, phone_number')
+        .select('avatar_url, business_name, location, cac_reg_number, phone_number')
         .eq('id', user.id)
         .single();
 
@@ -243,7 +243,7 @@ export default function MerchantProfileScreen() {
         phone: profileData?.phone_number || user.user_metadata?.phone || '',
         business: profileData?.business_name || user.user_metadata?.business || '',
         location: profileData?.location || user.user_metadata?.location || '',
-        businessNumber: profileData?.business_number || user.user_metadata?.business_number || '',
+        cacRegNumber: profileData?.cac_reg_number || user.user_metadata?.cac_reg_number || '',
         avatar: activeAvatar || '',
         bankName: '',
         bankCode: '',
@@ -289,7 +289,7 @@ export default function MerchantProfileScreen() {
     const cleanName = sanitizeInput(profile.name);
     const cleanBusiness = sanitizeInput(profile.business);
     const cleanLocation = sanitizeInput(profile.location);
-    const cleanBusinessNumber = sanitizeInput(profile.businessNumber);
+    const cleanCacRegNumber = sanitizeInput(profile.cacRegNumber);
     const formattedPhoneNumber = sanitizeInput(profile.phone).replace(/[\s()-]/g, '');
 
     if (!/^\+[1-9]\d{7,14}$/.test(formattedPhoneNumber)) {
@@ -302,7 +302,7 @@ export default function MerchantProfileScreen() {
       .update({
         business_name: cleanBusiness,
         location: cleanLocation,
-        business_number: cleanBusinessNumber,
+        cac_reg_number: cleanCacRegNumber,
         phone_number: formattedPhoneNumber,
       })
       .eq('id', user.id);
@@ -325,7 +325,7 @@ export default function MerchantProfileScreen() {
         phone: formattedPhoneNumber,
         business: cleanBusiness,
         location: cleanLocation,
-        business_number: cleanBusinessNumber,
+        cac_reg_number: cleanCacRegNumber,
       },
     });
 
@@ -432,7 +432,7 @@ export default function MerchantProfileScreen() {
         const { error } = await supabase.rpc('delete_user_account');
         if (error) throw error;
         await signOutUser();
-        setProfile((current) => ({ ...current, name: '', email: '', phone: '', business: '', location: '', businessNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '' }));
+        setProfile((current) => ({ ...current, name: '', email: '', phone: '', business: '', location: '', cacRegNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '' }));
         setAvatarUrl(null);
         router.replace('/(auth)/login');
       } catch (error) {
@@ -532,7 +532,7 @@ export default function MerchantProfileScreen() {
           <Text style={styles.sectionTitle}>Business Information</Text>
           <InfoRow icon="storefront" label="Business Name" value={profile.business || 'Not set'} />
           <InfoRow icon="map-marker" label="Location" value={profile.location || 'Not set'} />
-          <InfoRow icon="file-document" label="Business Number" value={profile.businessNumber || 'Not set'} />
+          <InfoRow icon="file-document" label="CAC Reg Number" value={profile.cacRegNumber || 'Not set'} />
           <InfoRow icon="phone" label="Phone" value={profile.phone || 'Not set'} />
         </View>
 
@@ -572,7 +572,7 @@ export default function MerchantProfileScreen() {
               <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
               <Field label="Business Name" value={profile.business} onChangeText={(text) => setProfile((prev) => ({ ...prev, business: text }))} placeholder="Your business name" />
               <Field label="Location" value={profile.location} onChangeText={(text) => setProfile((prev) => ({ ...prev, location: text }))} placeholder="Business location" />
-              <Field label="Business Registration Number" value={profile.businessNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, businessNumber: text }))} placeholder="Your business registration number" />
+              <Field label="CAC Reg Number" value={profile.cacRegNumber} onChangeText={(text) => setProfile((prev) => ({ ...prev, cacRegNumber: text }))} placeholder="Your CAC registration number" />
 
               <TouchableOpacity style={styles.save} onPress={saveProfile}>
                 <Text style={styles.saveText}>Save Changes</Text>

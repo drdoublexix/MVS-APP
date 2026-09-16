@@ -8,7 +8,3 @@ on conflict (id) do update set public = true;
 create policy "Authenticated users can upload chat attachments"
 on storage.objects for insert to authenticated
 with check (bucket_id = 'chat-attachments');
-
-create policy "Anyone can view chat attachments"
-on storage.objects for select to public
-using (bucket_id = 'chat-attachments');

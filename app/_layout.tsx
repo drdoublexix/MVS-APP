@@ -68,7 +68,6 @@ function RootAuthGate() {
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
   const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null } | null>(null);
-  const isAuthInitialized = useRef(false);
   const router = useRouter();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
@@ -167,10 +166,6 @@ function RootAuthGate() {
         return;
       }
 
-      const activeRootSegment = segmentsRef.current[0];
-      const isInsideApplication = activeRootSegment === '(tabs)' || activeRootSegment === '(client)' || activeRootSegment === '(vet)' || activeRootSegment === '(merchant)';
-      if (isInsideApplication) return;
-
       try {
         let profileData: { role?: string | null; full_name?: string | null; email?: string | null; avatar_url?: string | null } | null = null;
         try {
@@ -210,17 +205,15 @@ function RootAuthGate() {
 
         if (!mounted) return;
 
-        const currentRootSegment = segmentsRef.current[0];
-        const currentlyInsideApplication = currentRootSegment === '(tabs)' || currentRootSegment === '(client)' || currentRootSegment === '(vet)' || currentRootSegment === '(merchant)';
-        if (currentlyInsideApplication) return;
-
         console.log('[AUTH ROUTER] Navigating authenticated user:', session.user.email, 'Role:', userRole);
-        if (userRole === 'vet' || userRole === 'veterinarian') {
-          router.replace('/(vet)');
-        } else if (userRole === 'merchant') {
-          router.replace('/(merchant)');
-        } else {
-          router.replace('/(client)');
+        const currentRootSegment = segmentsRef.current[0];
+        const expectedRootSegment = userRole === 'vet' || userRole === 'veterinarian'
+          ? '(vet)'
+          : userRole === 'merchant'
+            ? '(merchant)'
+            : '(client)';
+        if (currentRootSegment !== expectedRootSegment) {
+          router.replace(`/${expectedRootSegment}` as '/(client)' | '/(vet)' | '/(merchant)');
         }
       } catch (err) {
         console.error('[Auth Layout] Error in auth layout guard:', err);
@@ -292,15 +285,25 @@ function RootAuthGate() {
         return;
       }
 
-      if (event === 'INITIAL_SESSION' && isAuthInitialized.current) {
-        return;
-      }
+      if (event === 'INITIAL_SESSION') return;
 
       checkAuthAndRoute(session, event).finally(() => {
-        isAuthInitialized.current = true;
         void finalizeLoading();
       });
     });
+
+    void supabase.auth.getSession()
+      .then(({ data: sessionData, error }) => {
+        if (error) throw error;
+        return checkAuthAndRoute(sessionData.session, 'INITIAL_SESSION');
+      })
+      .catch((error) => {
+        console.error('[Auth Layout] Initial session lookup failed:', error);
+        if (mounted) router.replace('/(auth)/login');
+      })
+      .finally(() => {
+        void finalizeLoading();
+      });
 
     return () => {
       mounted = false;

@@ -24,6 +24,7 @@ const naira = (price: number) => `₦${price.toLocaleString()}`;
 
 export default function ClientHome() {
   const router = useRouter();
+  const role = 'client';
   const { products } = useMarketplace();
   const [aiVisible, setAiVisible] = useState(false);
   const [userQuery, setUserQuery] = useState('');
@@ -363,10 +364,12 @@ export default function ClientHome() {
             <TouchableOpacity style={[styles.askButton, (!userQuery.trim() || aiLoading) && styles.askButtonDisabled]} onPress={() => { void askAiAssistant(); }} disabled={!userQuery.trim() || aiLoading}>
               {aiLoading ? <ActivityIndicator color="#FFFFFF" /> : <><MaterialCommunityIcons name="send" size={18} color="#FFFFFF" /><Text style={styles.askButtonText}>Ask Assistant</Text></>}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.vetCta} onPress={openVetChat}>
-              <MaterialCommunityIcons name="stethoscope" size={18} color="#10B981" />
-              <Text style={styles.vetCtaText}>Connect with a Licensed Vet Now</Text>
-            </TouchableOpacity>
+            {role === 'client' ? (
+              <TouchableOpacity style={styles.vetCta} onPress={openVetChat}>
+                <MaterialCommunityIcons name="stethoscope" size={18} color="#10B981" />
+                <Text style={styles.vetCtaText}>Connect with a Licensed Vet Now</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </KeyboardAvoidingView>
       </Modal>

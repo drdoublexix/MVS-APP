@@ -12,8 +12,9 @@ type VetProfile = {
   avatar_url?: string | null;
   specialty?: string;
   title?: string;
-  clinic_name?: string;
+  clinic?: string;
   bio?: string;
+  phone_number?: string | null;
   email?: string;
   created_at?: string;
   latitude?: number | null;
@@ -24,6 +25,7 @@ type VetProfile = {
 };
 
 type Category = 'Online Consultation' | 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'General Inquiry' | 'Others';
+type VetModalProfile = Pick<VetProfile, 'bio' | 'clinic' | 'specialty' | 'phone_number'>;
 
 const categories: Category[] = ['Online Consultation', 'Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
 const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
@@ -51,6 +53,8 @@ export default function VetsScreen() {
   const router = useRouter();
   const [vets, setVets] = useState<VetProfile[]>([]);
   const [selectedVet, setSelectedVet] = useState<VetProfile | null>(null);
+  const [selectedVetProfile, setSelectedVetProfile] = useState<VetModalProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [intakeVet, setIntakeVet] = useState<VetProfile | null>(null);
   const [intakeMode, setIntakeMode] = useState('Online Consultation');
   const [loading, setLoading] = useState(true);
@@ -86,15 +90,26 @@ export default function VetsScreen() {
             console.warn('Client location unavailable for vet sorting', locationError);
           }
         }
-        // Replace lines 85–104 with this resilient fallback query logic:
-        let detailedQuery = await supabase
+        const vetDirectoryFields = 'id, full_name, role, avatar_url, specialty, title, clinic, bio, email, created_at, latitude, longitude, city, state, phone_number';
+        const detailedQuery = await supabase
           .from('profiles')
-          .select('*')
+          .select(vetDirectoryFields)
           .eq('role', 'vet')
           .order('full_name', { ascending: true });
 
-        let data = (detailedQuery.data || null) as VetProfile[] | null;
+        let data = detailedQuery.data as VetProfile[] | null;
         let error = detailedQuery.error;
+
+        if (error) {
+          console.warn('Retrying vet directory query without optional profile columns:', error.message);
+          const fallbackQuery = await supabase
+            .from('profiles')
+            .select('id, full_name, role, avatar_url, specialty, title, clinic, bio, latitude, longitude, city, state, phone_number')
+            .eq('role', 'vet')
+            .order('full_name', { ascending: true });
+          data = fallbackQuery.data as VetProfile[] | null;
+          error = fallbackQuery.error;
+        }
 
         if (error) {
           console.warn('Query error fetching vet profiles:', error.message);
@@ -141,6 +156,34 @@ export default function VetsScreen() {
     setSelectedVet(null);
     setIntakeMode(mode);
     setIntakeVet(vet);
+  };
+
+  const openVetProfile = async (vet: VetProfile) => {
+    setSelectedVet(vet);
+    setSelectedVetProfile(null);
+    setProfileLoading(true);
+
+    let profileQuery = await supabase
+      .from('profiles')
+      .select('bio, clinic, specialty, phone_number')
+      .eq('id', vet.id)
+      .maybeSingle();
+
+    if (profileQuery.error) {
+      console.warn('Retrying live vet profile details:', profileQuery.error.message);
+      profileQuery = await supabase
+        .from('profiles')
+        .select('bio, clinic, specialty, phone_number')
+        .eq('id', vet.id)
+        .maybeSingle();
+    }
+
+    if (profileQuery.error) {
+      console.warn('Failed to fetch live vet profile details:', profileQuery.error.message);
+    }
+
+    setSelectedVetProfile(profileQuery.data as VetModalProfile | null);
+    setProfileLoading(false);
   };
 
   const fetchVetRating = async (vet: VetProfile) => {
@@ -217,7 +260,7 @@ export default function VetsScreen() {
         conversationId,
         category,
         vet: intakeVet.full_name,
-        clinic: intakeVet.clinic_name || 'Veterinary Clinic',
+        clinic: intakeVet.clinic || 'Veterinary Clinic',
         receiver_id: doctorId,
         vet_id: doctorId,
         t: String(++navigationKey.current),
@@ -273,7 +316,7 @@ export default function VetsScreen() {
                   </Text>
 
                   <View style={styles.actionsRow}>
-                    <TouchableOpacity style={styles.secondaryButton} onPress={() => setSelectedVet(vet)}>
+                    <TouchableOpacity style={styles.secondaryButton} onPress={() => { void openVetProfile(vet); }}>
                       <Text style={styles.secondaryText}>View profile</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.primaryButton} onPress={() => directChat(vet)}>
@@ -287,7 +330,7 @@ export default function VetsScreen() {
         </ScrollView>
       )}
 
-      <Modal visible={Boolean(selectedVet)} animationType="slide" transparent onRequestClose={() => setSelectedVet(null)} onShow={() => { if (selectedVet) void fetchVetRating(selectedVet); }}>
+      <Modal visible={Boolean(selectedVet)} animationType="slide" transparent onRequestClose={() => { setSelectedVet(null); setSelectedVetProfile(null); }} onShow={() => { if (selectedVet) void fetchVetRating(selectedVet); }}>
         <View style={styles.overlay}>
           <View style={styles.modal}>
             {selectedVet && (
@@ -310,8 +353,6 @@ export default function VetsScreen() {
                   })()}
                 </View>
                 <Text style={styles.modalDoctor}>{selectedVet.full_name}</Text>
-                <Text style={styles.modalClinic}>{selectedVet.specialty || selectedVet.title || 'Veterinarian'}</Text>
-                <Text style={styles.modalClinic}>{selectedVet.clinic_name || 'Trusted Care Clinic'}</Text>
                 <View style={styles.ratingSection}>
                   <View style={styles.stars}>
                     {[1, 2, 3, 4, 5].map((star) => (
@@ -322,8 +363,18 @@ export default function VetsScreen() {
                   </View>
                   <Text style={styles.ratingSummary}>{averageRating.toFixed(1)} ★ ({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})</Text>
                 </View>
-                <Text style={styles.aboutTitle}>About Doctor</Text>
-                <Text style={styles.bio}>{selectedVet.bio || 'Compassionate veterinary care for healthy pets and peace of mind for families.'}</Text>
+                {profileLoading ? <ActivityIndicator style={styles.profileDetailsLoading} color="#10B981" /> : (
+                  <View style={styles.profileDetails}>
+                    <Text style={styles.detailLabel}>About Doctor</Text>
+                    <Text style={styles.detailValue}>{selectedVetProfile?.bio || 'Not provided'}</Text>
+                    <Text style={styles.detailLabel}>Clinic</Text>
+                    <Text style={styles.detailValue}>{selectedVetProfile?.clinic || 'Not provided'}</Text>
+                    <Text style={styles.detailLabel}>Specialty</Text>
+                    <Text style={styles.detailValue}>{selectedVetProfile?.specialty || 'Not provided'}</Text>
+                    <Text style={styles.detailLabel}>Phone Number</Text>
+                    <Text style={styles.detailValue}>{selectedVetProfile?.phone_number || 'Not provided'}</Text>
+                  </View>
+                )}
                 <View style={styles.actions}>
                   <TouchableOpacity style={styles.online} onPress={() => openIntake(selectedVet, 'Online Consultation')}>
                     <Text style={styles.actionText}>Online Consultation</Text>
@@ -395,4 +446,8 @@ const styles = StyleSheet.create({
   ratingSection: { alignItems: 'center', marginTop: 14 },
   stars: { flexDirection: 'row', gap: 6 },
   ratingSummary: { color: '#FCD34D', fontSize: 13, marginTop: 6 },
+  profileDetailsLoading: { marginTop: 22 },
+  profileDetails: { marginTop: 22 },
+  detailLabel: { color: '#94A3B8', fontSize: 13, fontWeight: '700', marginTop: 10 },
+  detailValue: { color: '#E2E8F0', lineHeight: 22, marginTop: 4 },
 });
