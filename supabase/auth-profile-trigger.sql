@@ -12,6 +12,12 @@
 -- from information_schema.columns
 -- where table_schema = 'public' and table_name = 'profiles'
 -- order by ordinal_position;
+--
+-- select t.typname, e.enumlabel
+-- from pg_type t
+-- join pg_enum e on e.enumtypid = t.oid
+-- where t.typname = 'user role'
+-- order by e.enumsortorder;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -38,15 +44,15 @@ security definer
 set search_path = public
 as $$
 declare
-  requested_role text;
+  requested_role public."user_role";
   requested_phone text;
 begin
-  requested_role := case lower(coalesce(new.raw_user_meta_data ->> 'role', 'client'))
+  requested_role := (case lower(coalesce(new.raw_user_meta_data ->> 'role', 'client'))
     when 'vet' then 'vet'
     when 'veterinarian' then 'vet'
     when 'merchant' then 'merchant'
     else 'client'
-  end;
+  end)::public."user role";
 
   requested_phone := nullif(trim(new.raw_user_meta_data ->> 'phone_number'), '');
 
@@ -80,7 +86,22 @@ exception
 end;
 $$;
 
-drop trigger if exists on_auth_user_created on auth.users;
+-- Remove every application trigger on auth.users. Keeping an older trigger
+-- alongside this one would execute both functions and can still abort signup.
+do $$
+declare
+  trigger_record record;
+begin
+  for trigger_record in
+    select tgname
+    from pg_trigger
+    where tgrelid = 'auth.users'::regclass
+      and not tgisinternal
+  loop
+    execute format('drop trigger if exists %I on auth.users', trigger_record.tgname);
+  end loop;
+end;
+$$;
 
 create trigger on_auth_user_created
 after insert on auth.users
@@ -88,3 +109,18 @@ for each row execute function public.handle_new_user();
 
 revoke all on function public.handle_new_user() from public;
 grant execute on function public.handle_new_user() to authenticated, service_role;
+
+-- Confirm that exactly one application trigger remains:
+-- select tgname, pg_get_triggerdef(oid)
+-- from pg_trigger
+-- where tgrelid = 'auth.users'::regclass and not tgisinternal;
+--
+-- Required profile columns must either be supplied by the trigger or have a
+-- default. This query exposes any remaining schema blocker:
+-- select column_name, data_type, is_nullable, column_default
+-- from information_schema.columns
+-- where table_schema = 'public'
+--   and table_name = 'profiles'
+--   and is_nullable = 'NO'
+--   and column_default is null
+-- order by ordinal_position;
