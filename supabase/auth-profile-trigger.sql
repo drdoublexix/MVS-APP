@@ -16,7 +16,7 @@
 -- select t.typname, e.enumlabel
 -- from pg_type t
 -- join pg_enum e on e.enumtypid = t.oid
--- where t.typname = 'user role'
+-- where t.typname = 'user_role'
 -- order by e.enumsortorder;
 
 create table if not exists public.profiles (
@@ -52,7 +52,7 @@ begin
     when 'veterinarian' then 'vet'
     when 'merchant' then 'merchant'
     else 'client'
-  end)::public."user role";
+  end)::public.user_role;
 
   requested_phone := nullif(trim(new.raw_user_meta_data ->> 'phone_number'), '');
 
