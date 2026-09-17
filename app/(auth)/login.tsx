@@ -15,6 +15,7 @@ export default function LoginScreen() {
   const selectedRole: AppRole = params.role === 'vet' || params.role === 'merchant' ? params.role : 'client';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetMessage, setResetMessage] = useState('');
@@ -167,15 +168,20 @@ export default function LoginScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              placeholderTextColor="#6F8297"
-              value={password}
-              onChangeText={setPassword}
-              editable={!loading}
-              secureTextEntry
-            />
+            <View style={styles.passwordInputContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Enter your password"
+                placeholderTextColor="#6F8297"
+                value={password}
+                onChangeText={setPassword}
+                editable={!loading}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity onPress={() => setShowPassword((visible) => !visible)} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+                <MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#8EA3B8" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity
@@ -298,6 +304,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#F8FAFC',
     backgroundColor: '#101F31',
+  },
+  passwordInputContainer: {
+    borderWidth: 1,
+    borderColor: '#263A50',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#101F31',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingRight: 10,
+    fontSize: 16,
+    color: '#F8FAFC',
   },
   forgotLink: {
     alignSelf: 'flex-end',

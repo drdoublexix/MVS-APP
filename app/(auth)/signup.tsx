@@ -5,6 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
+import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
 import { supabase, type AppRole } from '../../lib/supabase';
 
@@ -16,6 +17,8 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [role, setRole] = useState<AppRole>(params.role === 'vet' || params.role === 'merchant' ? params.role : 'client');
@@ -62,8 +65,8 @@ export default function SignupScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (!isValidPassword(password)) {
+      setError(PASSWORD_REQUIREMENTS);
       return;
     }
 
@@ -303,28 +306,38 @@ export default function SignupScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              placeholderTextColor="#6F8297"
-              value={password}
-              onChangeText={setPassword}
-              editable={!loading}
-              secureTextEntry
-            />
+            <View style={styles.passwordInputContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Minimum 8 characters: Capital letter, Small letter, Numbers & symbol"
+                placeholderTextColor="#6F8297"
+                value={password}
+                onChangeText={setPassword}
+                editable={!loading}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity onPress={() => setShowPassword((visible) => !visible)} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+                <MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#8EA3B8" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Confirm Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm your password"
-              placeholderTextColor="#6F8297"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              editable={!loading}
-              secureTextEntry
-            />
+            <View style={styles.passwordInputContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Re-enter your password"
+                placeholderTextColor="#6F8297"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                editable={!loading}
+                secureTextEntry={!showConfirmPassword}
+              />
+              <TouchableOpacity onPress={() => setShowConfirmPassword((visible) => !visible)} accessibilityLabel={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}>
+                <MaterialCommunityIcons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#8EA3B8" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity
@@ -459,6 +472,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#F8FAFC',
     backgroundColor: '#101F31',
+  },
+  passwordInputContainer: {
+    borderWidth: 1,
+    borderColor: '#263A50',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#101F31',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingRight: 10,
+    fontSize: 16,
+    color: '#F8FAFC',
   },
   roleRow: {
     flexDirection: 'row',

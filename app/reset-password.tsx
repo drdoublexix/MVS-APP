@@ -1,18 +1,22 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { isValidPassword, PASSWORD_REQUIREMENTS } from '../lib/password';
 import { supabase } from '../lib/supabase';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   const handleUpdatePassword = async () => {
-    if (newPassword.length < 6) {
-      Alert.alert('Invalid password', 'Password must be at least 6 characters long.');
+    if (!isValidPassword(newPassword)) {
+      Alert.alert('Invalid password', PASSWORD_REQUIREMENTS);
       return;
     }
 
@@ -54,28 +58,38 @@ export default function ResetPasswordScreen() {
         <View style={styles.form}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>New Password</Text>
-            <TextInput
-              style={styles.input}
+            <View style={styles.passwordInputContainer}>
+              <TextInput
+              style={styles.passwordInput}
               value={newPassword}
               onChangeText={setNewPassword}
-              placeholder="Enter a new password"
+              placeholder={PASSWORD_REQUIREMENTS}
               placeholderTextColor="#6F8297"
-              secureTextEntry
+              secureTextEntry={!showNewPassword}
               editable={!loading}
-            />
+              />
+              <TouchableOpacity onPress={() => setShowNewPassword((visible) => !visible)} accessibilityLabel={showNewPassword ? 'Hide password' : 'Show password'}>
+                <MaterialCommunityIcons name={showNewPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#6F8297" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Confirm New Password</Text>
-            <TextInput
-              style={styles.input}
+            <View style={styles.passwordInputContainer}>
+              <TextInput
+              style={styles.passwordInput}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               placeholder="Confirm your new password"
               placeholderTextColor="#6F8297"
-              secureTextEntry
+              secureTextEntry={!showConfirmPassword}
               editable={!loading}
-            />
+              />
+              <TouchableOpacity onPress={() => setShowConfirmPassword((visible) => !visible)} accessibilityLabel={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}>
+                <MaterialCommunityIcons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#6F8297" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity style={styles.submitButton} onPress={handleUpdatePassword} disabled={loading}>
@@ -137,6 +151,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#F8FAFC',
     backgroundColor: '#101F31',
+  },
+  passwordInputContainer: {
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 13,
+    paddingRight: 10,
+    color: '#FFFFFF',
+    fontSize: 15,
   },
   submitButton: {
     backgroundColor: '#5EEAD4',

@@ -2,11 +2,19 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-get-random-values';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { registerForPushNotifications } from '../lib/notifications';
 import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, writeCachedAuthState } from '../lib/supabase';
+
+const registerForPushNotifications = async (userId: string) => {
+  const { registerForPushNotifications: register } = await import('../lib/notifications');
+  return register(userId);
+};
+
+void SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.warn('[Splash Screen] preventAutoHideAsync failed gracefully:', error);
+});
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null }> {
   state: { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null } = {
@@ -23,6 +31,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
     console.error('[App Error Boundary] Unhandled runtime error:', error, errorInfo);
     this.setState({ errorInfo });
   }
+
+  private reloadApp = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.reload();
+      return;
+    }
+    this.setState({ hasError: false, error: null, errorInfo: null });
+  };
 
   render() {
     if (this.state.hasError) {
@@ -42,7 +58,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
       }
 
       return (
-        <SafeAreaProvider style={styles.boundaryContainer}>
+        <View style={styles.boundaryContainer}>
           <ScrollView
             contentContainerStyle={styles.boundaryContent}
             showsVerticalScrollIndicator
@@ -52,11 +68,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
             <Text selectable={true} style={styles.boundaryText}>
               {errorMessage}
             </Text>
-            <Text selectable={true} style={styles.boundaryStack}>
-              {stackTrace}
-            </Text>
+            <TouchableOpacity style={styles.boundaryButton} onPress={this.reloadApp}>
+              <Text style={styles.boundaryButtonText}>Reload App</Text>
+            </TouchableOpacity>
+            {__DEV__ ? <Text selectable={true} style={styles.boundaryStack}>{stackTrace}</Text> : null}
           </ScrollView>
-        </SafeAreaProvider>
+        </View>
       );
     }
 
@@ -97,14 +114,6 @@ function RootAuthGate() {
       }
       await hideSplashSafely();
     };
-
-    try {
-      void SplashScreen.preventAutoHideAsync().catch((error) => {
-        console.warn('[Splash Screen] preventAutoHideAsync failed gracefully:', error);
-      });
-    } catch (error) {
-      console.warn('[Splash Screen] preventAutoHideAsync threw:', error);
-    }
 
     splashFallbackTimer = setTimeout(() => {
       void hideSplashSafely();
@@ -405,6 +414,18 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     lineHeight: 24,
     marginBottom: 16,
+  },
+  boundaryButton: {
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  boundaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   boundaryStack: {
     color: '#E2E8F0',

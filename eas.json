@@ -6,14 +6,20 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "EXPO_ROUTER_IMPORT_MODE": "sync"
+      }
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "android": {
         "buildType": "apk"
       },
       "env": {
+        "EXPO_ROUTER_IMPORT_MODE": "sync",
         "EXPO_PUBLIC_SUPABASE_URL": "https://hcblxipuwqbljmcfsrwz.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjYmx4aXB1d3FibGptY2Zzcnd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0MzM4MTQsImV4cCI6MjEwMzAwOTgxNH0.BxltbFHwWy9TWK17PM0gXUapgTBa5T5qBn4bLB4nprQ",
         "EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY": "FLWPUBK-743e8d15a15502a9cc9b8f56ffe00a97-X",
@@ -21,7 +27,12 @@
         "EXPO_PUBLIC_VAPID_KEY": "BHOa9rOClPeysaMp6xMDu8ZqQ_1z-5RXvxiPzglMKcyna7-KgAkuqUdFMIojPbVVKmjlEXwItM6SOTQHjXbsOE4"
       }
     },
-    "production": {}
+    "production": {
+      "environment": "production",
+      "env": {
+        "EXPO_ROUTER_IMPORT_MODE": "sync"
+      }
+    }
   },
   "submit": {
     "production": {}

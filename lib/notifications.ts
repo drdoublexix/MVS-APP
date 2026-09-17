@@ -2,15 +2,19 @@ import * as Notifications from 'expo-notifications';
 import { Alert, Platform } from 'react-native';
 import { supabase } from './supabase';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+} catch (error) {
+  console.warn('[Notifications] Native notification handler setup failed:', error);
+}
 
 const ANDROID_CHANNEL_ID = 'default';
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';

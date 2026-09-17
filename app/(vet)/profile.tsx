@@ -3,23 +3,24 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
+import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
@@ -375,8 +376,12 @@ export default function VetProfileScreen() {
   };
 
   const changePassword = async () => {
-    if (password.next.length < 6 || password.next !== password.confirm) {
-      Alert.alert('Invalid', 'Password must be at least 6 characters and match the confirmation.');
+    if (!isValidPassword(password.next)) {
+      Alert.alert('Invalid password', PASSWORD_REQUIREMENTS);
+      return;
+    }
+    if (password.next !== password.confirm) {
+      Alert.alert('Passwords do not match', 'Please make sure both password fields match.');
       return;
     }
     try {
@@ -712,14 +717,14 @@ export default function VetProfileScreen() {
 
             <ScrollView style={styles.modalBody}>
               <Text style={styles.info}>Or use the button below to send yourself a password reset link.</Text>
+              <Text style={styles.info}>Password must contain at least 8 characters including a capital letter, a small letter, a number, and a symbol.</Text>
 
-              <Field label="New Password" value={password.next} onChangeText={(text) => setPassword((prev) => ({ ...prev, next: text }))} placeholder="Minimum 6 characters" secureTextEntry />
+              <Field label="New Password" value={password.next} onChangeText={(text) => setPassword((prev) => ({ ...prev, next: text }))} placeholder={PASSWORD_REQUIREMENTS} secureTextEntry />
               <Field label="Confirm Password" value={password.confirm} onChangeText={(text) => setPassword((prev) => ({ ...prev, confirm: text }))} placeholder="Re-enter your password" secureTextEntry />
 
               <TouchableOpacity style={styles.save} onPress={changePassword}>
                 <Text style={styles.saveText}>Update Password</Text>
               </TouchableOpacity>
-
               <TouchableOpacity style={styles.secondary} onPress={sendResetLink}>
                 <Text style={styles.secondaryText}>Send Reset Link via Email</Text>
               </TouchableOpacity>
@@ -727,7 +732,6 @@ export default function VetProfileScreen() {
           </View>
         </View>
       </Modal>
-
       {/* Notifications Modal */}
       <Modal visible={modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
@@ -806,19 +810,11 @@ function Field({
   editable?: boolean;
   keyboardType?: 'default' | 'number-pad';
 }) {
+  const [visible, setVisible] = useState(false);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#64748B"
-        secureTextEntry={secureTextEntry}
-        editable={editable}
-        keyboardType={keyboardType}
-        style={[styles.input, !editable && styles.inputDisabled]}
-      />
+      {secureTextEntry ? <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', padding: 0 }]}><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#64748B" secureTextEntry={!visible} editable={editable} keyboardType={keyboardType} style={{ flex: 1, padding: 13, paddingRight: 8, color: '#FFFFFF', fontSize: 15 }} /><TouchableOpacity onPress={() => setVisible((current) => !current)} accessibilityLabel={visible ? 'Hide password' : 'Show password'} style={{ padding: 10 }}><MaterialCommunityIcons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94A3B8" /></TouchableOpacity></View> : <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#64748B" editable={editable} keyboardType={keyboardType} style={[styles.input, !editable && styles.inputDisabled]} />}
     </View>
   );
 }
