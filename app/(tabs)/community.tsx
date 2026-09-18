@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, RefreshControl, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, supabase } from '../../lib/supabase';
 
@@ -29,6 +29,7 @@ export default function CommunityScreen() {
   const [sending, setSending] = useState(false);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [deletingMessage, setDeletingMessage] = useState(false);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [inputHeight, setInputHeight] = useState(42);
   const deletePressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<CommunityMessage>>(null);
@@ -209,14 +210,42 @@ export default function CommunityScreen() {
     const profile = getProfile(item.profiles);
     const isOwnMessage = item.user_id === currentUserId;
     const avatarUrl = getAvatarUrl(profile.avatar_url);
+    const hasImage = Boolean(item.media_urls?.length);
+    const previewImageUrl = item.media_urls?.[0] ?? null;
+
     return (
       <View style={[styles.messageRow, isOwnMessage && styles.messageRowOwn]}>
         {!isOwnMessage && (avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><MaterialCommunityIcons name="account" size={18} color="#10B981" /></View>)}
         <View style={[styles.messageColumn, isOwnMessage && styles.messageColumnOwn]}>
           <View style={[styles.senderRow, isOwnMessage && styles.senderRowOwn]}><Text style={styles.senderName}>{profile.full_name || 'MVS member'}</Text><Text style={styles.roleBadge}>{roleLabels[profile.role || ''] || 'Member'}</Text></View>
-          <TouchableOpacity activeOpacity={0.85} onPressIn={() => startDeletePress(item.id, isOwnMessage)} onPressOut={cancelDeletePress} disabled={!isOwnMessage} style={[styles.bubble, isOwnMessage ? styles.bubbleOwn : styles.bubbleOther]}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onLongPress={isOwnMessage ? () => setDeleteCandidateId(item.id) : undefined}
+            onPress={() => {
+              if (previewImageUrl) setSelectedImagePreview(previewImageUrl);
+            }}
+            disabled={!isOwnMessage && !hasImage}
+            style={[styles.bubble, isOwnMessage ? styles.bubbleOwn : styles.bubbleOther]}
+          >
             {item.content ? <Text style={[styles.messageText, isOwnMessage && styles.messageTextOwn]}>{item.content}</Text> : null}
-            {item.media_urls?.length ? <View style={styles.mediaGrid}>{item.media_urls.map((url, index) => <Image key={`${url}-${index}`} source={{ uri: url }} style={item.media_urls && item.media_urls.length === 1 ? styles.mediaSingle : styles.mediaTile} />)}</View> : null}
+            {hasImage ? (
+              <View style={styles.mediaGrid}>
+                {item.media_urls!.map((url, index) => (
+                  <TouchableOpacity
+                    key={`${url}-${index}`}
+                    activeOpacity={0.9}
+                    onPress={() => setSelectedImagePreview(url)}
+                    style={item.media_urls!.length === 1 ? styles.mediaSingleWrapper : styles.mediaTileWrapper}
+                  >
+                    <Image
+                      source={{ uri: url }}
+                      style={item.media_urls!.length === 1 ? styles.mediaSingle : styles.mediaTile}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.messageFooter}><Text style={[styles.time, isOwnMessage && styles.timeOwn]}>{formatMessageTime(item.created_at)}</Text></View>
           </TouchableOpacity>
         </View>
@@ -243,6 +272,14 @@ export default function CommunityScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+      <Modal visible={selectedImagePreview !== null} transparent animationType="fade" onRequestClose={() => setSelectedImagePreview(null)}>
+        <Pressable style={styles.imagePreviewOverlay} onPress={() => setSelectedImagePreview(null)} accessibilityLabel="Close image preview">
+          <Image source={{ uri: selectedImagePreview ?? undefined }} style={styles.imagePreview} resizeMode="contain" />
+          <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setSelectedImagePreview(null)} accessibilityLabel="Close image preview">
+            <MaterialCommunityIcons name="close" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </Pressable>
       </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -284,11 +321,16 @@ const styles = StyleSheet.create({
   messageText: { color: '#FFFFFF', fontSize: 15, lineHeight: 21 },
   messageTextOwn: { color: '#FFFFFF' },
   mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2, marginBottom: 4 },
-  mediaSingle: { width: 220, height: 170, borderRadius: 10 },
-  mediaTile: { width: 96, height: 96, borderRadius: 8 },
+  mediaSingleWrapper: { width: 220, height: 170, borderRadius: 10, overflow: 'hidden' },
+  mediaTileWrapper: { width: 96, height: 96, borderRadius: 8, overflow: 'hidden' },
+  mediaSingle: { width: '100%', height: '100%', borderRadius: 10 },
+  mediaTile: { width: '100%', height: '100%', borderRadius: 8 },
   time: { color: '#94A3B8', fontSize: 10, alignSelf: 'flex-end', marginTop: 4 },
   timeOwn: { color: '#A7F3D0' },
   messageFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 4 },
+  imagePreviewOverlay: { flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center' },
+  imagePreview: { width: '100%', height: '100%' },
+  imagePreviewClose: { position: 'absolute', top: 48, right: 16, zIndex: 2, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000099' },
   loader: { marginTop: 30 },
   empty: { color: '#94A3B8', textAlign: 'center', marginTop: 30 },
   pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
