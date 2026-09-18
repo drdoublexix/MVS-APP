@@ -1,12 +1,12 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    AudioModule,
-    RecordingPresets,
-    setAudioModeAsync,
-    useAudioPlayer,
-    useAudioPlayerStatus,
-    useAudioRecorder,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
@@ -19,19 +19,19 @@ import { ShieldCheck, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PetMedicalHistory from "../components/PetMedicalHistory";
@@ -41,18 +41,19 @@ import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-    deleteRealtimeMessage,
-    ensureConsultationRecord,
-    getCurrentUser,
-    isUuid,
-    normalizeUuid,
-    safeSupabaseCall,
-    sendRealtimeMessage,
-    subscribeToMessages,
-    supabase,
-    uploadChatAttachment,
-    type ConsultationStatus,
-    type RealtimeMessage,
+  deleteMessageForEveryone,
+  ensureConsultationRecord,
+  getCurrentUser,
+  hideMessageForCurrentUser,
+  isUuid,
+  normalizeUuid,
+  safeSupabaseCall,
+  sendRealtimeMessage,
+  subscribeToMessages,
+  supabase,
+  uploadChatAttachment,
+  type ConsultationStatus,
+  type RealtimeMessage
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
@@ -62,6 +63,7 @@ type ChatParams = {
   recipientId?: string;
   merchantId?: string;
   merchantName?: string;
+  orderId?: string;
   vet_id?: string;
   receiver_id?: string;
   vet?: string;
@@ -437,8 +439,8 @@ const styles = {
   roomHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "column", alignItems: "stretch", gap: 12, position: "relative", zIndex: 10, elevation: 5 },
   headerTopRow: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
   headerTitleContainer: { flex: 1, flexShrink: 1, minWidth: 0 },
-  headerActionsWrapper: { width: "100%", overflow: "hidden" },
-  headerActions: { width: "100%", flexGrow: 0, flexShrink: 1, minHeight: 44, maxHeight: 56, zIndex: 11, elevation: 6 },
+  headerActionsWrapper: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, overflow: "hidden" },
+  headerActions: { flex: 1, minHeight: 44, maxHeight: 56, zIndex: 11, elevation: 6 },
   headerActionsContent: { flexGrow: 1, flexDirection: "row", flexWrap: "nowrap", alignItems: "center", paddingHorizontal: 12, gap: 8, zIndex: 12, elevation: 7 },
   consultationBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
   consultationStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -511,6 +513,33 @@ const styles = {
   orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
   viewProfileButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   buyerProtectionButton: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#92400E", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  clearThreadAction: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1F2937", borderColor: "#FCA5A5", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  clearThreadText: { color: "#FCA5A5", fontSize: 12, fontWeight: "700" },
+  headerMenuRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%" },
+  headerMenuButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", marginLeft: 2 },
+  headerMenuList: { backgroundColor: "#111827", borderWidth: 1, borderColor: "#334155", borderRadius: 10, paddingVertical: 6, marginTop: 0 },
+  headerMenuItem: { paddingHorizontal: 14, paddingVertical: 10 },
+  headerMenuText: { color: "#E2E8F0", fontSize: 13, fontWeight: "600" },
+  searchBarContainer: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#111827", borderBottomWidth: 1, borderBottomColor: "#334155", paddingHorizontal: 14, paddingVertical: 10 },
+  searchInput: { flex: 1, backgroundColor: "#0F172A", borderRadius: 8, color: "#E2E8F0", paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "#334155" },
+  searchNavigationButtons: { flexDirection: "row", alignItems: "center", gap: 6 },
+  searchStatusText: { color: "#94A3B8", fontSize: 11, fontWeight: "600" },
+  selectionBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: "#111827", borderTopWidth: 1, borderTopColor: "#334155", borderBottomWidth: 1, borderBottomColor: "#334155" },
+  selectionCounter: { color: "#E2E8F0", fontSize: 13, fontWeight: "700" },
+  selectionActions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  selectionDeleteButton: { borderWidth: 1, borderColor: "#475569", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  selectionDeleteText: { color: "#E2E8F0", fontSize: 12, fontWeight: "700" },
+  selectionDeleteButtonPrimary: { backgroundColor: "#DC2626", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  selectionDeleteTextPrimary: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  selectionCheck: { position: "absolute", top: 10, left: 10, width: 20, height: 20, borderRadius: 10, backgroundColor: "#0F172A", borderWidth: 2, borderColor: "#94A3B8", alignItems: "center", justifyContent: "center", zIndex: 2 },
+  selectionCheckActive: { backgroundColor: "#10B981", borderColor: "#34D399" },
+  deleteModalCard: { width: "100%", maxWidth: 360, backgroundColor: "#1E293B", borderColor: "#334155", borderWidth: 1, borderRadius: 14, padding: 20, marginHorizontal: 20 },
+  deleteModalTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700" },
+  deleteModalAction: { backgroundColor: "#0F172A", borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, marginTop: 12 },
+  deleteModalActionText: { color: "#F8FAFC", fontSize: 14, fontWeight: "700", textAlign: "center" },
+  deleteModalCancel: { alignItems: "center", paddingVertical: 12, marginTop: 10 },
+  deleteModalCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
+  messageSelected: { borderWidth: 2, borderColor: "#34D399" },
   profileModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099", padding: 20 },
   profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
   protectionModal: { width: "100%", maxWidth: 420, maxHeight: "88%", backgroundColor: "#1E293B", borderColor: "#92400E", borderWidth: 1, borderRadius: 14, padding: 20 },
@@ -653,9 +682,34 @@ const styles = {
   imagePreviewClose: { position: "absolute", top: 48, right: 16, zIndex: 2, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099" },
 } as const;
 
+const isMessageHiddenForUser = (message: Pick<RealtimeMessage, "hidden_for_users"> | null | undefined, currentUserId: string) =>
+  Boolean(
+    message &&
+    Array.isArray(message.hidden_for_users) &&
+    message.hidden_for_users.includes(currentUserId)
+  );
+
+const filterVisibleMessages = (items: RealtimeMessage[], currentUserId: string) =>
+  items.filter((message) => {
+    if (message.is_deleted) return false;
+    if (isMessageHiddenForUser(message, currentUserId)) return false;
+    return true;
+  });
+
+const syncClearedThreadStorage = async (userId: string, threadIds: Set<string>) => {
+  const storageKey = `mvs_cleared_threads_${userId}`;
+  const nextIds = [...threadIds];
+  if (nextIds.length === 0) {
+    await AsyncStorage.removeItem(storageKey);
+    return;
+  }
+  await AsyncStorage.setItem(storageKey, JSON.stringify(nextIds));
+};
+
 const appendUniqueMessage = (
   messages: RealtimeMessage[],
-  newMessage: RealtimeMessage
+  newMessage: RealtimeMessage,
+  currentUserId?: string
 ) => {
   const clientGeneratedId =
     newMessage.metadata &&
@@ -676,11 +730,11 @@ const appendUniqueMessage = (
     );
   });
 
-  if (existingIndex === -1) return [...messages, newMessage];
-
-  return messages.map((message, index) =>
+  const nextMessages = existingIndex === -1 ? [...messages, newMessage] : messages.map((message, index) =>
     index === existingIndex ? newMessage : message
   );
+
+  return typeof currentUserId === 'string' ? filterVisibleMessages(nextMessages, currentUserId) : nextMessages;
 };
 
 const contextMenuProps = (onDelete: () => void) =>
@@ -706,54 +760,11 @@ export default function ChatScreen() {
     flexDirection: "column",
     height: visualViewportHeight ?? 0,
   };
-  const dismissActiveWebKeyboard = (event?: { target?: unknown }) => {
-    if (Platform.OS !== "web" || typeof document === "undefined") {
-      return;
-    }
-
-    const target = event?.target as HTMLElement | null;
-    if (
-      target instanceof HTMLElement &&
-      ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
-    ) {
-      return;
-    }
-
-    const activeElement = document.activeElement as HTMLElement | null;
-    if (
-      activeElement &&
-      activeElement !== document.body &&
-      typeof activeElement.blur === "function"
-    ) {
-      activeElement.blur();
-    }
-  };
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") {
-      return;
-    }
-
-    const handlePointerDown = (event: Event) => {
-      const target = event.target as HTMLElement | null;
-      if (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) {
-        return;
-      }
-
-      dismissActiveWebKeyboard({ target });
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-    };
-  }, []);
-
   const conversationIdParam = firstParam(params.conversationId);
   const recipientIdParam = firstParam(params.recipientId);
   const merchantIdParam = firstParam(params.merchantId);
   const merchantNameParam = firstParam(params.merchantName);
+  const orderIdParam = firstParam(params.orderId);
   const vetIdParam = firstParam(params.vet_id);
   const receiverIdParam = firstParam(params.receiver_id);
   const vetParam = firstParam(params.vet);
@@ -769,6 +780,7 @@ export default function ChatScreen() {
   const [active, setActive] = useState<Thread | null>(null);
   const [recipientProfile, setRecipientProfile] = useState<RecipientProfile | null>(null);
   const [messages, setMessages] = useState<RealtimeMessage[]>([]);
+  const clearedThreadsRef = useRef<Set<string>>(new Set());
   const [message, setMessage] = useState(
     isCategory(categoryParam)
       ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian")
@@ -783,6 +795,29 @@ export default function ChatScreen() {
   const [deleteCandidate, setDeleteCandidate] =
     useState<RealtimeMessage | null>(null);
   const [threadDeleteCandidate, setThreadDeleteCandidate] = useState<Thread | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [batchDeleteCandidate, setBatchDeleteCandidate] = useState<string[]>([]);
+  const resetThreadSelectionState = useCallback(() => {
+    setSelectedMessageIds([]);
+    setBatchDeleteCandidate([]);
+    setMultiSelectMode(false);
+  }, []);
+  const cancelMultiSelectMode = useCallback(() => {
+    setSelectedMessageIds([]);
+    setBatchDeleteCandidate([]);
+    setMultiSelectMode(false);
+  }, []);
+  const toggleMultiSelectMode = () => {
+    setMultiSelectMode((current) => {
+      const next = !current;
+      if (!next) {
+        setSelectedMessageIds([]);
+        setBatchDeleteCandidate([]);
+      }
+      return next;
+    });
+  };
   const [consultation, setConsultation] = useState<ConsultationRecord | null>(
     null
   );
@@ -793,6 +828,14 @@ export default function ChatScreen() {
   const [prescriptionVisible, setPrescriptionVisible] = useState(false);
   const [prescriptionSubmitting, setPrescriptionSubmitting] = useState(false);
   const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
+  useEffect(() => {
+    setDeleteCandidate(null);
+    setThreadDeleteCandidate(null);
+    setSelectedMessageIds([]);
+    setBatchDeleteCandidate([]);
+    setMultiSelectMode(false);
+    resetThreadSelectionState();
+  }, [active?.id, activeOrder?.id, currentUserId, resetThreadSelectionState]);
   const [patientFileVisible, setPatientFileVisible] = useState(false);
   const [patientPets, setPatientPets] = useState<PatientPet[]>([]);
   const [patientFileLoading, setPatientFileLoading] = useState(false);
@@ -809,6 +852,7 @@ export default function ChatScreen() {
   const [farmSoapSubmitting, setFarmSoapSubmitting] = useState(false);
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
   const [isLongPressActive, setIsLongPressActive] = useState(false);
+  const messageLongPressLockRef = useRef<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -920,14 +964,40 @@ export default function ChatScreen() {
           const user = await getCurrentUser();
           const cleanUserId = normalizeUuid(user?.id);
           if (!cleanUserId) return;
+
+          const clearedThreadStorageKey = `mvs_cleared_threads_${cleanUserId}`;
+          const clearedThreadIdsRaw = await AsyncStorage.getItem(clearedThreadStorageKey);
+          const clearedThreadIds = new Set<string>(
+            clearedThreadIdsRaw ? (JSON.parse(clearedThreadIdsRaw) as string[]) : []
+          );
+          clearedThreadsRef.current = new Set(clearedThreadIds);
+
           const cachedThreads = inboxMemoryCache.get(cleanUserId);
           if (cachedThreads) {
-            setThreads(cachedThreads);
+            const filteredCachedThreads = cachedThreads.filter((thread) => {
+              if (clearedThreadIds.has(thread.id)) return false;
+              if (thread.messages.length === 0) return false;
+              const hasVisibleMessage = thread.messages.some((message) => {
+                if (message.is_deleted) return false;
+                return !isMessageHiddenForUser(message, cleanUserId);
+              });
+              return hasVisibleMessage;
+            });
+            setThreads(filteredCachedThreads);
             setLoading(false);
           } else {
             void readCachedInboxThreads(cleanUserId).then((storedThreads) => {
               if (!mounted || freshInboxLoaded || !storedThreads) return;
-              setThreads(storedThreads);
+              const filteredStoredThreads = storedThreads.filter((thread) => {
+                if (clearedThreadIds.has(thread.id)) return false;
+                if (thread.messages.length === 0) return false;
+                const hasVisibleMessage = thread.messages.some((message) => {
+                  if (message.is_deleted) return false;
+                  return !isMessageHiddenForUser(message, cleanUserId);
+                });
+                return hasVisibleMessage;
+              });
+              setThreads(filteredStoredThreads);
               setLoading(false);
             });
           }
@@ -941,6 +1011,7 @@ export default function ChatScreen() {
             safeSupabaseCall(() => supabase
               .from("messages")
               .select("*")
+              .not("hidden_for_users", "cs", `{${cleanUserId}}`)
               .or(`sender_id.eq.${cleanUserId},receiver_id.eq.${cleanUserId}`)
               .order("created_at", { ascending: false })),
           ]);
@@ -1053,8 +1124,24 @@ export default function ChatScreen() {
             };
           });
           const activeThreads = rawThreads
-            .filter((thread) => !thread.deleted_by_user_ids.includes(cleanUserId))
+            .filter((thread) => {
+              if (thread.deleted_by_user_ids.includes(cleanUserId)) return false;
+              if (clearedThreadIds.has(thread.id)) return false;
+
+              const hasVisibleMessage = thread.messages.some((message) => {
+                if (message.is_deleted) return false;
+                return !isMessageHiddenForUser(message, cleanUserId);
+              });
+
+              if (hasVisibleMessage) {
+                clearedThreadIds.delete(thread.id);
+                return true;
+              }
+
+              return !thread.messages.length || !thread.messages.every((message) => isMessageHiddenForUser(message, cleanUserId));
+            })
             .sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first));
+          await syncClearedThreadStorage(cleanUserId, clearedThreadIds);
           rememberInboxThreads(cleanUserId, activeThreads);
           freshInboxLoaded = true;
           setThreads(activeThreads);
@@ -1124,7 +1211,21 @@ export default function ChatScreen() {
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      clearedThreadsRef.current = new Set();
+      return;
+    }
+
+    let isMounted = true;
+    void AsyncStorage.getItem(`mvs_cleared_threads_${currentUserId}`).then((value) => {
+      if (!isMounted) return;
+      try {
+        clearedThreadsRef.current = new Set(value ? (JSON.parse(value) as string[]) : []);
+      } catch {
+        clearedThreadsRef.current = new Set();
+      }
+    });
+
     const inboxChannel = supabase
       .channel(`messages:inbox:${currentUserId}`)
       .on(
@@ -1143,6 +1244,12 @@ export default function ChatScreen() {
             return;
           }
 
+          if (incoming.conversation_id && clearedThreadsRef.current.has(incoming.conversation_id)) {
+            clearedThreadsRef.current.delete(incoming.conversation_id);
+            void syncClearedThreadStorage(currentUserId, clearedThreadsRef.current);
+          }
+          if (isMessageHiddenForUser(incoming, currentUserId)) return;
+
           setThreads((current) => {
             const participantId = normalizeUuid(
               incoming.sender_id === currentUserId
@@ -1160,7 +1267,7 @@ export default function ChatScreen() {
             if (payload.eventType === "DELETE") {
               nextMessages = thread.messages.filter((message) => message.id !== incoming.id);
             } else {
-              nextMessages = appendUniqueMessage(thread.messages, incoming).sort(
+              nextMessages = appendUniqueMessage(thread.messages, incoming, currentUserId).sort(
                 (first, second) => first.created_at.localeCompare(second.created_at)
               );
             }
@@ -1180,6 +1287,7 @@ export default function ChatScreen() {
       )
       .subscribe();
     return () => {
+      isMounted = false;
       void supabase.removeChannel(inboxChannel);
     };
   }, [currentUserId]);
@@ -1200,8 +1308,9 @@ export default function ChatScreen() {
     openedRoute.current = routeKey;
     let cancelled = false;
     const participantName = merchantNameParam || vetParam || "Merchant";
+    const resolvedConversationId = conversationIdParam || conversationIdFor(currentUserId, routeRecipient);
     const nextActive: Thread = {
-      id: conversationIdFor(currentUserId, routeRecipient),
+      id: resolvedConversationId,
       participantId: routeRecipient,
       participantName,
       participantRole: vetParam ? "veterinarian" : "merchant",
@@ -1441,12 +1550,13 @@ export default function ChatScreen() {
       const { data, error } = await supabase
         .from("messages")
         .select("*")
+        .not("hidden_for_users", "cs", `{${currentUserId}}`)
         .or(
           `and(sender_id.eq.${currentUserId},receiver_id.eq.${active.participantId}),and(sender_id.eq.${active.participantId},receiver_id.eq.${currentUserId})`
         )
         .order("created_at", { ascending: true });
       if (error || !mounted) return;
-      const loadedMessages = (data || []) as RealtimeMessage[];
+      const loadedMessages = filterVisibleMessages((data || []) as RealtimeMessage[], currentUserId);
       const invoiceIds = loadedMessages
         .filter((item) => item.message_type === "invoice")
         .map((item) => (item.metadata as Partial<InvoiceMetadata> | null)?.invoice_id)
@@ -1476,8 +1586,19 @@ export default function ChatScreen() {
     const unsubscribe = subscribeToMessages(
       active.id,
       (incoming) => {
-        if (mounted)
-          setMessages((current) => appendUniqueMessage(current, incoming));
+        if (!mounted) return;
+        if (!incoming || incoming.conversation_id !== active.id) return;
+        if (incoming.conversation_id && clearedThreadsRef.current.has(incoming.conversation_id)) {
+          clearedThreadsRef.current.delete(incoming.conversation_id);
+          void syncClearedThreadStorage(currentUserId, clearedThreadsRef.current);
+        }
+        if (isMessageHiddenForUser(incoming, currentUserId)) return;
+
+        setMessages((current) => {
+          const visibleCurrent = filterVisibleMessages(current, currentUserId);
+          if (isMessageHiddenForUser(incoming, currentUserId)) return visibleCurrent;
+          return appendUniqueMessage(visibleCurrent, incoming, currentUserId);
+        });
       },
       (messageId) => {
         if (mounted)
@@ -1700,8 +1821,9 @@ export default function ChatScreen() {
   };
 
   const openThread = (thread: Thread) => {
+    const visibleMessages = filterVisibleMessages(Array.isArray(thread.messages) ? thread.messages : [], currentUserId);
     setActive(thread);
-    setMessages(thread.messages);
+    setMessages(visibleMessages);
     setMessage("");
   };
 
@@ -2361,23 +2483,36 @@ export default function ChatScreen() {
   };
 
   const handleDeleteMessage = (messageToDelete: RealtimeMessage) => {
-    if (messageToDelete.sender_id !== currentUserId) return;
     if (messageToDelete.id.startsWith("temp-")) {
       setMessages((current) =>
         current.filter((message) => message.id !== messageToDelete.id)
       );
       return;
     }
+    messageLongPressLockRef.current = messageToDelete.id;
     setDeleteCandidate(messageToDelete);
+    setTimeout(() => {
+      if (messageLongPressLockRef.current === messageToDelete.id) {
+        messageLongPressLockRef.current = null;
+      }
+    }, 250);
   };
 
-  const confirmDeleteMessage = async () => {
+  const handleLongPressMessage = (message: RealtimeMessage) => {
+    if (multiSelectMode) return;
+    messageLongPressLockRef.current = message.id;
+    handleDeleteMessage(message);
+  };
+
+  const confirmDeleteMessage = async (mode: "everyone" | "me" = "everyone") => {
     if (!deleteCandidate) return;
     try {
-      await deleteRealtimeMessage(deleteCandidate.id, currentUserId);
-      setMessages((current) =>
-        current.filter((message) => message.id !== deleteCandidate.id)
-      );
+      if (mode === "everyone" && deleteCandidate.sender_id === currentUserId) {
+        await deleteMessageForEveryone(deleteCandidate.id, currentUserId);
+      } else {
+        await hideMessageForCurrentUser(deleteCandidate.id, currentUserId);
+      }
+      setMessages((current) => filterVisibleMessages(current.filter((message) => message.id !== deleteCandidate.id), currentUserId));
       setDeleteCandidate(null);
     } catch (error) {
       console.error("[Supabase Chat Delete Error]:", error);
@@ -2385,6 +2520,179 @@ export default function ChatScreen() {
         "Delete failed",
         error instanceof Error ? error.message : "Could not delete message."
       );
+    }
+  };
+
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedMessageIds((current) =>
+      current.includes(messageId)
+        ? current.filter((id) => id !== messageId)
+        : [...current, messageId]
+    );
+  };
+
+  const clearThreadLocally = async () => {
+    if (!active || !currentUserId) return;
+
+    const resolvedConversationIds = Array.from(
+      new Set([
+        normalizeUuid(conversationIdParam || active.id || "") || active.id || null,
+        active.id,
+        conversationIdParam,
+        conversationIdFor(currentUserId, active.participantId),
+      ].filter((id): id is string => Boolean(id)))
+    );
+    const resolvedOrderIds = Array.from(
+      new Set([
+        activeOrder?.id,
+        orderIdParam,
+        active?.id && (active as Thread & { order_id?: string }).order_id ? (active as Thread & { order_id?: string }).order_id : null,
+      ].filter((id): id is string => Boolean(id)))
+    );
+
+    const matchesThreadTarget = (message: RealtimeMessage) => {
+      const messageConversationId = message.conversation_id ?? null;
+      const messageOrderId = (message as RealtimeMessage & { order_id?: string | null }).order_id ?? null;
+      const matchesConversation = Boolean(messageConversationId && resolvedConversationIds.includes(messageConversationId));
+      const matchesOrder = Boolean(messageOrderId && resolvedOrderIds.includes(messageOrderId));
+      return matchesConversation || matchesOrder;
+    };
+
+    let updateError: Error | null = null;
+
+    try {
+      const [conversationMatches, orderMatches] = await Promise.all([
+        resolvedConversationIds.length > 0
+          ? supabase
+              .from("messages")
+              .select("id, hidden_for_users, conversation_id, order_id")
+              .in("conversation_id", resolvedConversationIds)
+          : Promise.resolve({ data: [] as Array<{ id: string; hidden_for_users?: string[] | null; conversation_id: string | null; order_id?: string | null }>, error: null }),
+        resolvedOrderIds.length > 0
+          ? supabase
+              .from("messages")
+              .select("id, hidden_for_users, conversation_id, order_id")
+              .in("order_id", resolvedOrderIds)
+          : Promise.resolve({ data: [] as Array<{ id: string; hidden_for_users?: string[] | null; conversation_id: string | null; order_id?: string | null }>, error: null }),
+      ]);
+
+      if (conversationMatches.error) throw conversationMatches.error;
+      if (orderMatches.error) throw orderMatches.error;
+
+      const dedupedRows = Array.from(
+        new Map(
+          [...(conversationMatches.data || []), ...(orderMatches.data || [])]
+            .map((message) => [message.id, message])
+        ).values()
+      );
+
+      const messageIds = dedupedRows
+        .filter((message) => !Array.isArray(message.hidden_for_users) || !message.hidden_for_users.includes(currentUserId))
+        .map((message) => message.id);
+
+      if (messageIds.length > 0) {
+        const chunks: string[][] = [];
+        for (let index = 0; index < messageIds.length; index += 200) {
+          chunks.push(messageIds.slice(index, index + 200));
+        }
+
+        await Promise.all(chunks.map(async (chunk) => {
+          const rowSet = dedupedRows.filter((message) => chunk.includes(message.id));
+          const nextHiddenUsers = rowSet.map((message) => ({
+            id: message.id,
+            hidden_for_users: Array.from(
+              new Set([
+                ...(Array.isArray(message.hidden_for_users) ? message.hidden_for_users : []),
+                currentUserId,
+              ])
+            ),
+          }));
+
+          if (!nextHiddenUsers.length) return;
+
+          const idsToApply = nextHiddenUsers.map((row) => row.id);
+          const hiddenUsersById = Object.fromEntries(nextHiddenUsers.map((row) => [row.id, row.hidden_for_users]));
+          const { data, error } = await supabase
+            .from("messages")
+            .select("id")
+            .in("id", idsToApply);
+
+          if (error) throw error;
+
+          const existingIds = (data || []).map((row) => row.id);
+          const idsToUpdate = idsToApply.filter((id) => existingIds.includes(id));
+
+          if (!idsToUpdate.length) return;
+
+          await Promise.all(idsToUpdate.map(async (id) => {
+            const currentHiddenUsers = Array.from(
+              new Set([
+                ...((hiddenUsersById[id] as string[] | undefined) || []),
+                currentUserId,
+              ])
+            );
+            const { error: updateErrorItem } = await supabase
+              .from("messages")
+              .update({ hidden_for_users: currentHiddenUsers })
+              .in("id", [id]);
+
+            if (updateErrorItem) throw updateErrorItem;
+          }));
+        }));
+      }
+    } catch (error) {
+      updateError = error instanceof Error ? error : new Error("Unknown clear-thread update failure");
+      console.error("[Chat Clear Thread] Failed to hide messages for current user:", updateError);
+    }
+
+    const storageKey = `mvs_cleared_threads_${currentUserId}`;
+    const existing = await AsyncStorage.getItem(storageKey);
+    const clearedThreads = new Set(existing ? JSON.parse(existing) as string[] : []);
+    for (const targetConversationId of resolvedConversationIds) {
+      clearedThreads.add(targetConversationId);
+    }
+    for (const targetOrderId of resolvedOrderIds) {
+      clearedThreads.add(targetOrderId);
+    }
+    clearedThreadsRef.current = new Set(clearedThreads);
+    await AsyncStorage.setItem(storageKey, JSON.stringify([...clearedThreads]));
+
+    setMessages((current) => current.filter((message) => !matchesThreadTarget(message)));
+    setThreads((current) => current.filter((thread) => {
+      const threadOrderId = (thread as Thread & { order_id?: string | null }).order_id ?? null;
+      return !(resolvedConversationIds.includes(thread.id) || (threadOrderId ? resolvedOrderIds.includes(threadOrderId) : false));
+    }));
+    setSelectedMessageIds([]);
+    setMultiSelectMode(false);
+    setBatchDeleteCandidate([]);
+
+    if (updateError) {
+      console.warn("[Chat Clear Thread] Local clear applied despite database update friction.");
+    }
+  };
+
+  const handleBatchDelete = async (mode: "everyone" | "me") => {
+    const ids = batchDeleteCandidate.length ? batchDeleteCandidate : selectedMessageIds;
+    if (!ids.length) return;
+    try {
+      const selectedMessages = messages.filter((item) => ids.includes(item.id));
+      if (mode === "everyone") {
+        const ownOnly = selectedMessages.every((message) => message.sender_id === currentUserId);
+        if (!ownOnly) {
+          Alert.alert("Delete unavailable", "Only your own messages can be deleted for everyone.");
+          return;
+        }
+        await Promise.all(selectedMessages.map((message) => deleteMessageForEveryone(message.id, currentUserId)));
+      } else {
+        await Promise.all(selectedMessages.map((message) => hideMessageForCurrentUser(message.id, currentUserId)));
+      }
+      setMessages((current) => filterVisibleMessages(current.filter((message) => !ids.includes(message.id)), currentUserId));
+      setSelectedMessageIds([]);
+      setBatchDeleteCandidate([]);
+      setMultiSelectMode(false);
+    } catch (error) {
+      console.error("[Batch Delete Error]:", error);
+      Alert.alert("Bulk delete failed", error instanceof Error ? error.message : "Could not delete the selected messages.");
     }
   };
 
@@ -2553,6 +2861,18 @@ export default function ChatScreen() {
         deleteCandidate={deleteCandidate}
         onConfirmDelete={confirmDeleteMessage}
         onCancelDelete={() => setDeleteCandidate(null)}
+        multiSelectMode={multiSelectMode}
+        selectedMessageIds={selectedMessageIds}
+        onToggleMessageSelection={toggleMessageSelection}
+        onClearSelection={() => {
+          cancelMultiSelectMode();
+        }}
+        onDeleteSelected={(mode) => {
+          setBatchDeleteCandidate([...selectedMessageIds]);
+          void handleBatchDelete(mode);
+        }}
+        onClearThread={() => { void clearThreadLocally(); }}
+        onToggleMultiSelectMode={toggleMultiSelectMode}
         consultation={consultation}
         consultationLoading={consultationLoading}
         onToggleConsultation={handleToggleConsultation}
@@ -2762,6 +3082,13 @@ function ChatRoom({
   deleteCandidate,
   onConfirmDelete,
   onCancelDelete,
+  multiSelectMode,
+  selectedMessageIds,
+  onToggleMessageSelection,
+  onClearSelection,
+  onDeleteSelected,
+  onClearThread,
+  onToggleMultiSelectMode,
   consultation,
   consultationLoading,
   onToggleConsultation,
@@ -2818,8 +3145,15 @@ function ChatRoom({
   onStopLiveLocation: () => void;
   onDeleteMessage: (message: RealtimeMessage) => void;
   deleteCandidate: RealtimeMessage | null;
-  onConfirmDelete: () => void;
+  onConfirmDelete: (mode?: "everyone" | "me") => void;
   onCancelDelete: () => void;
+  multiSelectMode: boolean;
+  selectedMessageIds: string[];
+  onToggleMessageSelection: (messageId: string) => void;
+  onClearSelection: () => void;
+  onDeleteSelected: (mode: "everyone" | "me") => void;
+  onClearThread: () => void;
+  onToggleMultiSelectMode: () => void;
   consultation: ConsultationRecord | null;
   consultationLoading: boolean;
   onToggleConsultation: () => void;
@@ -2855,6 +3189,7 @@ function ChatRoom({
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
   const initialScrollDone = useRef(false);
+  const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
   const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
@@ -2886,8 +3221,69 @@ function ChatRoom({
     }
   }, [messages.length]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
+  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
+  const [searchBarVisible, setSearchBarVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResultIndex, setSearchResultIndex] = useState(0);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
+  const [clearThreadConfirmVisible, setClearThreadConfirmVisible] = useState(false);
+  const selectedCount = selectedMessageIds.length;
+  const dismissSearchBar = () => {
+    setSearchBarVisible(false);
+    setSearchQuery("");
+    setSearchResultIndex(0);
+  };
+  const confirmClearThread = () => {
+    setHeaderMenuVisible(false);
+    setClearThreadConfirmVisible(true);
+  };
+  const openClearThreadConfirm = () => {
+    setHeaderMenuVisible(false);
+    setClearThreadConfirmVisible(true);
+  };
+  useEffect(() => {
+    setHeaderMenuVisible(false);
+    setSearchBarVisible(false);
+    setSearchQuery("");
+    setSearchResultIndex(0);
+    setClearThreadConfirmVisible(false);
+    setSelectedImagePreview(null);
+    setVideoPreviewUrl(null);
+  }, [active.id]);
+  const trimmedSearchQuery = searchQuery.trim();
+  const matchingMessages = trimmedSearchQuery.length > 0
+    ? messages.filter((item) => {
+        const haystack = [
+          item.content || "",
+          item.message_type || "",
+          item.location_data ? `${item.location_data.latitude ?? ""} ${item.location_data.longitude ?? ""}` : "",
+        ].join(" ").toLowerCase();
+        return haystack.includes(trimmedSearchQuery.toLowerCase());
+      })
+    : [];
+  const activeSearchMatch = matchingMessages[searchResultIndex] ?? null;
+  const focusMessageMatch = (nextIndex: number) => {
+    if (!matchingMessages.length) return;
+    const boundedIndex = (nextIndex + matchingMessages.length) % matchingMessages.length;
+    setSearchResultIndex(boundedIndex);
+    const matchedMessage = matchingMessages[boundedIndex];
+    if (!matchedMessage) return;
+    const matchedIndex = messages.findIndex((message) => message.id === matchedMessage.id);
+    const targetY = Math.max(0, matchedIndex * 120);
+    requestAnimationFrame(() => {
+      messagesScrollRef.current?.scrollTo({ y: targetY, animated: true });
+    });
+  };
+  useEffect(() => {
+    if (!trimmedSearchQuery.length) {
+      setSearchResultIndex(0);
+      return;
+    }
+    if (searchResultIndex >= matchingMessages.length) {
+      setSearchResultIndex(0);
+    }
+  }, [matchingMessages.length, searchResultIndex, trimmedSearchQuery.length]);
   const isPetParent = userRole === "client" || consultation?.client_id === currentUserId;
   const isVetClientThread =
     (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
@@ -2928,6 +3324,13 @@ function ChatRoom({
         deleteCandidate={deleteCandidate}
         onConfirmDelete={onConfirmDelete}
         onCancelDelete={onCancelDelete}
+        multiSelectMode={multiSelectMode}
+        selectedMessageIds={selectedMessageIds}
+        onToggleMessageSelection={onToggleMessageSelection}
+        onToggleMultiSelectMode={onToggleMultiSelectMode}
+        onClearSelection={onClearSelection}
+        onDeleteSelected={onDeleteSelected}
+        onClearThread={onClearThread}
         consultation={roomConsultation}
         onToggleConsultation={onToggleConsultation}
         onStartConsultation={onStartConsultation}
@@ -2966,24 +3369,19 @@ function ChatRoom({
     <SafeAreaView style={Platform.OS === "web" ? [styles.container, mobileWebRootStyle] : styles.container}>
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
-        <TouchableOpacity onPress={onBack}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text
-            style={styles.title}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {active.productName || active.participantName}
-          </Text>
-          <Text style={styles.subtitle}>
-            {active.productName
-              ? `${active.participantName} - Marketplace`
-              : active.participantName}
-          </Text>
+          <TouchableOpacity onPress={onBack}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+              {active.productName || active.participantName}
+            </Text>
+            <Text style={styles.subtitle}>
+              {active.productName ? `${active.participantName} - Marketplace` : active.participantName}
+            </Text>
+          </View>
         </View>
-        </View>
+
         <View style={styles.headerActionsWrapper}>
           <ScrollView
             horizontal={true}
@@ -2991,72 +3389,155 @@ function ChatRoom({
             style={styles.headerActions}
             contentContainerStyle={styles.headerActionsContent}
           >
-        {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} /> : null}
-        {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
-          <TouchableOpacity
-            style={styles.patientButton}
-            onPress={onOpenPatientFile}
-          >
-            <MaterialCommunityIcons
-              name="file-account"
-              size={18}
-              color="#FFFFFF"
-            />
-            <Text style={styles.completeButtonText}>Patient File</Text>
-          </TouchableOpacity>
-        ) : null}
-        {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
-          <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
-            <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
-            <Text style={styles.completeButtonText}>Farm Records</Text>
-          </TouchableOpacity>
-        ) : null}
-        {showInvoiceAction ? (
-          <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
-            <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
-            <Text style={styles.completeButtonText}>Create Invoice</Text>
-          </TouchableOpacity>
-        ) : null}
-        {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
-          <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
-            <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
-            <Text style={styles.completeButtonText}>Prescribe</Text>
-          </TouchableOpacity>
-        ) : null}
-        {isVetClientThread && consultationPending ? (
-          <Text style={styles.consultationEndedBadge}>Checking consultation...</Text>
-        ) : isVetClientThread && consultationStatus === "active" ? (
-          <>
-            <TouchableOpacity
-              style={styles.completeButton}
-              onPress={isPetParent ? onToggleConsultation : onEndConsultationByVet}
-            >
-              <Text style={styles.completeButtonText}>
-                End Consultation
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
-          </>
-        ) : isVetClientThread ? (
-          <>
-            <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
-            {isPetParent ? (
-              <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
-                <Text style={styles.completeButtonText}>+ Start Consultation</Text>
+            {isMerchantConversation ? (
+              <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} />
+            ) : null}
+            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+              <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
+                <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Patient File</Text>
               </TouchableOpacity>
             ) : null}
-          </>
-        ) : null}
-        {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
-          <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-            <ShieldCheck size={16} color="#FFFFFF" />
-            <Text style={styles.completeButtonText}>MVS User Protection</Text>
-          </TouchableOpacity>
-        ) : null}
+            {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
+              <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
+                <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Farm Records</Text>
+              </TouchableOpacity>
+            ) : null}
+            {showInvoiceAction ? (
+              <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
+                <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Create Invoice</Text>
+              </TouchableOpacity>
+            ) : null}
+            {multiSelectMode ? (
+              <TouchableOpacity style={styles.clearThreadAction} onPress={openClearThreadConfirm}>
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#FCA5A5" />
+                <Text style={styles.clearThreadText}>Clear Thread</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+              <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
+                <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Prescribe</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isVetClientThread && consultationPending ? (
+              <Text style={styles.consultationEndedBadge}>Checking consultation...</Text>
+            ) : isVetClientThread && consultationStatus === "active" ? (
+              <>
+                <TouchableOpacity style={styles.completeButton} onPress={isPetParent ? onToggleConsultation : onEndConsultationByVet}>
+                  <Text style={styles.completeButtonText}>End Consultation</Text>
+                </TouchableOpacity>
+                <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
+              </>
+            ) : isVetClientThread ? (
+              <>
+                <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
+                {isPetParent ? (
+                  <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
+                    <Text style={styles.completeButtonText}>+ Start Consultation</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : null}
+            {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
+              <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
+                <ShieldCheck size={16} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>MVS User Protection</Text>
+              </TouchableOpacity>
+            ) : null}
           </ScrollView>
+
+          <TouchableOpacity accessibilityLabel="Chat options menu" style={styles.headerMenuButton} onPress={() => setHeaderMenuVisible((visible) => !visible)}>
+            <MaterialCommunityIcons name="dots-vertical" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
+
+        {headerMenuVisible ? (
+          <View style={styles.headerMenuList}>
+            <TouchableOpacity style={styles.headerMenuItem} onPress={() => { setHeaderMenuVisible(false); if (searchBarVisible) { dismissSearchBar(); return; } setSearchBarVisible(true); setSearchQuery(""); setSearchResultIndex(0); }}>
+              <Text style={styles.headerMenuText}>Search Message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuItem}
+              onPress={() => {
+                setHeaderMenuVisible(false);
+                if (multiSelectMode) {
+                  onClearSelection();
+                  return;
+                }
+                onToggleMultiSelectMode();
+              }}
+            >
+              <Text style={styles.headerMenuText}>Select Multiple Messages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerMenuItem} onPress={openClearThreadConfirm}>
+              <Text style={styles.headerMenuText}>Clear All Messages</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
+
+      {searchBarVisible ? (
+        <>
+          <Pressable
+            onPress={dismissSearchBar}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}
+          />
+          <View style={[styles.searchBarContainer, { zIndex: 1 }]}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={(value) => {
+                setSearchQuery(value);
+                setSearchResultIndex(0);
+              }}
+              placeholder="Search conversation"
+              placeholderTextColor="#94A3B8"
+              style={styles.searchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity onPress={dismissSearchBar} accessibilityLabel="Close search" style={{ padding: 6 }}>
+              <MaterialCommunityIcons name="close" size={18} color="#E2E8F0" />
+            </TouchableOpacity>
+            <View style={styles.searchNavigationButtons}>
+              <TouchableOpacity onPress={() => focusMessageMatch(searchResultIndex - 1)} accessibilityLabel="Previous result">
+                <MaterialCommunityIcons name="chevron-up" size={20} color="#E2E8F0" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => focusMessageMatch(searchResultIndex + 1)} accessibilityLabel="Next result">
+                <MaterialCommunityIcons name="chevron-down" size={20} color="#E2E8F0" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.searchStatusText}>
+              {matchingMessages.length > 0 ? `${Math.min(searchResultIndex + 1, matchingMessages.length)} of ${matchingMessages.length} results` : "No results"}
+            </Text>
+          </View>
+        </>
+      ) : null}
+
       <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
+      {clearThreadConfirmVisible ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setClearThreadConfirmVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Do you wish to clear all your messages? This action cannot be undone.</Text>
+              <TouchableOpacity
+                style={[styles.deleteModalAction, { backgroundColor: "#DC2626" }]}
+                onPress={() => {
+                  setClearThreadConfirmVisible(false);
+                  void onClearThread();
+                }}
+              >
+                <Text style={styles.deleteModalActionText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteModalCancel} onPress={() => setClearThreadConfirmVisible(false)}>
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       {isVetClientThread && consultationPending ? (
         <View style={[styles.consultationBanner, styles.consultationCompleted]}>
           <Text style={styles.consultationText}>Checking consultation status...</Text>
@@ -3095,79 +3576,101 @@ function ChatRoom({
             No messages yet. Start the conversation.
           </Text>
         ) : (
-          messages.map((item) => (
-            <View key={item.id} style={styles.messageRow}>
-              <TouchableOpacity
-                {...(item.sender_id === currentUserId
-                  ? contextMenuProps(() => onDeleteMessage(item))
-                  : {})}
-                activeOpacity={0.8}
-                onLongPress={item.sender_id === currentUserId ? () => onDeleteMessage(item) : undefined}
-                delayLongPress={2000}
-                onPress={() => {
-                  if (item.location_data) {
-                    openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
-                  } else if (item.media_type === "image" && item.media_url) {
-                    setSelectedImagePreview(item.media_url);
-                  } else if (item.media_type === "video" && item.media_url) {
-                    setVideoPreviewUrl(item.media_url);
-                  }
-                }}
-                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "image" && item.media_url) && !(item.media_type === "video" && item.media_url)}
-                style={[
-                  styles.bubble,
-                  item.media_type === "video" && item.media_url ? styles.videoBubble : null,
-                  item.sender_id === currentUserId
-                    ? styles.outgoing
-                    : styles.incoming,
-                ]}
-              >
-                {item.media_url && item.media_type === "image" ? (
-                  <Image
-                    source={{ uri: item.media_url }}
-                    style={styles.attachment}
-                  />
-                ) : null}
-                {item.media_url && item.media_type === "video" ? (
-                  <View style={styles.videoAttachment}>
-                    <MaterialCommunityIcons name="play-circle" size={46} color="#FFFFFF" />
-                    <Text style={styles.videoAttachmentText}>Tap to watch video</Text>
-                  </View>
-                ) : null}
-                {item.message_type === "invoice" ? (
-                  <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
-                ) : (item.message_type as string) === "prescription" ? (
-                  <PrescriptionMessage item={item} />
-                ) : (item.message_type as string) === "voice_note" && item.media_url ? (
-                  <VoiceNoteMessage mediaUrl={item.media_url} />
-                ) : item.location_data ? (
-                  <LocationMessage item={item} />
-                ) : item.content ? (
-                  <Text style={styles.primary}>{item.content}</Text>
-                ) : null}
-                <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
-              </TouchableOpacity>
-              {deleteCandidate?.id === item.id ? (
-                <View style={styles.deleteActions}>
-                  <Text style={styles.deletePrompt}>Delete this message?</Text>
+          messages.map((item) => {
+            const isSelected = selectedMessageIds.includes(item.id);
+            return (
+              <View key={item.id} style={styles.messageRow}>
+                {multiSelectMode ? (
                   <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={onConfirmDelete}
+                    activeOpacity={0.9}
+                    onPress={() => onToggleMessageSelection(item.id)}
+                    style={[styles.selectionCheck, isSelected && styles.selectionCheckActive]}
                   >
-                    <Text style={styles.deleteButtonText}>Delete</Text>
+                    {isSelected ? <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" /> : null}
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={onCancelDelete}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </View>
-          ))
+                ) : null}
+                <TouchableOpacity
+                  {...(!multiSelectMode ? contextMenuProps(() => onDeleteMessage(item)) : {})}
+                  activeOpacity={0.8}
+                  onLongPress={() => {
+                    messageLongPressLockRef.current = item.id;
+                    onDeleteMessage(item);
+                  }}
+                  delayLongPress={2000}
+                  onPress={() => {
+                    if (multiSelectMode) {
+                      onToggleMessageSelection(item.id);
+                      return;
+                    }
+                    if (messageLongPressLockRef.current === item.id) {
+                      messageLongPressLockRef.current = null;
+                      return;
+                    }
+                    if (item.location_data) {
+                      openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
+                    } else if (item.media_type === "image" && item.media_url) {
+                      setSelectedImagePreview(item.media_url);
+                    } else if (item.media_type === "video" && item.media_url) {
+                      setVideoPreviewUrl(item.media_url);
+                    }
+                  }}
+                  style={[
+                    styles.bubble,
+                    multiSelectMode && isSelected ? styles.messageSelected : null,
+                    item.media_type === "video" && item.media_url ? styles.videoBubble : null,
+                    item.sender_id === currentUserId
+                      ? styles.outgoing
+                      : styles.incoming,
+                  ]}
+                >
+                  {item.media_url && item.media_type === "image" ? (
+                    <Image
+                      source={{ uri: item.media_url }}
+                      style={styles.attachment}
+                    />
+                  ) : null}
+                  {item.media_url && item.media_type === "video" ? (
+                    <View style={styles.videoAttachment}>
+                      <MaterialCommunityIcons name="play-circle" size={46} color="#FFFFFF" />
+                      <Text style={styles.videoAttachmentText}>Tap to watch video</Text>
+                    </View>
+                  ) : null}
+                  {item.message_type === "invoice" ? (
+                    <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
+                  ) : (item.message_type as string) === "prescription" ? (
+                    <PrescriptionMessage item={item} />
+                  ) : (item.message_type as string) === "voice_note" && item.media_url ? (
+                    <VoiceNoteMessage mediaUrl={item.media_url} />
+                  ) : item.location_data ? (
+                    <LocationMessage item={item} />
+                  ) : item.content ? (
+                    <Text style={styles.primary}>{item.content}</Text>
+                  ) : null}
+                  <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
       </ScrollView>
+      {selectedCount > 0 ? (
+        <View style={styles.selectionBar}>
+          <Text style={styles.selectionCounter}>{selectedCount} selected</Text>
+          <View style={styles.selectionActions}>
+            <TouchableOpacity style={styles.selectionDeleteButton} onPress={onClearSelection}>
+              <Text style={styles.selectionDeleteText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.selectionDeleteButton} onPress={() => onDeleteSelected("me")}>
+              <Text style={styles.selectionDeleteText}>Delete for Me</Text>
+            </TouchableOpacity>
+            {messages.filter((item) => selectedMessageIds.includes(item.id) && item.sender_id === currentUserId).length === selectedCount ? (
+              <TouchableOpacity style={styles.selectionDeleteButtonPrimary} onPress={() => onDeleteSelected("everyone")}>
+                <Text style={styles.selectionDeleteTextPrimary}>Delete for Everyone</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
       <ChatComposer
         message={message}
         setMessage={setMessage}
@@ -3192,6 +3695,26 @@ function ChatRoom({
       />
       <ImagePreviewModal imageUrl={selectedImagePreview} onClose={() => setSelectedImagePreview(null)} />
       <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />
+      {deleteCandidate ? (
+        <Modal transparent animationType="fade" visible={Boolean(deleteCandidate)} onRequestClose={onCancelDelete}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Delete message?</Text>
+              {deleteCandidate.sender_id === currentUserId ? (
+                <TouchableOpacity style={styles.deleteModalAction} onPress={() => onConfirmDelete('everyone')}>
+                  <Text style={styles.deleteModalActionText}>Delete for Everyone</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={styles.deleteModalAction} onPress={() => onConfirmDelete('me')}>
+                <Text style={styles.deleteModalActionText}>Delete for Me</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteModalCancel} onPress={onCancelDelete}>
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
@@ -3737,8 +4260,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   messages,
   message,
   setMessage,
-    selectedImageUri,
-    onRemoveImage,
+  selectedImageUri,
+  onRemoveImage,
   onBack,
   onSend,
   onAttach,
@@ -3756,6 +4279,13 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   deleteCandidate,
   onConfirmDelete,
   onCancelDelete,
+  multiSelectMode,
+  selectedMessageIds,
+  onToggleMessageSelection,
+  onToggleMultiSelectMode,
+  onClearSelection,
+  onDeleteSelected,
+  onClearThread,
   consultation,
   onToggleConsultation,
   onStartConsultation,
@@ -3766,7 +4296,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   activeOrder,
   onUpdateOrderStatus,
   onCreateOrder,
-    recipientProfile,
+  recipientProfile,
   onOpenPatientFile,
   patientFileVisible,
   patientPets,
@@ -3786,7 +4316,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   onOpenPrescription,
   onClosePrescription,
   onCreatePrescription,
-    voiceNoteControls,
+  voiceNoteControls,
 }: {
   active: Thread;
   currentUserId: string;
@@ -3811,8 +4341,15 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   onStopLiveLocation: () => void;
   onDeleteMessage: (message: RealtimeMessage) => void;
   deleteCandidate: RealtimeMessage | null;
-  onConfirmDelete: () => void;
+  onConfirmDelete: (mode?: "everyone" | "me") => void;
   onCancelDelete: () => void;
+  multiSelectMode: boolean;
+  selectedMessageIds: string[];
+  onToggleMessageSelection: (messageId: string) => void;
+  onToggleMultiSelectMode: () => void;
+  onClearSelection: () => void;
+  onDeleteSelected: (mode: "everyone" | "me") => void;
+  onClearThread: () => void;
   consultation: ConsultationRecord;
   onToggleConsultation: () => void;
   onStartConsultation: () => Promise<void>;
@@ -3847,6 +4384,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
   const initialScrollDone = useRef(false);
+  const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
   const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
@@ -3861,6 +4399,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     flexDirection: "column",
     height: visualViewportHeight ?? 0,
   };
+
   const scrollToLatest = () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -3868,21 +4407,91 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       });
     });
   };
+
   useEffect(() => {
     initialScrollDone.current = false;
   }, [active.id]);
+
   useEffect(() => {
     if (messages.length > 0 && !initialScrollDone.current) {
       initialScrollDone.current = true;
       scrollToLatest();
     }
   }, [messages.length]);
+
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
+  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
+  const [searchBarVisible, setSearchBarVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResultIndex, setSearchResultIndex] = useState(0);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
+  const [clearThreadConfirmVisible, setClearThreadConfirmVisible] = useState(false);
+
+  const dismissSearchBar = () => {
+    setSearchBarVisible(false);
+    setSearchQuery("");
+    setSearchResultIndex(0);
+  };
+
+  const confirmClearThread = () => {
+    setHeaderMenuVisible(false);
+    setClearThreadConfirmVisible(true);
+  };
+
+  const openClearThreadConfirm = () => {
+    setHeaderMenuVisible(false);
+    setClearThreadConfirmVisible(true);
+  };
+
+  useEffect(() => {
+    setHeaderMenuVisible(false);
+    setSearchBarVisible(false);
+    setSearchQuery("");
+    setSearchResultIndex(0);
+    setClearThreadConfirmVisible(false);
+    setSelectedImagePreview(null);
+    setVideoPreviewUrl(null);
+  }, [active.id]);
+
+  const selectedCount = selectedMessageIds.length;
+  const trimmedSearchQuery = searchQuery.trim();
+  const matchingMessages = trimmedSearchQuery.length > 0
+    ? messages.filter((item) => {
+        const haystack = [
+          item.content || "",
+          item.message_type || "",
+          item.location_data ? `${item.location_data.latitude ?? ""} ${item.location_data.longitude ?? ""}` : "",
+        ].join(" ").toLowerCase();
+        return haystack.includes(trimmedSearchQuery.toLowerCase());
+      })
+    : [];
+
+  const focusMessageMatch = (nextIndex: number) => {
+    if (!matchingMessages.length) return;
+    const boundedIndex = (nextIndex + matchingMessages.length) % matchingMessages.length;
+    setSearchResultIndex(boundedIndex);
+    const matchedMessage = matchingMessages[boundedIndex];
+    if (!matchedMessage) return;
+    const matchedIndex = messages.findIndex((message) => message.id === matchedMessage.id);
+    const targetY = Math.max(0, matchedIndex * 120);
+    requestAnimationFrame(() => {
+      messagesScrollRef.current?.scrollTo({ y: targetY, animated: true });
+    });
+  };
+
+  useEffect(() => {
+    if (!trimmedSearchQuery.length) {
+      setSearchResultIndex(0);
+      return;
+    }
+    if (searchResultIndex >= matchingMessages.length) {
+      setSearchResultIndex(0);
+    }
+  }, [matchingMessages.length, searchResultIndex, trimmedSearchQuery.length]);
+
   const isConsultActive = consultation.status === "active";
-  const isPetParent =
-    currentUserId === consultation.client_id || userRole === "client";
+  const isPetParent = currentUserId === consultation.client_id || userRole === "client";
   const isVetClientThread =
     (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
     (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
@@ -3893,24 +4502,19 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     <SafeAreaView style={Platform.OS === "web" ? { ...styles.container, ...mobileWebRootStyle } : styles.container}>
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
-        <TouchableOpacity onPress={onBack}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text
-            style={styles.title}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {active.productName || active.participantName}
-          </Text>
-          <Text style={styles.subtitle}>
-            {active.productName
-              ? `${active.participantName} - Marketplace`
-              : active.participantName}
-          </Text>
+          <TouchableOpacity onPress={onBack}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+              {active.productName || active.participantName}
+            </Text>
+            <Text style={styles.subtitle}>
+              {active.productName ? `${active.participantName} - Marketplace` : active.participantName}
+            </Text>
+          </View>
         </View>
-        </View>
+
         <View style={styles.headerActionsWrapper}>
           <ScrollView
             horizontal={true}
@@ -3918,106 +4522,196 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
             style={styles.headerActions}
             contentContainerStyle={styles.headerActionsContent}
           >
-          {isMerchantConversation ? <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} /> : null}
-          {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
-            <TouchableOpacity
-              style={styles.patientButton}
-              onPress={onOpenPatientFile}
-            >
-              <MaterialCommunityIcons
-                name="file-account"
-                size={18}
-                color="#FFFFFF"
+            {isMerchantConversation ? (
+              <OrderStatusBadge
+                order={activeOrder}
+                canUpdate={userRole === "merchant"}
+                canCreate={userRole === "merchant"}
+                onUpdate={onUpdateOrderStatus}
+                onCreate={onCreateOrder}
+                recipientProfile={recipientProfile}
               />
-              <Text style={styles.completeButtonText}>Patient File</Text>
-            </TouchableOpacity>
-          ) : null}
-          {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
-            <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
-              <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
-              <Text style={styles.completeButtonText}>Farm Records</Text>
-            </TouchableOpacity>
-          ) : null}
-          {showInvoiceAction ? (
-            <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
-              <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
-              <Text style={styles.completeButtonText}>Create Invoice</Text>
-            </TouchableOpacity>
-          ) : null}
-          {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
-            <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
-              <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
-              <Text style={styles.completeButtonText}>Prescribe</Text>
-            </TouchableOpacity>
-          ) : null}
-          {isVetClientThread && isPetParent && isConsultActive ? (
-            <TouchableOpacity
-              style={[
-                styles.consultationButton,
-                isConsultActive
-                  ? styles.endConsultationButton
-                  : styles.startConsultationButton,
-              ]}
-              onPress={onToggleConsultation}
-            >
-              <Text style={styles.consultationButtonText}>
-                End Consultation
-              </Text>
-            </TouchableOpacity>
-          ) : isVetClientThread && isConsultActive ? (
-            <TouchableOpacity
-              style={styles.endConsultationButton}
-              onPress={onEndConsultationByVet}
-            >
-              <Text style={styles.consultationButtonText}>End Consultation</Text>
-            </TouchableOpacity>
-          ) : isVetClientThread ? (
-            <>
-              <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
-              {isPetParent ? (
-                <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
-                  <Text style={styles.completeButtonText}>+ Start Consultation</Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          ) : null}
-          {isVetClientThread && isConsultActive ? (
-            <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
-          ) : null}
-          {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
-            <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-              <ShieldCheck size={16} color="#FFFFFF" />
-              <Text style={styles.completeButtonText}>MVS User Protection</Text>
-            </TouchableOpacity>
-          ) : null}
+            ) : null}
+            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+              <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
+                <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Patient File</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
+              <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
+                <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Farm Records</Text>
+              </TouchableOpacity>
+            ) : null}
+            {showInvoiceAction ? (
+              <TouchableOpacity style={styles.invoiceAction} onPress={onOpenInvoice}>
+                <MaterialCommunityIcons name="file-document-edit" size={17} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Create Invoice</Text>
+              </TouchableOpacity>
+            ) : null}
+            {multiSelectMode ? (
+              <TouchableOpacity style={styles.clearThreadAction} onPress={openClearThreadConfirm}>
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#FCA5A5" />
+                <Text style={styles.clearThreadText}>Clear Thread</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+              <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
+                <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>Prescribe</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isVetClientThread && isPetParent && isConsultActive ? (
+              <TouchableOpacity
+                style={[
+                  styles.consultationButton,
+                  isConsultActive ? styles.endConsultationButton : styles.startConsultationButton,
+                ]}
+                onPress={onToggleConsultation}
+              >
+                <Text style={styles.consultationButtonText}>End Consultation</Text>
+              </TouchableOpacity>
+            ) : isVetClientThread && isConsultActive ? (
+              <TouchableOpacity style={styles.endConsultationButton} onPress={onEndConsultationByVet}>
+                <Text style={styles.consultationButtonText}>End Consultation</Text>
+              </TouchableOpacity>
+            ) : isVetClientThread ? (
+              <>
+                <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
+                {isPetParent ? (
+                  <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
+                    <Text style={styles.completeButtonText}>+ Start Consultation</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : null}
+            {isVetClientThread && isConsultActive ? (
+              <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
+            ) : null}
+            {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
+              <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
+                <ShieldCheck size={16} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>MVS User Protection</Text>
+              </TouchableOpacity>
+            ) : null}
           </ScrollView>
+
+          <TouchableOpacity
+            accessibilityLabel="Chat options menu"
+            style={styles.headerMenuButton}
+            onPress={() => setHeaderMenuVisible((visible) => !visible)}
+          >
+            <MaterialCommunityIcons name="dots-vertical" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
+
+        {headerMenuVisible ? (
+          <View style={styles.headerMenuList}>
+            <TouchableOpacity
+              style={styles.headerMenuItem}
+              onPress={() => {
+                setHeaderMenuVisible(false);
+                if (searchBarVisible) {
+                  dismissSearchBar();
+                  return;
+                }
+                setSearchBarVisible(true);
+                setSearchQuery("");
+                setSearchResultIndex(0);
+              }}
+            >
+              <Text style={styles.headerMenuText}>Search Message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerMenuItem}
+              onPress={() => {
+                setHeaderMenuVisible(false);
+                if (multiSelectMode) {
+                  onClearSelection();
+                  return;
+                }
+                onToggleMultiSelectMode();
+              }}
+            >
+              <Text style={styles.headerMenuText}>Select Multiple Messages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerMenuItem} onPress={openClearThreadConfirm}>
+              <Text style={styles.headerMenuText}>Clear All Messages</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
-      <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
-      {isVetClientThread ? (
-        <View
-          style={[
-            styles.consultationBanner,
-            isConsultActive
-              ? styles.consultationActive
-              : styles.consultationCompleted,
-          ]}
-        >
-          <View style={styles.consultationStatus}>
-            <View
-              style={[
-                styles.consultationIndicator,
-                isConsultActive
-                  ? styles.consultationIndicatorActive
-                  : styles.consultationIndicatorCompleted,
-              ]}
+
+      {searchBarVisible ? (
+        <>
+          <Pressable
+            onPress={dismissSearchBar}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}
+          />
+          <View style={[styles.searchBarContainer, { zIndex: 1 }]}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={(value) => {
+                setSearchQuery(value);
+                setSearchResultIndex(0);
+              }}
+              placeholder="Search conversation"
+              placeholderTextColor="#94A3B8"
+              style={styles.searchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
-            <Text style={styles.consultationText}>
-              {isConsultActive ? "Active Consultation" : "Consultation Ended"}
+            <TouchableOpacity onPress={dismissSearchBar} accessibilityLabel="Close search" style={{ padding: 6 }}>
+              <MaterialCommunityIcons name="close" size={18} color="#E2E8F0" />
+            </TouchableOpacity>
+            <View style={styles.searchNavigationButtons}>
+              <TouchableOpacity onPress={() => focusMessageMatch(searchResultIndex - 1)} accessibilityLabel="Previous result">
+                <MaterialCommunityIcons name="chevron-up" size={20} color="#E2E8F0" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => focusMessageMatch(searchResultIndex + 1)} accessibilityLabel="Next result">
+                <MaterialCommunityIcons name="chevron-down" size={20} color="#E2E8F0" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.searchStatusText}>
+              {matchingMessages.length > 0 ? `${Math.min(searchResultIndex + 1, matchingMessages.length)} of ${matchingMessages.length} results` : "No results"}
             </Text>
+          </View>
+        </>
+      ) : null}
+
+      <BuyerProtectionModal visible={buyerProtectionVisible} onClose={() => setBuyerProtectionVisible(false)} />
+      {clearThreadConfirmVisible ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setClearThreadConfirmVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Do you wish to clear all your messages? This action cannot be undone.</Text>
+              <TouchableOpacity
+                style={[styles.deleteModalAction, { backgroundColor: "#DC2626" }]}
+                onPress={() => {
+                  setClearThreadConfirmVisible(false);
+                  void onClearThread();
+                }}
+              >
+                <Text style={styles.deleteModalActionText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteModalCancel} onPress={() => setClearThreadConfirmVisible(false)}>
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {isVetClientThread ? (
+        <View style={[styles.consultationBanner, isConsultActive ? styles.consultationActive : styles.consultationCompleted]}>
+          <View style={styles.consultationStatus}>
+            <View style={[styles.consultationIndicator, isConsultActive ? styles.consultationIndicatorActive : styles.consultationIndicatorCompleted]} />
+            <Text style={styles.consultationText}>{isConsultActive ? "Active Consultation" : "Consultation Ended"}</Text>
           </View>
         </View>
       ) : null}
+
       {liveLocationActive ? (
         <View style={styles.liveLocationBanner}>
           <Text style={styles.liveLocationText}>Live location sharing is active</Text>
@@ -4026,89 +4720,105 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           </TouchableOpacity>
         </View>
       ) : null}
-      <ScrollView
-        ref={messagesScrollRef}
-        style={styles.messageList}
-        contentContainerStyle={styles.messages}
-      >
+
+      <ScrollView ref={messagesScrollRef} style={styles.messageList} contentContainerStyle={styles.messages}>
         {messages.length === 0 ? (
-          <Text style={styles.empty}>
-            No messages yet. Start the conversation.
-          </Text>
+          <Text style={styles.empty}>No messages yet. Start the conversation.</Text>
         ) : (
-          messages.map((item) => (
-            <View key={item.id} style={styles.messageRow}>
-              <TouchableOpacity
-                {...(item.sender_id === currentUserId
-                  ? contextMenuProps(() => onDeleteMessage(item))
-                  : {})}
-                activeOpacity={0.8}
-                onLongPress={item.sender_id === currentUserId ? () => onDeleteMessage(item) : undefined}
-                delayLongPress={2000}
-                onPress={() => {
-                  if (item.location_data) {
-                    openSafeExternalUrl(`https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`);
-                  } else if (item.media_type === "image" && item.media_url) {
-                    setSelectedImagePreview(item.media_url);
-                  } else if (item.media_type === "video" && item.media_url) {
-                    setVideoPreviewUrl(item.media_url);
-                  }
-                }}
-                disabled={item.sender_id !== currentUserId && !item.location_data && !(item.media_type === "image" && item.media_url) && !(item.media_type === "video" && item.media_url)}
-                style={[
-                  styles.bubble,
-                  item.media_type === "video" && item.media_url ? styles.videoBubble : null,
-                  item.sender_id === currentUserId
-                    ? styles.outgoing
-                    : styles.incoming,
-                ]}
-              >
-                {item.media_url && item.media_type === "image" ? (
-                  <Image
-                    source={{ uri: item.media_url }}
-                    style={styles.attachment}
-                  />
-                ) : null}
-                {item.media_url && item.media_type === "video" ? (
-                  <View style={styles.videoAttachment}>
-                    <MaterialCommunityIcons name="play-circle" size={46} color="#FFFFFF" />
-                    <Text style={styles.videoAttachmentText}>Tap to watch video</Text>
-                  </View>
-                ) : null}
-                {item.message_type === "invoice" ? (
-                  <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
-                ) : (item.message_type as string) === "prescription" ? (
-                  <PrescriptionMessage item={item} />
-                ) : (item.message_type as string) === "voice_note" && item.media_url ? (
-                  <VoiceNoteMessage mediaUrl={item.media_url} />
-                ) : item.location_data ? (
-                  <LocationMessage item={item} />
-                ) : item.content ? (
-                  <Text style={styles.primary}>{item.content}</Text>
-                ) : null}
-                <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
-              </TouchableOpacity>
-              {deleteCandidate?.id === item.id ? (
-                <View style={styles.deleteActions}>
-                  <Text style={styles.deletePrompt}>Delete this message?</Text>
+          messages.map((item) => {
+            const isSelected = selectedMessageIds.includes(item.id);
+            return (
+              <View key={item.id} style={styles.messageRow}>
+                {multiSelectMode ? (
                   <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={onConfirmDelete}
+                    activeOpacity={0.9}
+                    onPress={() => onToggleMessageSelection(item.id)}
+                    style={[styles.selectionCheck, isSelected && styles.selectionCheckActive]}
                   >
-                    <Text style={styles.deleteButtonText}>Delete</Text>
+                    {isSelected ? <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" /> : null}
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={onCancelDelete}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </View>
-          ))
+                ) : null}
+                <TouchableOpacity
+                  {...(!multiSelectMode ? contextMenuProps(() => onDeleteMessage(item)) : {})}
+                  activeOpacity={0.8}
+                  onLongPress={() => {
+                    messageLongPressLockRef.current = item.id;
+                    onDeleteMessage(item);
+                  }}
+                  delayLongPress={2000}
+                  onPress={() => {
+                    if (multiSelectMode) {
+                      onToggleMessageSelection(item.id);
+                      return;
+                    }
+                    if (messageLongPressLockRef.current === item.id) {
+                      messageLongPressLockRef.current = null;
+                      return;
+                    }
+                    if (item.location_data) {
+                      openSafeExternalUrl(
+                        `https://www.google.com/maps/search/?api=1&query=${item.location_data.latitude},${item.location_data.longitude}`
+                      );
+                    } else if (item.media_type === "image" && item.media_url) {
+                      setSelectedImagePreview(item.media_url);
+                    } else if (item.media_type === "video" && item.media_url) {
+                      setVideoPreviewUrl(item.media_url);
+                    }
+                  }}
+                  style={[
+                    styles.bubble,
+                    multiSelectMode && isSelected ? styles.messageSelected : null,
+                    item.media_type === "video" && item.media_url ? styles.videoBubble : null,
+                    item.sender_id === currentUserId ? styles.outgoing : styles.incoming,
+                  ]}
+                >
+                  {item.media_url && item.media_type === "image" ? (
+                    <Image source={{ uri: item.media_url }} style={styles.attachment} />
+                  ) : null}
+                  {item.media_url && item.media_type === "video" ? (
+                    <View style={styles.videoAttachment}>
+                      <MaterialCommunityIcons name="play-circle" size={46} color="#FFFFFF" />
+                      <Text style={styles.videoAttachmentText}>Tap to watch video</Text>
+                    </View>
+                  ) : null}
+                  {item.message_type === "invoice" ? (
+                    <InvoiceMessage item={item} currentUserId={currentUserId} onPayInvoice={onPayInvoice} />
+                  ) : (item.message_type as string) === "prescription" ? (
+                    <PrescriptionMessage item={item} />
+                  ) : (item.message_type as string) === "voice_note" && item.media_url ? (
+                    <VoiceNoteMessage mediaUrl={item.media_url} />
+                  ) : item.location_data ? (
+                    <LocationMessage item={item} />
+                  ) : item.content ? (
+                    <Text style={styles.primary}>{item.content}</Text>
+                  ) : null}
+                  <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
       </ScrollView>
+
+      {selectedCount > 0 ? (
+        <View style={styles.selectionBar}>
+          <Text style={styles.selectionCounter}>{selectedCount} selected</Text>
+          <View style={styles.selectionActions}>
+            <TouchableOpacity style={styles.selectionDeleteButton} onPress={onClearSelection}>
+              <Text style={styles.selectionDeleteText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.selectionDeleteButton} onPress={() => onDeleteSelected("me")}>
+              <Text style={styles.selectionDeleteText}>Delete for Me</Text>
+            </TouchableOpacity>
+            {messages.filter((item) => selectedMessageIds.includes(item.id) && item.sender_id === currentUserId).length === selectedCount ? (
+              <TouchableOpacity style={styles.selectionDeleteButtonPrimary} onPress={() => onDeleteSelected("everyone")}>
+                <Text style={styles.selectionDeleteTextPrimary}>Delete for Everyone</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
       <ChatComposer
         message={message}
         setMessage={setMessage}
@@ -4120,6 +4830,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
       />
+
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
         locationVisible={locationVisible}
@@ -4131,13 +4842,48 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         onStartLiveLocation={onStartLiveLocation}
         liveLocationActive={liveLocationActive}
       />
+
       <ImagePreviewModal imageUrl={selectedImagePreview} onClose={() => setSelectedImagePreview(null)} />
       <VideoPreviewModal videoUrl={videoPreviewUrl} onClose={() => setVideoPreviewUrl(null)} />
-      {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} initialItems={invoiceItems} /> : null}
-      <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
+      {deleteCandidate ? (
+        <Modal transparent animationType="fade" visible={Boolean(deleteCandidate)} onRequestClose={onCancelDelete}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Delete message?</Text>
+              {deleteCandidate.sender_id === currentUserId ? (
+                <TouchableOpacity style={styles.deleteModalAction} onPress={() => onConfirmDelete('everyone')}>
+                  <Text style={styles.deleteModalActionText}>Delete for Everyone</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={styles.deleteModalAction} onPress={() => onConfirmDelete('me')}>
+                <Text style={styles.deleteModalActionText}>Delete for Me</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteModalCancel} onPress={onCancelDelete}>
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+      {invoiceVisible ? (
+        <InvoiceModal
+          visible={invoiceVisible}
+          onClose={onCloseInvoice}
+          onSubmit={onCreateInvoice}
+          submitting={invoiceSubmitting}
+          initialItems={invoiceItems}
+        />
+      ) : null}
+      <PrescriptionModal
+        visible={prescriptionVisible}
+        onClose={onClosePrescription}
+        onSubmit={onCreatePrescription}
+        submitting={prescriptionSubmitting}
+      />
     </SafeAreaView>
   );
 }
+
 
 
 

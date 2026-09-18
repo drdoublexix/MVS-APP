@@ -277,7 +277,7 @@ export type RealtimeMessage = {
   sender_id: string;
   receiver_id: string;
   content: string;
-  message_type: 'text' | 'video' | 'invoice' | 'location_exact' | 'location_live';
+  message_type: 'text' | 'video' | 'invoice' | 'location_exact' | 'location_live' | 'voice_note' | 'prescription';
   location_data?: {
     latitude: number;
     longitude: number;
@@ -286,6 +286,8 @@ export type RealtimeMessage = {
   metadata?: Record<string, unknown> | null;
   media_url?: string | null;
   media_type?: 'image' | 'video' | null;
+  hidden_for_users?: string[] | null;
+  is_deleted?: boolean | null;
   created_at: string;
 };
 
@@ -390,6 +392,48 @@ export const deleteRealtimeMessage = async (messageId: string, userId: string) =
     .eq('id', messageId)
     .eq('sender_id', userId);
   if (error) throw error;
+};
+
+export const hideMessageForCurrentUser = async (messageId: string, userId: string) => {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('hidden_for_users')
+    .eq('id', messageId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const currentHiddenUsers = Array.isArray(data?.hidden_for_users) ? data.hidden_for_users : [];
+  const nextHiddenUsers = Array.from(new Set([...currentHiddenUsers, userId]));
+
+  const { error: updateError } = await supabase
+    .from('messages')
+    .update({ hidden_for_users: nextHiddenUsers })
+    .eq('id', messageId);
+  if (updateError) throw updateError;
+};
+
+export const deleteMessageForEveryone = async (messageId: string, userId: string) => {
+  const { data: existingMessage, error: readError } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('id', messageId)
+    .eq('sender_id', userId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!existingMessage) throw new Error('Message not found or you are not the sender.');
+
+  const { error: updateError } = await supabase
+    .from('messages')
+    .update({
+      is_deleted: true,
+      content: 'This message was deleted',
+      media_url: null,
+      media_type: null,
+      metadata: { ...(existingMessage.metadata || {}), deleted_for_everyone: true },
+    })
+    .eq('id', messageId)
+    .eq('sender_id', userId);
+  if (updateError) throw updateError;
 };
 
 export type ConsultationStatus = 'active' | 'completed';
