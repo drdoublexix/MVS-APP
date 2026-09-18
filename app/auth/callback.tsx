@@ -83,11 +83,31 @@ export default function AuthCallbackScreen() {
 
         const urlRole = values.get('role');
         const callbackRole = urlRole || queryRole || savedRole || 'client';
-        console.log('[Auth Callback] Processing OAuth return URL:', href, 'role:', callbackRole);
+        const flowType = values.get('type');
+        const successMessage = 'Email verified successfully! Please sign in to MVS.';
+        console.log('[Auth Callback] Processing OAuth return URL:', href, 'role:', callbackRole, 'type:', flowType);
 
         const code = values.get('code');
         const accessToken = values.get('access_token');
         const refreshToken = values.get('refresh_token');
+
+        if (flowType === 'signup' || flowType === 'email_change' || flowType === 'magiclink' || flowType === 'invite') {
+          if (code) {
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) throw error;
+          }
+
+          if (mounted) {
+            router.replace({
+              pathname: '/login',
+              params: {
+                verified: 'true',
+                message: successMessage,
+              },
+            });
+          }
+          return;
+        }
 
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);

@@ -11,8 +11,11 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ role?: string }>();
+  const params = useLocalSearchParams<{ role?: string; verified?: string; message?: string }>();
   const selectedRole: AppRole = params.role === 'vet' || params.role === 'merchant' ? params.role : 'client';
+  const verifiedMessage = params.verified === 'true' || params.verified === '1'
+    ? (params.message || 'Email verified successfully! Please sign in to MVS.')
+    : '';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -147,6 +150,7 @@ export default function LoginScreen() {
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {verifiedMessage ? <Text style={styles.successText}>{verifiedMessage}</Text> : null}
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
@@ -337,6 +341,18 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     marginBottom: 16,
+  },
+  successText: {
+    color: '#A7F3D0',
+    backgroundColor: '#102E2A',
+    borderColor: '#10B981',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 16,
+    fontWeight: '600',
   },
   resetMessage: {
     color: '#5EEAD4',
