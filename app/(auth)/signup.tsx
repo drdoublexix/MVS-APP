@@ -295,7 +295,7 @@ export default function SignupScreen() {
             <View style={styles.passwordInputContainer}>
               <TextInput
                 style={styles.passwordInput}
-                placeholder="Minimum 8 characters: Capital letter, Small letter, Numbers & symbol"
+                placeholder="Minimum 8 characters: Capital letter, Small letters, Numbers & symbol"
                 placeholderTextColor="#6F8297"
                 value={password}
                 onChangeText={setPassword}

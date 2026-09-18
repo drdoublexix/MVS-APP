@@ -458,7 +458,7 @@ export default function ProfileScreen() {
               <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700' }}>Change Password</Text>
             </View>
             <Text style={{ color: '#94A3B8', fontSize: 13, lineHeight: 19, marginBottom: 16 }}>Or use the button below to send yourself a password reset link.</Text>
-            <Text style={{ color: '#94A3B8', fontSize: 13, lineHeight: 19, marginBottom: 16 }}>Password must contain at least 8 characters including a capital letter, a small letter, a number, and a symbol.</Text>
+            <Text style={{ color: '#94A3B8', fontSize: 13, lineHeight: 19, marginBottom: 16 }}>Password must contain at least 8 characters including a capital letter, small letters, numbers, and symbols.</Text>
             <Field label="New Password" value={password.next} onChangeText={(next) => setPassword({ ...password, next })} placeholder={PASSWORD_REQUIREMENTS} secureTextEntry />
             <Field label="Confirm Password" value={password.confirm} onChangeText={(confirm) => setPassword({ ...password, confirm })} placeholder="Re-enter your password" secureTextEntry />
             <TouchableOpacity style={styles.save} onPress={() => { void changePassword(); }}>

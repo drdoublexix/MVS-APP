@@ -676,7 +676,7 @@ export default function MerchantProfileScreen() {
 
             <ScrollView style={styles.modalBody}>
               <Text style={styles.info}>Or use the button below to send yourself a password reset link.</Text>
-              <Text style={styles.info}>Password must contain at least 8 characters including a capital letter, a small letter, a number, and a symbol.</Text>
+              <Text style={styles.info}>Password must contain at least 8 characters including a capital letter, small letters, numbers, and symbols.</Text>
               <Field label="New Password" value={password.next} onChangeText={(text) => setPassword((prev) => ({ ...prev, next: text }))} placeholder={PASSWORD_REQUIREMENTS} secureTextEntry />
               <Field label="Confirm Password" value={password.confirm} onChangeText={(text) => setPassword((prev) => ({ ...prev, confirm: text }))} placeholder="Re-enter your password" secureTextEntry />
 
