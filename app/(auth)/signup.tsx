@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { makeRedirectUri } from 'expo-auth-session';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
@@ -13,7 +13,6 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function SignupScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ role?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -21,33 +20,11 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [role, setRole] = useState<AppRole>(params.role === 'vet' || params.role === 'merchant' ? params.role : 'client');
+  const [role, setRole] = useState<AppRole>('client');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const googleButtonRef = useRef<View>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (params.role === 'client' || params.role === 'vet' || params.role === 'merchant') {
-      queueMicrotask(() => {
-        if (isMounted) setRole(params.role as AppRole);
-      });
-    } else {
-      // Defer router.setParams until after the layout component has finished mounting
-      queueMicrotask(() => {
-        if (isMounted) {
-          router.setParams({ role: 'client' });
-          setRole('client');
-        }
-      });
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [params.role, router]);
 
   const handleSignup = async () => {
     const normalizedPhoneNumber = phoneNumber.trim().replace(/[\s()-]/g, '');
@@ -175,8 +152,8 @@ export default function SignupScreen() {
       }
 
       const redirectUrl = Platform.OS === 'web'
-        ? `https://mvsapp.com.ng/auth/callback?role=${encodeURIComponent(userRole)}`
-        : makeRedirectUri({ scheme: 'mvsapp', path: `auth/callback?role=${encodeURIComponent(userRole)}` });
+        ? 'https://mvsapp.com.ng/auth/callback'
+        : makeRedirectUri({ scheme: 'mvsapp', path: 'auth/callback' });
 
       console.log('Initiating Google OAuth with role:', userRole, 'redirect:', redirectUrl);
 
@@ -261,7 +238,6 @@ export default function SignupScreen() {
                     style={[styles.roleButton, role === option && styles.roleButtonSelected]}
                     onPress={() => {
                       setRole(option);
-                      router.setParams({ role: option });
                     }}
                     disabled={loading || Boolean(successMessage)}
                   >
@@ -362,7 +338,7 @@ export default function SignupScreen() {
           </TouchableOpacity>
 
           {successMessage ? (
-            <TouchableOpacity style={styles.signInAfterConfirmation} onPress={() => router.push({ pathname: '/(auth)/login', params: { role } })}>
+            <TouchableOpacity style={styles.signInAfterConfirmation} onPress={() => router.push('/(auth)/login')}>
               <Text style={styles.signInAfterConfirmationText}>Go to Sign In</Text>
             </TouchableOpacity>
           ) : null}
@@ -400,7 +376,7 @@ export default function SignupScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already have an account?</Text>
-          <TouchableOpacity onPress={() => router.push({ pathname: '/(auth)/login', params: { role } })}>
+          <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
             <Text style={styles.loginLink}>Sign In</Text>
           </TouchableOpacity>
         </View>

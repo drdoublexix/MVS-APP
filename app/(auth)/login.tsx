@@ -1,21 +1,31 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeRedirectUri } from 'expo-auth-session';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { sanitizeInput } from '../../lib/sanitize';
-import { loginUser, sendPasswordResetLink, supabase, type AppRole } from '../../lib/supabase';
+import { getRoleNavPath, loginUser, sendPasswordResetLink, signOutUser, supabase } from '../../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const LOGIN_NOTICE_KEY = 'mvs_auth_notice';
+
+const readAuthNotice = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(LOGIN_NOTICE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { kind?: 'success' | 'error'; message?: string } | null;
+    return parsed && typeof parsed.message === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ role?: string; verified?: string; message?: string }>();
-  const selectedRole: AppRole = params.role === 'vet' || params.role === 'merchant' ? params.role : 'client';
-  const verifiedMessage = params.verified === 'true' || params.verified === '1'
-    ? (params.message || 'Email verified successfully! Please sign in to MVS.')
-    : '';
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,6 +33,22 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const googleButtonRef = useRef<View>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadNotice = async () => {
+      const savedNotice = await readAuthNotice();
+      if (!mounted || !savedNotice) return;
+      setNotice({ kind: savedNotice.kind || 'success', message: savedNotice.message || '' });
+      await AsyncStorage.removeItem(LOGIN_NOTICE_KEY);
+    };
+
+    void loadNotice();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -33,13 +59,37 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     setResetMessage('');
+    setNotice(null);
 
     try {
       const { user } = await loginUser(sanitizeInput(email), password);
       if (!user) throw new Error('Login did not return a user.');
-      console.log('Login successful, waiting for auth state update...');
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+      if (!profile?.role) {
+        await signOutUser().catch(() => undefined);
+        setError('This account does not exist. Please sign up first.');
+        return;
+      }
+
+      router.replace(getRoleNavPath(profile.role));
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      const message = err?.message || 'Login failed. Please try again.';
+      const shouldTreatAsMissingProfile = /invalid login credentials|account does not exist|user not found|not found/i.test(message);
+
+      if (shouldTreatAsMissingProfile) {
+        await signOutUser().catch(() => undefined);
+        setError('This account does not exist. Please sign up first.');
+        return;
+      }
+
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -69,20 +119,16 @@ export default function LoginScreen() {
   };
 
   const handleGoogleLogin = async () => {
-    console.log('Google Auth Clicked for role:', selectedRole);
     setLoading(true);
     setError('');
+    setNotice(null);
 
     try {
-      let userRole: AppRole = 'client';
-      if (selectedRole === 'vet') userRole = 'vet';
-      if (selectedRole === 'merchant') userRole = 'merchant';
-
       const redirectUrl = Platform.OS === 'web'
-        ? `https://mvsapp.com.ng/auth/callback?role=${encodeURIComponent(userRole)}`
-        : makeRedirectUri({ scheme: 'mvsapp', path: `auth/callback?role=${encodeURIComponent(userRole)}` });
+        ? 'https://mvsapp.com.ng/auth/callback'
+        : makeRedirectUri({ scheme: 'mvsapp', path: 'auth/callback' });
 
-      console.log('Initiating Google login with role:', userRole, 'redirect:', redirectUrl);
+      console.log('Initiating Google login redirect:', redirectUrl);
 
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -150,7 +196,9 @@ export default function LoginScreen() {
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        {verifiedMessage ? <Text style={styles.successText}>{verifiedMessage}</Text> : null}
+        {notice && notice.message ? (
+          <Text style={notice.kind === 'error' ? styles.errorText : styles.successText}>{notice.message}</Text>
+        ) : null}
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
@@ -229,7 +277,7 @@ export default function LoginScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Don&apos;t have an account?</Text>
-          <TouchableOpacity onPress={() => router.push({ pathname: '/(auth)/signup', params: { role: selectedRole } })}>
+          <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
             <Text style={styles.signupLink}>Sign Up</Text>
           </TouchableOpacity>
         </View>
