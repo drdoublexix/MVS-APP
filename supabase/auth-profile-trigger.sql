@@ -27,6 +27,7 @@ create table if not exists public.profiles (
   phone_number text,
   specialty text,
   title text,
+  loyalty_points integer,
   is_verified boolean not null default false
 );
 
@@ -37,6 +38,7 @@ alter table public.profiles
   add column if not exists phone_number text,
   add column if not exists specialty text,
   add column if not exists title text,
+  add column if not exists loyalty_points integer,
   add column if not exists is_verified boolean not null default false,
   add column if not exists notification_preferences jsonb
     default '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb;
@@ -92,6 +94,7 @@ declare
   requested_phone text;
   requested_specialty text;
   requested_title text;
+  requested_loyalty_points integer;
   requested_is_verified boolean;
 begin
   requested_role := (case lower(coalesce(new.raw_user_meta_data ->> 'role', 'client'))
@@ -103,11 +106,15 @@ begin
 
   requested_phone := nullif(trim(new.raw_user_meta_data ->> 'phone_number'), '');
   requested_specialty := case
-    when requested_role = 'vet' then coalesce(nullif(new.raw_user_meta_data ->> 'specialty', ''), 'General Veterinary Practitioner')
+    when requested_role = 'vet' then nullif(new.raw_user_meta_data ->> 'specialty', '')
     else null
   end;
   requested_title := case
-    when requested_role = 'vet' then coalesce(nullif(new.raw_user_meta_data ->> 'title', ''), 'Dr.')
+    when requested_role = 'vet' then nullif(new.raw_user_meta_data ->> 'title', '')
+    else null
+  end;
+  requested_loyalty_points := case
+    when requested_role = 'client' then 0
     else null
   end;
   requested_is_verified := new.email_confirmed_at is not null;
@@ -120,6 +127,7 @@ begin
     phone_number,
     specialty,
     title,
+    loyalty_points,
     is_verified,
     notification_preferences
   )
@@ -131,6 +139,7 @@ begin
     requested_phone,
     requested_specialty,
     requested_title,
+    requested_loyalty_points,
     requested_is_verified,
     '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
   )
@@ -140,6 +149,7 @@ begin
     role = coalesce(excluded.role, public.profiles.role),
     specialty = case when requested_role = 'vet' then excluded.specialty else null end,
     title = case when requested_role = 'vet' then excluded.title else null end,
+    loyalty_points = case when requested_role = 'client' then coalesce(excluded.loyalty_points, public.profiles.loyalty_points, 0) else null end,
     is_verified = public.profiles.is_verified or excluded.is_verified;
 
   return new;
@@ -154,6 +164,7 @@ exception
       role,
       specialty,
       title,
+      loyalty_points,
       is_verified,
       notification_preferences
     )
@@ -164,6 +175,7 @@ exception
       requested_role,
       requested_specialty,
       requested_title,
+      requested_loyalty_points,
       requested_is_verified,
       '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
     )
@@ -171,6 +183,14 @@ exception
     return new;
 end;
 $$;
+
+update public.profiles
+set specialty = null
+where role = 'vet' and specialty = 'General Veterinary Practitioner';
+
+update public.profiles
+set loyalty_points = null
+where role in ('vet', 'merchant') and loyalty_points is not null;
 
 -- Remove every application trigger on auth.users. Keeping an older trigger
 -- alongside this one would execute both functions and can still abort signup.
