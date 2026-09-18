@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import WelcomeModal from '../../components/WelcomeModal';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
@@ -235,6 +236,7 @@ export default function VetDashboardScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <WelcomeModal />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>

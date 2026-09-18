@@ -24,6 +24,7 @@ export default function SignupScreen() {
   const [role, setRole] = useState<AppRole>(params.role === 'vet' || params.role === 'merchant' ? params.role : 'client');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const googleButtonRef = useRef<View>(null);
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function SignupScreen() {
     try {
       setLoading(true);
       setError(null);
+      setSuccessMessage(null);
 
       const { data: existingPhone, error: phoneLookupError } = await supabase
         .from('profiles')
@@ -148,9 +150,10 @@ export default function SignupScreen() {
         if (typeof window !== 'undefined') localStorage.removeItem('mvs_pending_signup_role');
         router.replace(userRole === 'merchant' ? '/(merchant)' : userRole === 'vet' ? '/(vet)' : '/(client)');
       } else {
-        console.log('[Signup] Email confirmation required before dashboard access.');
+        setSuccessMessage('An email has been sent to your email for confirmation. Please proceed to confirm your email and then come back to log in.');
       }
     } catch (err: any) {
+      setSuccessMessage(null);
       setError(err.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -238,6 +241,12 @@ export default function SignupScreen() {
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {successMessage ? (
+          <View style={styles.successBanner}>
+            <MaterialCommunityIcons name="email-check-outline" size={22} color="#A7F3D0" />
+            <Text style={styles.successText}>{successMessage}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
@@ -254,7 +263,7 @@ export default function SignupScreen() {
                       setRole(option);
                       router.setParams({ role: option });
                     }}
-                    disabled={loading}
+                    disabled={loading || Boolean(successMessage)}
                   >
                     <MaterialCommunityIcons name={icon as any} size={22} color={role === option ? '#08111F' : '#8EA3B8'} />
                     <Text style={[styles.roleButtonText, role === option && styles.roleButtonTextSelected]}>{label}</Text>
@@ -272,7 +281,7 @@ export default function SignupScreen() {
               placeholderTextColor="#6F8297"
               value={fullName}
               onChangeText={setFullName}
-              editable={!loading}
+              editable={!loading && !successMessage}
             />
           </View>
 
@@ -284,7 +293,7 @@ export default function SignupScreen() {
               placeholderTextColor="#6F8297"
               value={email}
               onChangeText={setEmail}
-              editable={!loading}
+              editable={!loading && !successMessage}
               keyboardType="email-address"
               autoCapitalize="none"
             />
@@ -298,7 +307,7 @@ export default function SignupScreen() {
               placeholderTextColor="#6F8297"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
-              editable={!loading}
+              editable={!loading && !successMessage}
               keyboardType="phone-pad"
               autoCapitalize="none"
             />
@@ -313,7 +322,7 @@ export default function SignupScreen() {
                 placeholderTextColor="#6F8297"
                 value={password}
                 onChangeText={setPassword}
-                editable={!loading}
+                editable={!loading && !successMessage}
                 secureTextEntry={!showPassword}
               />
               <TouchableOpacity onPress={() => setShowPassword((visible) => !visible)} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
@@ -331,7 +340,7 @@ export default function SignupScreen() {
                 placeholderTextColor="#6F8297"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                editable={!loading}
+                editable={!loading && !successMessage}
                 secureTextEntry={!showConfirmPassword}
               />
               <TouchableOpacity onPress={() => setShowConfirmPassword((visible) => !visible)} accessibilityLabel={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}>
@@ -343,7 +352,7 @@ export default function SignupScreen() {
           <TouchableOpacity
             style={[styles.signupButton, loading && styles.buttonDisabled]}
             onPress={handleSignup}
-            disabled={loading}
+            disabled={loading || Boolean(successMessage)}
           >
             {loading ? (
               <ActivityIndicator color="white" />
@@ -351,6 +360,12 @@ export default function SignupScreen() {
               <Text style={styles.signupButtonText}>Create my account</Text>
             )}
           </TouchableOpacity>
+
+          {successMessage ? (
+            <TouchableOpacity style={styles.signInAfterConfirmation} onPress={() => router.push({ pathname: '/(auth)/login', params: { role } })}>
+              <Text style={styles.signInAfterConfirmationText}>Go to Sign In</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <View style={styles.dividerRow}>
             <View style={styles.divider} />
@@ -366,7 +381,7 @@ export default function SignupScreen() {
                 opacity: pressed ? 0.7 : 1,
               })}
               onPress={handleGoogleSignIn}
-              disabled={loading}
+              disabled={loading || Boolean(successMessage)}
             >
               <MaterialCommunityIcons name="google" size={19} color="#F8FAFC" />
               <Text style={styles.googleButtonText}>Sign up with Google</Text>
@@ -375,7 +390,7 @@ export default function SignupScreen() {
             <TouchableOpacity
               style={[styles.googleButton, loading && styles.buttonDisabled]}
               onPress={handleGoogleSignIn}
-              disabled={loading}
+              disabled={loading || Boolean(successMessage)}
             >
               <MaterialCommunityIcons name="google" size={19} color="#F8FAFC" />
               <Text style={styles.googleButtonText}>Sign up with Google</Text>
@@ -525,6 +540,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 16,
   },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    color: '#A7F3D0',
+    backgroundColor: '#102E2A',
+    borderColor: '#10B981',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  successText: {
+    flex: 1,
+    color: '#A7F3D0',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   signupButton: {
     backgroundColor: '#FB7185',
     paddingVertical: 15,
@@ -538,6 +571,18 @@ const styles = StyleSheet.create({
   signupButtonText: {
     color: '#180A12',
     fontSize: 16,
+    fontWeight: '800',
+  },
+  signInAfterConfirmation: {
+    borderWidth: 1,
+    borderColor: '#5EEAD4',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  signInAfterConfirmationText: {
+    color: '#5EEAD4',
+    fontSize: 15,
     fontWeight: '800',
   },
   dividerRow: {

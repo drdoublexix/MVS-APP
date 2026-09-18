@@ -7,8 +7,11 @@ ALTER TABLE public.profiles
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS notification_preferences JSONB
-  DEFAULT '{"orders": true, "chat": true, "consultations": true, "reminders": true, "payouts": true}'::jsonb;
+  DEFAULT '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb;
+
+ALTER TABLE public.profiles
+  ALTER COLUMN notification_preferences SET DEFAULT '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb;
 
 UPDATE public.profiles
-SET notification_preferences = COALESCE(notification_preferences, '{"orders": true, "chat": true, "consultations": true, "reminders": true, "payouts": true}'::jsonb)
+SET notification_preferences = '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
 WHERE notification_preferences IS NULL;

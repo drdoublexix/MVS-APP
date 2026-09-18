@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import WelcomeModal from '../../components/WelcomeModal';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
@@ -235,6 +236,7 @@ export default function ClientHome() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <WelcomeModal />
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.greeting}>
           <Text style={styles.greetingTitle}>Hello, {firstName}! 👋</Text>

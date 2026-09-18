@@ -5,7 +5,7 @@ import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState 
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-get-random-values';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, writeCachedAuthState } from '../lib/supabase';
+import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 
 const registerForPushNotifications = async (userId: string) => {
   const { registerForPushNotifications: register } = await import('../lib/notifications');
@@ -180,7 +180,7 @@ function RootAuthGate() {
         try {
           profileData = await safeSupabaseCall(() => supabase
             .from('profiles')
-            .select('role, full_name, email, avatar_url')
+            .select('role, full_name, email, avatar_url, has_seen_welcome')
             .eq('id', session.user.id)
             .maybeSingle());
         } catch (profileError) {
@@ -278,7 +278,7 @@ function RootAuthGate() {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         void safeSupabaseCall(() => supabase
           .from('profiles')
-          .select('role, full_name, email, avatar_url')
+          .select('role, full_name, email, avatar_url, has_seen_welcome')
           .eq('id', session.user.id)
           .maybeSingle())
           .then(async (data) => {
@@ -288,6 +288,10 @@ function RootAuthGate() {
           .catch((error) => {
             console.warn('[Auth Layout] Profile refresh unavailable; retaining cached auth state:', error);
           });
+
+        void syncProfileVerificationStatus(session.user.id).catch((error) => {
+          console.warn('[Auth Layout] Verification sync failed after auth event:', error);
+        });
       }
 
       if (event !== 'INITIAL_SESSION' && event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED') {

@@ -228,12 +228,43 @@ export const signUpUser = async (email: string, password: string, userData: Reco
 };
 
 // Helper function for user login
+export const syncProfileVerificationStatus = async (userId?: string | null): Promise<boolean> => {
+  if (!userId) return false;
+
+  const { data: { user }, error: getUserError } = await supabase.auth.getUser();
+  if (getUserError || !user) {
+    console.warn('[Auth Sync] Unable to load auth user for verification sync:', getUserError ?? 'No user found');
+    return false;
+  }
+
+  if (!user.email_confirmed_at) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ is_verified: true })
+    .eq('id', userId);
+
+  if (error) {
+    console.warn('[Auth Sync] Failed to sync profile verification flag:', error);
+    return false;
+  }
+
+  return true;
+};
+
 export const loginUser = async (email: string, password: string) => {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
   if (error) throw error;
+
+  await syncProfileVerificationStatus(data.user?.id).catch((syncError) => {
+    console.warn('[Auth Sync] verification sync failed after login:', syncError);
+  });
+
   return data;
 };
 

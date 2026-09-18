@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Linking, Modal, PanResponder, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import WelcomeModal from '../../components/WelcomeModal';
 import { addMarketplaceProduct, fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase } from '../../lib/supabase';
@@ -151,7 +152,7 @@ export default function MerchantDashboardScreen() {
     }
   };
 
-  return <SafeAreaView style={styles.container}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  return <SafeAreaView style={styles.container}><WelcomeModal /><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <Text style={styles.title}>Store Dashboard</Text><Text style={styles.subtitle}>Manage your inventory and sales</Text>
     <View style={styles.stats}>
       <Stat icon="cash" label="Total Sales" value={`₦${metrics.totalSales.toLocaleString('en-NG')}`} color="#10B981" />
