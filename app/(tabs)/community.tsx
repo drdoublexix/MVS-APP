@@ -257,32 +257,32 @@ export default function CommunityScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView style={styles.keyboardRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-      <View style={styles.banner}><Text style={styles.heroTitle}>MVS Hub</Text><Text style={styles.kicker}>Community + Marketplace</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
-      <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={scrollToLatest} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={scrollToLatest} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <Text style={styles.empty}>Coming soon.</Text>} />
-      {/*
+        <View style={styles.banner}><Text style={styles.heroTitle}>MVS Hub</Text><Text style={styles.kicker}>Community + Marketplace</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
+        <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={scrollToLatest} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={scrollToLatest} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}><Text style={{ fontSize: 28, fontWeight: '700', color: '#10B981', textAlign: 'center', letterSpacing: 0.5 }}>Coming soon.</Text><Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>The community and marketplace experience is on its way.</Text></View>} />
+        {/*
       {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
       <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
       */}
-      <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>Delete message?</Text>
-            <Text style={styles.confirmText}>This message will be removed for everyone.</Text>
-            <View style={styles.confirmActions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => setDeleteCandidateId(null)} disabled={deletingMessage}><Text style={styles.cancelButtonText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.deleteConfirmButton} onPress={() => { void deleteMessage(); }} disabled={deletingMessage}>{deletingMessage ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.deleteConfirmText}>Delete</Text>}</TouchableOpacity>
+        <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
+          <View style={styles.confirmOverlay}>
+            <View style={styles.confirmCard}>
+              <Text style={styles.confirmTitle}>Delete message?</Text>
+              <Text style={styles.confirmText}>This message will be removed for everyone.</Text>
+              <View style={styles.confirmActions}>
+                <TouchableOpacity style={styles.cancelButton} onPress={() => setDeleteCandidateId(null)} disabled={deletingMessage}><Text style={styles.cancelButtonText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.deleteConfirmButton} onPress={() => { void deleteMessage(); }} disabled={deletingMessage}>{deletingMessage ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.deleteConfirmText}>Delete</Text>}</TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-      <Modal visible={selectedImagePreview !== null} transparent animationType="fade" onRequestClose={() => setSelectedImagePreview(null)}>
-        <Pressable style={styles.imagePreviewOverlay} onPress={() => setSelectedImagePreview(null)} accessibilityLabel="Close image preview">
-          <Image source={{ uri: selectedImagePreview ?? undefined }} style={styles.imagePreview} resizeMode="contain" />
-          <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setSelectedImagePreview(null)} accessibilityLabel="Close image preview">
-            <MaterialCommunityIcons name="close" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-        </Pressable>
-      </Modal>
+        </Modal>
+        <Modal visible={selectedImagePreview !== null} transparent animationType="fade" onRequestClose={() => setSelectedImagePreview(null)}>
+          <Pressable style={styles.imagePreviewOverlay} onPress={() => setSelectedImagePreview(null)} accessibilityLabel="Close image preview">
+            <Image source={{ uri: selectedImagePreview ?? undefined }} style={styles.imagePreview} resizeMode="contain" />
+            <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setSelectedImagePreview(null)} accessibilityLabel="Close image preview">
+              <MaterialCommunityIcons name="close" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+          </Pressable>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
