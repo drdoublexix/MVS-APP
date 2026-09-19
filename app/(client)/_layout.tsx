@@ -12,10 +12,16 @@ export default function ClientLayout() {
         tabBarActiveTintColor: '#0a7ea4',
         tabBarInactiveTintColor: '#999',
         headerShown: false,
+        tabBarPosition: 'bottom',
         tabBarStyle: {
           backgroundColor: '#fff',
           borderTopColor: '#eee',
           borderTopWidth: 1,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 68,
         },
       }}
     >

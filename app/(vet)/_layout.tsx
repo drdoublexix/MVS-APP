@@ -12,11 +12,17 @@ export default function VetLayout() {
         tabBarActiveTintColor: '#10B981',
         tabBarInactiveTintColor: '#94A3B8',
         headerShown: false,
+        tabBarPosition: 'bottom',
         sceneStyle: { backgroundColor: '#0F172A' },
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 68,
         },
       }}
     >
