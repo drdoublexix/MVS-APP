@@ -100,6 +100,50 @@ serve(async (req: Request) => {
       results.push(outcome);
     }
 
+    const { data: farmReminders, error: farmReminderError } = await supabase.rpc("get_due_farm_treatment_reminders");
+    if (farmReminderError) throw farmReminderError;
+
+    for (const reminder of farmReminders || []) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("expo_push_token, web_push_subscription")
+        .eq("id", reminder.owner_id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error("Failed to load farm reminder recipient data:", profileError);
+        results.push({ recordId: reminder.record_id, sent: false, reason: "recipient lookup failed" });
+        continue;
+      }
+
+      const daysRemaining = Number(reminder.days_remaining);
+      const title = "Livestock Treatment Due Reminder";
+      const body = `${reminder.species}'s ${reminder.treatment_title} is due in ${daysRemaining} day(s). Tap to view the farm medical timeline.`;
+      const data = { farmId: reminder.farm_id, recordId: reminder.record_id, url: "/profile" };
+      const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
+
+      try {
+        if (profile?.expo_push_token) {
+          await sendExpoNotification(profile.expo_push_token, { to: profile.expo_push_token, sound: "default", title, body, data });
+          outcome.expo = true;
+        }
+      } catch (error) {
+        console.error("Expo push request failed for farm treatment reminder:", error);
+      }
+
+      try {
+        if (profile?.web_push_subscription) {
+          await sendWebNotification(profile.web_push_subscription, title, body, data);
+          outcome.web = true;
+        }
+      } catch (error) {
+        console.error("Web push request failed for farm treatment reminder:", error);
+      }
+
+      outcome.sent = outcome.expo || outcome.web;
+      results.push(outcome);
+    }
+
     return jsonResponse({ processed: results.length, results });
   } catch (error) {
     console.error("Vaccine reminder function error:", error);

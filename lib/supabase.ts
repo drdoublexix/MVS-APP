@@ -306,7 +306,7 @@ export const uploadProductImage = async (asset: ImagePickerAsset) => {
   const file = await response.blob();
   const fileName = asset.fileName || asset.uri.split('/').pop() || `product-${Date.now()}.jpg`;
   const fileExt = fileName.split('.').pop() || 'jpg';
-  const filePath = `products/${Date.now()}.${fileExt}`;
+  const filePath = `products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
   const { error } = await supabase.storage
     .from('product-images')
     .upload(filePath, file, { cacheControl: '3600', upsert: false, contentType: asset.mimeType || file.type });

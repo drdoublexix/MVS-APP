@@ -13,7 +13,7 @@ export default function AddProductScreen() {
   const [quantity, setQuantity] = useState('');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
-  const [image, setImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [images, setImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -41,7 +41,8 @@ export default function AddProductScreen() {
       const user = await getCurrentUser();
       if (!user) throw new Error('You must be signed in as a merchant.');
 
-      const imageUrl = image ? await uploadProductImage(image) : undefined;
+      const uploadedImages = await Promise.all(images.map((image) => uploadProductImage(image)));
+      const imageUrl = uploadedImages[0];
       const productNameValue = sanitizeInput(productName);
       const productDescription = sanitizeInput(description);
       const cleanCategory = sanitizeInput(category);
@@ -57,6 +58,7 @@ export default function AddProductScreen() {
             description: productDescription,
             price: priceValue,
             image_url: imageUrl,
+            images: uploadedImages,
             category: cleanCategory || 'General',
             stock: Number.isNaN(stockValue) ? 1 : stockValue,
           },
@@ -73,6 +75,7 @@ export default function AddProductScreen() {
         merchant: merchantName,
         merchantId: user.id,
         imageUrl,
+        images: uploadedImages,
         icon: category.includes('Food') ? 'food' : 'package',
       });
       setSuccessMessage('Product added successfully.');
@@ -81,7 +84,7 @@ export default function AddProductScreen() {
       setPrice('');
       setQuantity('');
       setCategory('');
-      setImage(null);
+      setImages([]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Please try again.';
       console.error('[Merchant Add Product] Failed to add product:', error);
@@ -107,10 +110,10 @@ export default function AddProductScreen() {
         {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
 
         <View style={styles.form}>
-          <TouchableOpacity style={styles.imageUpload} onPress={async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], selectionLimit: 1 }); if (!result.canceled) setImage(result.assets[0]); }} disabled={loading}>
-            {image ? <Image source={{ uri: image.uri }} style={styles.preview} /> : <MaterialCommunityIcons name="image-plus" size={48} color="#ddd" />}
-            <Text style={styles.uploadText}>{image ? 'Tap to change product image' : 'Tap to add product image'}</Text>
-          </TouchableOpacity>
+          <View style={styles.imageSection}>
+            <View style={styles.thumbnailRow}>{images.map((image, index) => <View key={`${image.uri}-${index}`} style={styles.thumbnailWrap}><Image source={{ uri: image.uri }} style={styles.thumbnail} /><TouchableOpacity style={styles.removeImage} onPress={() => setImages((current) => current.filter((_, imageIndex) => imageIndex !== index))} accessibilityLabel={`Remove image ${index + 1}`}><MaterialCommunityIcons name="close-circle" size={20} color="#F87171" /></TouchableOpacity></View>)}{images.length < 3 ? <TouchableOpacity style={styles.addImage} onPress={async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 3 - images.length }); if (!result.canceled) setImages((current) => [...current, ...result.assets].slice(0, 3)); }} disabled={loading}><MaterialCommunityIcons name="image-plus" size={32} color="#CBD5E1" /><Text style={styles.uploadText}>Add image</Text></TouchableOpacity> : null}</View>
+            <Text style={styles.uploadText}>{images.length}/3 product images</Text>
+          </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Product Name *</Text>
@@ -261,6 +264,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  imageSection: { backgroundColor: '#1E293B', borderRadius: 12, padding: 12, gap: 10 },
+  thumbnailRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  thumbnailWrap: { position: 'relative' },
+  thumbnail: { width: 92, height: 92, borderRadius: 8 },
+  removeImage: { position: 'absolute', top: -7, right: -7, backgroundColor: '#1E293B', borderRadius: 10 },
+  addImage: { width: 92, height: 92, borderRadius: 8, borderWidth: 1, borderColor: '#475569', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
   uploadText: {
     fontSize: 14,
     color: '#94A3B8',

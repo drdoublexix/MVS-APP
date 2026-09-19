@@ -1,12 +1,12 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
-  useAudioRecorder,
+    AudioModule,
+    RecordingPresets,
+    setAudioModeAsync,
+    useAudioPlayer,
+    useAudioPlayerStatus,
+    useAudioRecorder,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
@@ -19,41 +19,43 @@ import { ShieldCheck, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import FarmMedicalHistory from "../components/FarmMedicalHistory";
 import PetMedicalHistory from "../components/PetMedicalHistory";
+import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
 import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-  deleteMessageForEveryone,
-  ensureConsultationRecord,
-  getCurrentUser,
-  hideMessageForCurrentUser,
-  isUuid,
-  normalizeUuid,
-  safeSupabaseCall,
-  sendRealtimeMessage,
-  subscribeToMessages,
-  supabase,
-  uploadChatAttachment,
-  type ConsultationStatus,
-  type RealtimeMessage
+    deleteMessageForEveryone,
+    ensureConsultationRecord,
+    getCurrentUser,
+    hideMessageForCurrentUser,
+    isUuid,
+    normalizeUuid,
+    safeSupabaseCall,
+    sendRealtimeMessage,
+    subscribeToMessages,
+    supabase,
+    uploadChatAttachment,
+    type ConsultationStatus,
+    type RealtimeMessage
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
@@ -118,6 +120,7 @@ type MedicalRecord = {
   objective: string | null;
   assessment: string;
   plan: string;
+  is_deleted: boolean;
 };
 
 type SoapDraft = {
@@ -137,6 +140,8 @@ type FarmRecord = {
   flock_size: number | null;
   location: string | null;
   restock_date: string | null;
+  medical_log: string | null;
+  production_summary: string | null;
   soapRecords?: FarmSoapRecord[];
 };
 
@@ -148,6 +153,7 @@ type FarmSoapRecord = {
   tentative_diagnosis?: string | null;
   plan: string | null;
   created_at: string;
+  is_deleted: boolean;
 };
 
 type FarmSoapDraft = {
@@ -617,6 +623,10 @@ const styles = {
   stopLiveLocationText: { color: "#FCA5A5", fontSize: 12, fontWeight: "700" },
   modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0, 0, 0, 0.65)" },
   consultationTypeModal: { backgroundColor: "#1E293B", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 22, gap: 10 },
+  entitySelectionBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16, backgroundColor: "rgba(0, 0, 0, 0.65)" },
+  entitySelectionModal: { width: "100%", maxWidth: 440, maxHeight: "75%", backgroundColor: "#1E293B", borderRadius: 14, padding: 18 },
+  entitySelectionList: { paddingBottom: 4, gap: 8 },
+  entitySelectionItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#0F172A", borderWidth: 1, borderColor: "#334155", borderRadius: 9, padding: 13 },
   consultationTypeButton: { backgroundColor: "#2563EB", borderRadius: 8, padding: 13, alignItems: "center" },
   farmRecordCard: { backgroundColor: "#0F172A", borderColor: "#334155", borderWidth: 1, borderRadius: 10, padding: 13, marginBottom: 9, gap: 4 },
   farmRecordDetail: { color: "#CBD5E1", fontSize: 12 },
@@ -844,6 +854,8 @@ export default function ChatScreen() {
   const [soapVisible, setSoapVisible] = useState(false);
   const [soapSubmitting, setSoapSubmitting] = useState(false);
   const [consultationTypeVisible, setConsultationTypeVisible] = useState(false);
+  const [petSelectionVisible, setPetSelectionVisible] = useState(false);
+  const [farmSelectionVisible, setFarmSelectionVisible] = useState(false);
   const [farmRecordsVisible, setFarmRecordsVisible] = useState(false);
   const [farmRecordsLoading, setFarmRecordsLoading] = useState(false);
   const [farmRecords, setFarmRecords] = useState<FarmRecord[]>([]);
@@ -1455,7 +1467,10 @@ export default function ChatScreen() {
         (payload) => {
           const nextConsultation = payload.new as ConsultationRecord;
           rememberConsultation(nextConsultation);
-          if (mounted) setConsultation(nextConsultation);
+          if (mounted) {
+            setConsultation(nextConsultation);
+            setThreads((current) => current.map((thread) => thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread));
+          }
         }
       )
       .on(
@@ -1464,7 +1479,10 @@ export default function ChatScreen() {
         (payload) => {
           const nextConsultation = payload.new as ConsultationRecord;
           rememberConsultation(nextConsultation);
-          if (mounted) setConsultation(nextConsultation);
+          if (mounted) {
+            setConsultation(nextConsultation);
+            setThreads((current) => current.map((thread) => thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread));
+          }
         }
       )
       .subscribe();
@@ -1944,6 +1962,13 @@ export default function ChatScreen() {
     setActivePetId(null);
     setMedicalRecords([]);
     setSoapVisible(false);
+    setPatientFileVisible(false);
+    setPetSelectionVisible(false);
+    setFarmSelectionVisible(false);
+    setFarmRecordsVisible(false);
+    setFarmRecords([]);
+    setSelectedFarmId(null);
+    setFarmSoapVisible(false);
     router.setParams({
       conversationId: undefined,
       recipientId: undefined,
@@ -1972,6 +1997,13 @@ export default function ChatScreen() {
       setActivePetId(null);
       setMedicalRecords([]);
       setSoapVisible(false);
+      setPatientFileVisible(false);
+      setPetSelectionVisible(false);
+      setFarmSelectionVisible(false);
+      setFarmRecordsVisible(false);
+      setFarmRecords([]);
+      setSelectedFarmId(null);
+      setFarmSoapVisible(false);
       router.setParams({
         resetThread: undefined,
         conversationId: undefined,
@@ -1990,20 +2022,20 @@ export default function ChatScreen() {
     };
   }, [resetThreadParam, router]);
 
-  const openPatientFile = async (): Promise<string | null> => {
-    setPatientFileVisible(true);
+  const openPatientFile = async (showModal = true): Promise<PatientPet[]> => {
+    setPatientFileVisible(showModal);
     setPatientFileLoading(true);
     setPatientPets([]);
     setMedicalRecords([]);
     try {
       if (!active || !["vet", "veterinarian"].includes(userRole)) {
         console.warn("[Patient File] No active vet conversation available");
-        return null;
+        return [];
       }
       const targetClientId = consultation?.client_id || active.participantId;
       if (!targetClientId) {
         console.warn("[Patient File] No client ID available");
-        return null;
+        return [];
       }
       const { data, error } = await supabase
         .from("pets")
@@ -2015,21 +2047,22 @@ export default function ChatScreen() {
       const selectedPetId = pets[0]?.id || null;
       setPatientPets(pets);
       setActivePetId(selectedPetId);
-      if (selectedPetId) {
+      if (pets.length) {
         const { data: records, error: recordsError } = await supabase
-          .from("medical_records")
-          .select("id, created_at, pet_id, weight_kg, temperature_c, heart_rate_bpm, subjective, objective, assessment, plan")
-          .eq("pet_id", selectedPetId)
+          .from("pet_soap_records")
+          .select("id, created_at, pet_id, weight_kg, temperature_c, heart_rate_bpm, subjective, objective, assessment, plan, is_deleted")
+          .in("pet_id", pets.map((pet) => pet.id))
+          .eq("is_deleted", false)
           .order("created_at", { ascending: false });
         if (recordsError) throw recordsError;
         setMedicalRecords((records || []) as MedicalRecord[]);
       }
-      return selectedPetId;
+      return pets;
     } catch (error) {
       console.error("[Patient File] Failed to load pets:", error);
       setPatientPets([]);
       setMedicalRecords([]);
-      return null;
+      return [];
     } finally {
       setPatientFileLoading(false);
     }
@@ -2037,29 +2070,32 @@ export default function ChatScreen() {
 
   const selectPatientPet = async (petId: string) => {
     setActivePetId(petId);
-    const { data, error } = await supabase
-      .from("medical_records")
-      .select("id, created_at, pet_id, weight_kg, temperature_c, heart_rate_bpm, subjective, objective, assessment, plan")
-      .eq("pet_id", petId)
-      .order("created_at", { ascending: false });
-    if (error) {
-      Alert.alert("Unable to load history", error.message);
-      setMedicalRecords([]);
-      return;
-    }
-    setMedicalRecords((data || []) as MedicalRecord[]);
   };
 
-  const openFarmRecords = async (selectFarm = false, openSoap = false) => {
+  const deletePetSoapRecord = async (recordId: string) => {
+    const { error } = await supabase.from("pet_soap_records").update({ is_deleted: true }).eq("id", recordId);
+    if (error) {
+      Alert.alert("Unable to archive SOAP record", error.message);
+      return;
+    }
+    setMedicalRecords((current) => current.filter((record) => record.id !== recordId));
+  };
+
+  const openFarmRecords = async (selectFarm = false, openSoap = false, showModal = true): Promise<FarmRecord[]> => {
     const clientId = consultation?.client_id || active?.participantId;
-    if (!clientId) return;
     setFarmSelectionMode(selectFarm);
-    setFarmRecordsVisible(true);
+    setFarmRecordsVisible(showModal);
     setFarmRecordsLoading(true);
+    setFarmRecords([]);
+    if (!clientId) {
+      setFarmRecordsLoading(false);
+      setFarmRecordsVisible(false);
+      return [];
+    }
     try {
       const { data: farms, error: farmError } = await supabase
         .from("farm_records")
-        .select("id, species, breed, flock_size, location, restock_date")
+        .select("id, species, breed, flock_size, location, restock_date, medical_log, production_summary")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (farmError) throw farmError;
@@ -2067,8 +2103,9 @@ export default function ChatScreen() {
       const { data: soapRecords, error: soapError } = farmIds.length
         ? await supabase
             .from("farm_soap_records")
-            .select("id, farm_id, subjective, objective, tentative_diagnosis, plan, created_at")
+            .select("id, farm_id, subjective, objective, tentative_diagnosis, plan, created_at, is_deleted")
             .in("farm_id", farmIds)
+            .eq("is_deleted", false)
             .order("created_at", { ascending: false })
         : { data: [], error: null };
       if (soapError) throw soapError;
@@ -2082,23 +2119,33 @@ export default function ChatScreen() {
         if (!firstFarmId) {
           setFarmRecordsVisible(false);
           Alert.alert("No farm records found", "Add a farm record before completing a farm consultation.");
-          return;
+          return [];
         }
         setSelectedFarmId(firstFarmId);
         setFarmRecordsVisible(false);
         setFarmSoapVisible(true);
       }
+      return recordsWithHistory;
     } catch (error) {
       setFarmRecords([]);
+      setFarmRecordsVisible(false);
       Alert.alert("Unable to load farm records", error instanceof Error ? error.message : "Please try again.");
+      return [];
     } finally {
       setFarmRecordsLoading(false);
     }
   };
 
-  const chooseFarmConsultation = async () => {
-    setConsultationTypeVisible(false);
-    await openFarmRecords(true, true);
+  const deleteFarmSoapRecord = async (recordId: string) => {
+    const { error } = await supabase.from("farm_soap_records").update({ is_deleted: true }).eq("id", recordId);
+    if (error) {
+      Alert.alert("Unable to archive SOAP record", error.message);
+      return;
+    }
+    setFarmRecords((current) => current.map((farm) => ({
+      ...farm,
+      soapRecords: farm.soapRecords?.filter((record) => record.id !== recordId),
+    })));
   };
 
   const updateConsultation = async (status: ConsultationStatus) => {
@@ -2199,13 +2246,34 @@ export default function ChatScreen() {
 
   const beginPetConsultation = async () => {
     setConsultationTypeVisible(false);
-    const selectedPetId = activePetId || await openPatientFile();
-    if (!selectedPetId) {
-      Alert.alert("Select a patient", "Open Patient File and select a pet before ending the consultation.");
+    const pets = await openPatientFile(false);
+    if (!pets.length) {
+      Alert.alert("No pets found", "Add a pet record before completing a pet consultation.");
       return;
     }
-    setActivePetId(selectedPetId);
+    setPetSelectionVisible(true);
+  };
+
+  const choosePetForConsultation = (petId: string) => {
+    setActivePetId(petId);
+    setPetSelectionVisible(false);
     setSoapVisible(true);
+  };
+
+  const chooseFarmConsultation = async () => {
+    setConsultationTypeVisible(false);
+    const farms = await openFarmRecords(false, false, false);
+    if (!farms.length) {
+      Alert.alert("No farm records found", "Add a farm record before completing a farm consultation.");
+      return;
+    }
+    setFarmSelectionVisible(true);
+  };
+
+  const chooseFarmForConsultation = (farmId: string) => {
+    setSelectedFarmId(farmId);
+    setFarmSelectionVisible(false);
+    setFarmSoapVisible(true);
   };
 
   const createMedicalRecord = async (draft: SoapDraft) => {
@@ -2236,7 +2304,7 @@ export default function ChatScreen() {
     const plan = sanitizeInput(draft.plan).trim();
     setSoapSubmitting(true);
     try {
-      const { error } = await supabase.from("medical_records").insert({
+      const { error } = await supabase.from("pet_soap_records").insert({
         pet_id: activePetId,
         vet_id: session.user.id,
         conversation_id: activeConversationId,
@@ -2915,10 +2983,12 @@ export default function ChatScreen() {
           onSendRecording: sendRecording,
         }}
         />
-        <PatientFileOverlay visible={patientFileVisible} loading={patientFileLoading} pets={patientPets} activePetId={activePetId} records={medicalRecords} userRole={userRole} onSelectPet={(petId) => void selectPatientPet(petId)} onClose={() => setPatientFileVisible(false)} />
+        <PatientFileOverlay visible={patientFileVisible} loading={patientFileLoading} pets={patientPets} activePetId={activePetId} records={medicalRecords} userRole={userRole} onDeleteRecord={(recordId) => void deletePetSoapRecord(recordId)} onSelectPet={(petId) => void selectPatientPet(petId)} onClose={() => setPatientFileVisible(false)} />
         <SoapConsultationModal visible={soapVisible} submitting={soapSubmitting} onClose={() => setSoapVisible(false)} onSubmit={createMedicalRecord} />
         <ConsultationTypeModal visible={consultationTypeVisible} onClose={() => setConsultationTypeVisible(false)} onPet={() => { void beginPetConsultation(); }} onFarm={() => { void chooseFarmConsultation(); }} />
-        <FarmRecordsModal visible={farmRecordsVisible} loading={farmRecordsLoading} records={farmRecords} selectFarm={farmSelectionMode} onClose={() => setFarmRecordsVisible(false)} onSelectFarm={(farmId) => { setFarmRecordsVisible(false); setSelectedFarmId(farmId); setFarmSoapVisible(true); }} />
+        <EntitySelectionModal visible={petSelectionVisible} title="Select Pet for SOAP History" items={patientPets} getTitle={(pet) => pet.name} getSubtitle={(pet) => `${pet.type} - ${pet.breed || "Breed unknown"}`} onClose={() => setPetSelectionVisible(false)} onSelect={(pet) => choosePetForConsultation(pet.id)} />
+        <EntitySelectionModal visible={farmSelectionVisible} title="Select Farm for SOAP History" items={farmRecords} getTitle={(farm) => farm.species} getSubtitle={(farm) => `${farm.breed || "Breed unknown"} - ${farm.flock_size ?? 0} animals`} onClose={() => setFarmSelectionVisible(false)} onSelect={(farm) => chooseFarmForConsultation(farm.id)} />
+        <FarmRecordsModal visible={farmRecordsVisible} loading={farmRecordsLoading} records={farmRecords} selectFarm={farmSelectionMode} userRole={userRole} clientId={consultation?.client_id || active?.participantId || null} onDeleteRecord={(recordId) => void deleteFarmSoapRecord(recordId)} onRefresh={() => { void openFarmRecords(farmSelectionMode); }} onClose={() => setFarmRecordsVisible(false)} onSelectFarm={(farmId) => { setFarmRecordsVisible(false); setSelectedFarmId(farmId); setFarmSoapVisible(true); }} />
         <FarmSoapModal visible={farmSoapVisible} submitting={farmSoapSubmitting} onClose={() => setFarmSoapVisible(false)} onSubmit={createFarmSoapRecord} />
       </View>
     );
@@ -3395,7 +3465,7 @@ function ChatRoom({
             {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
                 <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
-                <Text style={styles.completeButtonText}>Patient File</Text>
+                <Text style={styles.completeButtonText}>Pet Records</Text>
               </TouchableOpacity>
             ) : null}
             {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
@@ -4148,18 +4218,76 @@ function AttachmentOptions({
   );
 }
 
-function PatientFileOverlay({ visible, loading, pets, activePetId, records, userRole, onSelectPet, onClose }: { visible: boolean; loading: boolean; pets: PatientPet[]; activePetId: string | null; records: MedicalRecord[]; userRole: string; onSelectPet: (petId: string) => void; onClose: () => void }) {
+function PatientFileOverlay({ visible, loading, pets, activePetId, records, userRole, onDeleteRecord, onSelectPet, onClose }: { visible: boolean; loading: boolean; pets: PatientPet[]; activePetId: string | null; records: MedicalRecord[]; userRole: string; onDeleteRecord: (recordId: string) => void; onSelectPet: (petId: string) => void; onClose: () => void }) {
   const [historyVersion, setHistoryVersion] = useState(0);
   if (!visible) return null;
-  return <View style={styles.patientOverlay}><View style={styles.patientSheet}><TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close patient file"><X size={22} color="#FFFFFF" /></TouchableOpacity><Text style={styles.patientTitle}>Patient File</Text>{loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? <Text style={styles.empty}>No patient record found for this client</Text> : <ScrollView>{pets.map((pet) => <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>{pet.photos?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>{pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}</ScrollView> : null}<TouchableOpacity onPress={() => onSelectPet(pet.id)}><Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? "  â€¢ Selected" : ""}</Text></TouchableOpacity><Text style={styles.patientDetail}>{pet.type} Â· {pet.breed || "Breed unknown"} Â· {formatPatientAge(pet.dob)}</Text><Text style={styles.patientLabel}>Vaccination</Text><Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text><Text style={styles.patientLabel}>Medical Notes & History</Text><Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>{activePetId === pet.id ? <><Text style={styles.patientLabel}>SOAP History</Text>{records.length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.map((record) => <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}><Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text><Text style={styles.patientLabel}>Vitals</Text><Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg Â· Temp: {record.temperature_c ?? "-"} Â°C Â· Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text><Text style={styles.patientLabel}>Assessment</Text><Text style={styles.patientDetail}>{record.assessment}</Text><Text style={styles.patientLabel}>Subjective</Text><Text style={styles.patientDetail}>{record.subjective}</Text><Text style={styles.patientLabel}>Objective</Text><Text style={styles.patientDetail}>{record.objective || "-"}</Text><Text style={styles.patientLabel}>Plan</Text><Text style={styles.patientDetail}>{record.plan}</Text></View>)}</> : null}<PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />{userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}</View>)}</ScrollView>}</View></View>;
+  return (
+    <View style={styles.patientOverlay}>
+      <View style={styles.patientSheet}>
+        <TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close patient file">
+          <X size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.patientTitle}>Pet Records</Text>
+        {loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? (
+          <Text style={styles.empty}>No patient record found for this client</Text>
+        ) : (
+          <ScrollView>
+            {pets.map((pet) => (
+              <View key={`${pet.id}-${historyVersion}`} style={styles.patientPet}>
+                {pet.photos?.length ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientGallery}>
+                    {pet.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.patientPhoto} />)}
+                  </ScrollView>
+                ) : null}
+                <TouchableOpacity onPress={() => onSelectPet(pet.id)}>
+                  <Text style={styles.patientPetName}>{pet.name}{activePetId === pet.id ? " - Selected" : ""}</Text>
+                </TouchableOpacity>
+                <Text style={styles.patientDetail}>{pet.type} - {pet.breed || "Breed unknown"} - {formatPatientAge(pet.dob)}</Text>
+                <Text style={styles.patientLabel}>Vaccination</Text>
+                <Text style={styles.patientDetail}>{pet.vaccination_status || "Not provided"}</Text>
+                <Text style={styles.patientLabel}>Medical Notes & History</Text>
+                <Text style={styles.patientDetail}>{pet.medical_notes || "No medical notes provided."}</Text>
+                <>
+                    <Text style={styles.patientLabel}>SOAP History</Text>
+                    {records.filter((record) => record.pet_id === pet.id).length === 0 ? <Text style={styles.patientDetail}>No consultation records found.</Text> : records.filter((record) => record.pet_id === pet.id).map((record) => (
+                      <View key={record.id} style={{ backgroundColor: "#1C2541", borderRadius: 8, padding: 10, marginTop: 8 }}>
+                        <Text style={styles.patientDetail}>{new Date(record.created_at).toLocaleDateString()}</Text>
+                        <Text style={styles.patientLabel}>Vitals</Text>
+                        <Text style={styles.patientDetail}>Weight: {record.weight_kg ?? "-"} kg - Temp: {record.temperature_c ?? "-"} C - Heart rate: {record.heart_rate_bpm ?? "-"} bpm</Text>
+                        <Text style={styles.patientLabel}>Assessment</Text>
+                        <Text style={styles.patientDetail}>{record.assessment}</Text>
+                        <Text style={styles.patientLabel}>Subjective</Text>
+                        <Text style={styles.patientDetail}>{record.subjective}</Text>
+                        <Text style={styles.patientLabel}>Objective</Text>
+                        <Text style={styles.patientDetail}>{record.objective || "-"}</Text>
+                        <Text style={styles.patientLabel}>Plan</Text>
+                        <Text style={styles.patientDetail}>{record.plan}</Text>
+                        {userRole === "vet" || userRole === "veterinarian" ? <TouchableOpacity style={styles.deleteButton} onPress={() => onDeleteRecord(record.id)}><Text style={styles.deleteButtonText}>Mark as Done</Text></TouchableOpacity> : null}
+                      </View>
+                    ))}
+                </>
+                <PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />
+                {userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function EntitySelectionModal<T extends { id: string }>({ visible, title, items, getTitle, getSubtitle, onClose, onSelect }: { visible: boolean; title: string; items: T[]; getTitle: (item: T) => string; getSubtitle: (item: T) => string; onClose: () => void; onSelect: (item: T) => void }) {
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.entitySelectionBackdrop}><View style={styles.entitySelectionModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>{title}</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close entity selection"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView contentContainerStyle={styles.entitySelectionList}>{items.map((item) => <TouchableOpacity key={item.id} style={styles.entitySelectionItem} onPress={() => onSelect(item)}><View style={styles.flex}><Text style={styles.primary}>{getTitle(item)}</Text><Text style={styles.farmRecordDetail}>{getSubtitle(item)}</Text></View><MaterialCommunityIcons name="chevron-right" size={22} color="#60A5FA" /></TouchableOpacity>)}</ScrollView></View></View></Modal>;
 }
 
 function ConsultationTypeModal({ visible, onClose, onPet, onFarm }: { visible: boolean; onClose: () => void; onPet: () => void; onFarm: () => void }) {
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={styles.consultationTypeModal}><Text style={styles.invoiceModalTitle}>Which type of consultation summary are you completing?</Text><TouchableOpacity style={styles.consultationTypeButton} onPress={onPet}><Text style={styles.completeButtonText}>Pet Consultation</Text></TouchableOpacity><TouchableOpacity style={styles.consultationTypeButton} onPress={onFarm}><Text style={styles.completeButtonText}>Farm Consultation</Text></TouchableOpacity><TouchableOpacity onPress={onClose}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity></View></View></Modal>;
 }
 
-function FarmRecordsModal({ visible, loading, records, selectFarm, onClose, onSelectFarm }: { visible: boolean; loading: boolean; records: FarmRecord[]; selectFarm: boolean; onClose: () => void; onSelectFarm: (farmId: string) => void }) {
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.patientOverlay}><View style={styles.farmRecordsSheet}><View style={styles.patientHeader}><Text style={styles.patientTitle}>Farm & Livestock Records</Text><TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close farm records"><X size={22} color="#FFFFFF" /></TouchableOpacity></View>{loading ? <ActivityIndicator color="#10B981" /> : records.length === 0 ? <Text style={styles.empty}>No farm records found for this client.</Text> : <ScrollView style={styles.farmRecordsScroll} contentContainerStyle={styles.farmRecordsContent}>{records.map((farm) => <View key={farm.id} style={styles.farmRecordCard}><TouchableOpacity disabled={!selectFarm} onPress={selectFarm ? () => onSelectFarm(farm.id) : undefined}><Text style={styles.primary}>{farm.species}</Text><Text style={styles.farmRecordDetail}>Breed: {farm.breed || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Flock Size: {farm.flock_size ?? 0}</Text><Text style={styles.farmRecordDetail}>Location: {farm.location || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Restock Date: {farm.restock_date || "Not specified"}</Text>{farm.soapRecords?.length ? <View><Text style={styles.farmRecordHistory}>SOAP History</Text>{farm.soapRecords.map((soap) => <View key={soap.id} style={styles.farmSoapHistory}><Text style={styles.farmRecordDetail}>{new Date(soap.created_at).toLocaleDateString()}</Text>{soap.subjective ? <Text style={styles.farmRecordDetail}>Symptoms: {soap.subjective}</Text> : null}{soap.objective ? <Text style={styles.farmRecordDetail}>Findings: {soap.objective}</Text> : null}{soap.tentative_diagnosis ? <Text style={styles.farmRecordDetail}>Tentative Diagnosis: {soap.tentative_diagnosis}</Text> : null}{soap.plan ? <Text style={styles.farmRecordDetail}>Plan: {soap.plan}</Text> : null}</View>)}</View> : <Text style={styles.farmRecordDetail}>No SOAP history</Text>}</TouchableOpacity></View>)}</ScrollView>}</View></View></Modal>;
+function FarmRecordsModal({ visible, loading, records, selectFarm, userRole, clientId, onDeleteRecord, onRefresh, onClose, onSelectFarm }: { visible: boolean; loading: boolean; records: FarmRecord[]; selectFarm: boolean; userRole: string; clientId: string | null; onDeleteRecord: (recordId: string) => void; onRefresh: () => void; onClose: () => void; onSelectFarm: (farmId: string) => void }) {
+  const isVet = userRole === 'vet' || userRole === 'veterinarian';
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.patientOverlay}><View style={styles.farmRecordsSheet}><View style={styles.patientHeader}><Text style={styles.patientTitle}>Farm & Livestock Records</Text><TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close farm records"><X size={22} color="#FFFFFF" /></TouchableOpacity></View>{loading ? <ActivityIndicator color="#10B981" /> : records.length === 0 ? <Text style={styles.empty}>No farm records found for this client.</Text> : <ScrollView style={styles.farmRecordsScroll} contentContainerStyle={styles.farmRecordsContent}>{records.map((farm) => { const farmSoapRecords = (farm.soapRecords || []).filter((soap) => soap.farm_id === farm.id); return <View key={farm.id} style={styles.farmRecordCard}><TouchableOpacity disabled={!selectFarm} onPress={selectFarm ? () => onSelectFarm(farm.id) : undefined}><Text style={styles.primary}>{farm.species}</Text><Text style={styles.farmRecordDetail}>Breed: {farm.breed || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Flock Size: {farm.flock_size ?? 0}</Text><Text style={styles.farmRecordDetail}>Location: {farm.location || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Restock Date: {farm.restock_date || "Not specified"}</Text>{farm.medical_log ? <><Text style={styles.farmRecordHistory}>Medical Log</Text><Text style={styles.farmRecordDetail}>{farm.medical_log}</Text></> : null}{farm.production_summary ? <><Text style={styles.farmRecordHistory}>Production Summary</Text><Text style={styles.farmRecordDetail}>{farm.production_summary}</Text></> : null}{farmSoapRecords.length ? <View><Text style={styles.farmRecordHistory}>SOAP History</Text>{farmSoapRecords.map((soap) => <View key={soap.id} style={styles.farmSoapHistory}><Text style={styles.farmRecordDetail}>{new Date(soap.created_at).toLocaleDateString()}</Text>{soap.subjective ? <Text style={styles.farmRecordDetail}>Symptoms: {soap.subjective}</Text> : null}{soap.objective ? <Text style={styles.farmRecordDetail}>Findings: {soap.objective}</Text> : null}{soap.tentative_diagnosis ? <Text style={styles.farmRecordDetail}>Tentative Diagnosis: {soap.tentative_diagnosis}</Text> : null}{soap.plan ? <Text style={styles.farmRecordDetail}>Plan: {soap.plan}</Text> : null}{isVet ? <TouchableOpacity style={styles.deleteButton} onPress={() => onDeleteRecord(soap.id)}><Text style={styles.deleteButtonText}>Mark as Done</Text></TouchableOpacity> : null}</View>)}</View> : <Text style={styles.farmRecordDetail}>No SOAP history</Text>}</TouchableOpacity><FarmMedicalHistory farmId={farm.id} />{isVet && clientId ? <VetFarmMedicalLogForm farmId={farm.id} clientId={clientId} onSaved={onRefresh} /> : null}</View>; })}</ScrollView>}</View></View></Modal>;
 }
 
 function FarmSoapModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: FarmSoapDraft) => Promise<void> }) {
@@ -4171,7 +4299,7 @@ function FarmSoapModal({ visible, submitting, onClose, onSubmit }: { visible: bo
 function SoapConsultationModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: SoapDraft) => Promise<void> }) {
   const [draft, setDraft] = useState<SoapDraft>({ weightKg: "", temperatureC: "", heartRateBpm: "", subjective: "", objective: "", assessment: "", plan: "" });
   const update = (field: keyof SoapDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close SOAP consultation"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (Â°C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={[styles.prescriptionModal, { backgroundColor: "#1C2541" }]}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>SOAP Consultation Summary</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close SOAP consultation"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}><Text style={styles.prescriptionLabel}>Vitals</Text><View style={{ flexDirection: "row", gap: 8 }}><TextInput value={draft.weightKg} onChangeText={(value) => update("weightKg", value)} keyboardType="decimal-pad" placeholder="Weight (kg)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.temperatureC} onChangeText={(value) => update("temperatureC", value)} keyboardType="decimal-pad" placeholder="Temp (C)" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /><TextInput value={draft.heartRateBpm} onChangeText={(value) => update("heartRateBpm", value)} keyboardType="number-pad" placeholder="Heart rate" placeholderTextColor="#64748B" style={[styles.input, { flex: 1 }]} /></View>{(["subjective", "objective", "assessment", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Clinical Findings" : field === "assessment" ? "Diagnosis / Primary Concern" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
 function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeMessage; currentUserId: string; onPayInvoice: (orderId: string) => Promise<void> }) {
@@ -4535,7 +4663,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
             {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
                 <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
-                <Text style={styles.completeButtonText}>Patient File</Text>
+                <Text style={styles.completeButtonText}>Pet Records</Text>
               </TouchableOpacity>
             ) : null}
             {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (

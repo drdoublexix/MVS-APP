@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
@@ -270,7 +271,7 @@ export default function VetDashboardScreen() {
         <View style={styles.productModalOverlay}>
           <View style={styles.productModal}>
             <View style={styles.productModalHeader}><Text style={styles.productModalTitle}>Product Details</Text><TouchableOpacity onPress={() => setSelectedProduct(null)} accessibilityLabel="Close product details"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View>
-            {selectedProduct?.imageUrl ? <Image source={{ uri: selectedProduct.imageUrl }} style={styles.productModalImage} resizeMode="cover" /> : null}
+            <ProductImageCarousel images={selectedProduct?.images} fallbackImage={selectedProduct?.imageUrl} height={180} />
             <Text style={styles.productModalName}>{selectedProduct?.name}</Text>
             <Text style={styles.productModalLabel}>Description</Text>
             <Text style={styles.productModalText}>{selectedProduct?.description || 'No description available.'}</Text>
@@ -429,7 +430,7 @@ const styles = StyleSheet.create({
   askButtonText: { color: '#FFFFFF', fontWeight: '700' },
   vetCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, marginTop: 5 },
   vetCtaText: { color: '#10B981', fontSize: 13, fontWeight: '700' },
-  supportFab: { position: 'absolute', bottom: 24, right: 20, zIndex: 9999, width: 56, height: 56, borderRadius: 28, backgroundColor: '#005F53', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  supportFab: { position: 'absolute', bottom: 16, right: 20, zIndex: 9999, width: 56, height: 56, borderRadius: 28, backgroundColor: '#005F53', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   aiError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#451A1A', borderRadius: 10, padding: 12, marginBottom: 12 },
   aiErrorText: { flex: 1, color: '#FCA5A5', fontSize: 13, marginRight: 12 },
   retryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },

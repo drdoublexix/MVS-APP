@@ -12,6 +12,7 @@ export type MarketplaceProduct = {
   category: string;
   stock: number;
   imageUrl?: string;
+  images?: string[];
   description?: string;
 };
 
@@ -26,6 +27,7 @@ const normalizeProduct = (product: any): MarketplaceProduct => ({
   category: product.category || 'General',
   stock: Number(product.stock || 0),
   imageUrl: product.image_url || product.imageUrl || product.image || product.photo_url || undefined,
+  images: Array.isArray(product.images) ? product.images.filter((image: unknown): image is string => typeof image === 'string' && image.length > 0) : [],
   description: product.description || '',
 });
 

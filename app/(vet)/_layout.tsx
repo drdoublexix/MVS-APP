@@ -18,12 +18,13 @@ export default function VetLayout() {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 68,
+          height: 56,
+          minHeight: 56,
+          maxHeight: 56,
+          paddingTop: 1,
+          paddingBottom: 0,
         },
+        tabBarLabelStyle: { fontSize: 11, lineHeight: 13, marginBottom: 1 },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="view-dashboard" color={color} size={size} /> }} />

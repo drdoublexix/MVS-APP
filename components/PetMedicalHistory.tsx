@@ -29,7 +29,7 @@ export default function PetMedicalHistory({ petId }: { petId: string }) {
         .order('administered_date', { ascending: false });
       if (error) console.error('[Pet Medical History] Failed to load records:', error);
       if (mounted) {
-        setRecords((data || []) as MedicalRecord[]);
+        setRecords(error ? [] : (data || []) as MedicalRecord[]);
         setLoading(false);
       }
     };

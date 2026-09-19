@@ -67,7 +67,7 @@ export default function EditPetModal({ isVisible, onClose, pet, userId, onSave }
       <View style={styles.overlay}>
         <View style={styles.modal}>
           <TouchableOpacity style={styles.close} onPress={onClose} accessibilityLabel="Close pet editor"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity>
-          <ScrollView>
+          <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator>
             <Text style={styles.modalTitle}>{draft.name ? 'Edit Pet' : 'Add Pet'}</Text>
             <Field label="Pet Name" value={draft.name} onChangeText={(value) => update('name', value)} />
             <Field label="Pet Type (Animal)" value={draft.type} onChangeText={(value) => update('type', value)} placeholder="Dog, cat, bird..." />
@@ -94,8 +94,10 @@ function Field({ label, value, onChangeText, placeholder }: { label: string; val
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'flex-end' },
-  modal: { maxHeight: '90%', backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 22 },
+  overlay: { flex: 1, backgroundColor: '#000000B3', justifyContent: 'center', alignItems: 'center', padding: 16, zIndex: 1000 },
+  modal: { width: '100%', maxWidth: 500, maxHeight: '88%', backgroundColor: '#1E293B', borderRadius: 14, padding: 22 },
+  modalBody: { flexGrow: 0 },
+  modalContent: { paddingBottom: 4 },
   pickerModal: { backgroundColor: '#1E293B', borderRadius: 14, padding: 22, alignItems: 'center' },
   close: { alignSelf: 'flex-end' }, closeText: { color: '#94A3B8' }, modalTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '700', marginBottom: 18 }, field: { marginBottom: 12 }, label: { color: '#94A3B8', fontSize: 12, marginBottom: 6 }, input: { backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', borderRadius: 8, color: '#FFFFFF', padding: 11 }, webDate: { backgroundColor: '#0F172A', border: '1px solid #334155', borderRadius: 8, color: '#FFFFFF', padding: 11, width: '100%' }, photoLabel: { color: '#CBD5E1', marginTop: 6, marginBottom: 8 }, photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, photoPreview: { width: 64, height: 64, borderRadius: 8 }, addPhoto: { width: 64, height: 64, borderRadius: 8, borderWidth: 1, borderColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }, addPhotoText: { color: '#60A5FA', fontSize: 11, textAlign: 'center' }, save: { backgroundColor: '#10B981', borderRadius: 9, padding: 13, alignItems: 'center', marginTop: 18, marginBottom: 20 }, saveText: { color: '#FFFFFF', fontWeight: '700' }
 });

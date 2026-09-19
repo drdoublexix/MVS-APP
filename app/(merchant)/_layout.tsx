@@ -17,12 +17,13 @@ export default function MerchantLayout() {
           backgroundColor: '#fff',
           borderTopColor: '#eee',
           borderTopWidth: 1,
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 68,
+          height: 56,
+          minHeight: 56,
+          maxHeight: 56,
+          paddingTop: 1,
+          paddingBottom: 0,
         },
+        tabBarLabelStyle: { fontSize: 11, lineHeight: 13, marginBottom: 1 },
       }}
     >
       <Tabs.Screen

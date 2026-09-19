@@ -334,7 +334,7 @@ export default function VetsScreen() {
         <View style={styles.overlay}>
           <View style={styles.modal}>
             {selectedVet && (
-              <ScrollView>
+              <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator>
                 <TouchableOpacity style={styles.close} onPress={() => setSelectedVet(null)}>
                   <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -389,17 +389,19 @@ export default function VetsScreen() {
       <Modal visible={Boolean(intakeVet)} animationType="slide" transparent onRequestClose={() => setIntakeVet(null)}>
         <View style={styles.overlay}>
           <View style={styles.intake}>
-            <TouchableOpacity style={styles.close} onPress={() => setIntakeVet(null)}>
-              <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.modalDoctor}>{intakeMode}</Text>
-            <Text style={styles.bio}>What would you like help with today?</Text>
-            {categories.map((category) => (
-              <TouchableOpacity key={category} style={styles.category} onPress={() => startChat(category)}>
-                <Text style={styles.categoryText}>{category}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#3B82F6" />
+            <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator>
+              <TouchableOpacity style={styles.close} onPress={() => setIntakeVet(null)}>
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
               </TouchableOpacity>
-            ))}
+              <Text style={styles.modalDoctor}>{intakeMode}</Text>
+              <Text style={styles.bio}>What would you like help with today?</Text>
+              {categories.map((category) => (
+                <TouchableOpacity key={category} style={styles.category} onPress={() => startChat(category)}>
+                  <Text style={styles.categoryText}>{category}</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color="#3B82F6" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -428,8 +430,10 @@ const styles = StyleSheet.create({
   secondaryText: { color: '#E2E8F0', fontWeight: '700' },
   primaryButton: { flex: 1, backgroundColor: '#3B82F6', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   primaryText: { color: '#FFFFFF', fontWeight: '700' },
-  overlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'flex-end' },
-  modal: { maxHeight: '88%', backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 22 },
+  overlay: { flex: 1, backgroundColor: '#000000B3', justifyContent: 'center', alignItems: 'center', padding: 16, zIndex: 1000 },
+  modal: { width: '100%', maxWidth: 500, maxHeight: '88%', backgroundColor: '#1E293B', borderRadius: 14, padding: 22 },
+  modalBody: { flexGrow: 0 },
+  modalContent: { paddingBottom: 4 },
   close: { alignSelf: 'flex-end' },
   profileAvatar: { width: 92, height: 92, borderRadius: 28, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginTop: 6 },
   profileAvatarImage: { width: '100%', height: '100%', borderRadius: 28 },
@@ -440,7 +444,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   online: { flex: 1, backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   actionText: { color: '#FFFFFF', fontWeight: '700' },
-  intake: { maxHeight: '70%', backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  intake: { width: '100%', maxWidth: 500, maxHeight: '85%', backgroundColor: '#1E293B', borderRadius: 14, padding: 20 },
   category: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 10, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#334155' },
   categoryText: { color: '#FFFFFF', fontWeight: '600' },
   ratingSection: { alignItems: 'center', marginTop: 14 },
