@@ -76,6 +76,15 @@
       ]
     },
     "web": {
+      "name": "MVS",
+      "shortName": "MVS",
+      "lang": "en",
+      "description": "MVS connects pet owners, vets, and merchants in a modern pet care marketplace.",
+      "display": "standalone",
+      "orientation": "portrait",
+      "backgroundColor": "#08111F",
+      "themeColor": "#08111F",
+      "startUrl": "/",
       "favicon": "./assets/images/favicon.jpeg"
     },
     "plugins": [
