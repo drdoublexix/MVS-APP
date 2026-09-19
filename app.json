@@ -4,7 +4,7 @@
     "slug": "mvs-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/android-icon-background.png",
     "userInterfaceStyle": "light",
     "scheme": "mvsapp",
     "extra": {
@@ -50,7 +50,7 @@
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#08111F"
       },
       "intentFilters": [
         {
