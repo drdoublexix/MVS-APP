@@ -15,6 +15,7 @@ import {
     View,
 } from "react-native";
 import KnowledgeHubSection from "../../components/KnowledgeHubSection";
+import MarketplaceBrowseModal from "../../components/MarketplaceBrowseModal";
 import ProductImageCarousel from "../../components/ProductImageCarousel";
 import WelcomeModal from "../../components/WelcomeModal";
 import {
@@ -22,10 +23,11 @@ import {
     fetchMarketplaceProducts,
     useMarketplace,
 } from "../../lib/marketplace";
+import { parsePriceInput } from "../../lib/price";
+import { isProductCategory, PRODUCT_CATEGORIES } from "../../lib/productCategories";
 import { sanitizeInput } from "../../lib/sanitize";
 import { getCurrentUser, supabase } from "../../lib/supabase";
 
-const categories = ["Food", "Accessories", "Animals", "Agro-allied"];
 const naira = (value: number) => `₦${value.toLocaleString("en-NG")}`;
 
 export default function MerchantDashboardScreen() {
@@ -33,6 +35,7 @@ export default function MerchantDashboardScreen() {
   const { products } = useMarketplace();
   const [visible, setVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
+  const [marketplaceBrowseVisible, setMarketplaceBrowseVisible] = useState(false);
   const [form, setForm] = useState({
     title: "",
     category: "",
@@ -196,11 +199,11 @@ export default function MerchantDashboardScreen() {
   const publish = async () => {
     const cleanTitle = sanitizeInput(form.title);
     const cleanCategory = sanitizeInput(form.category);
-    const price = Number(form.price);
+    const price = parsePriceInput(form.price);
     const stock = Number(form.stock);
     if (
       !cleanTitle ||
-      !cleanCategory ||
+      !isProductCategory(cleanCategory) ||
       !Number.isFinite(price) ||
       price <= 0 ||
       !Number.isInteger(stock) ||
@@ -229,7 +232,7 @@ export default function MerchantDashboardScreen() {
         stock,
         merchant: user?.user_metadata?.full_name || "MVS Merchant Store",
         merchantId,
-        icon: form.category === "Food" ? "food" : "package",
+        icon: cleanCategory === "Animal Feeds" || cleanCategory === "Pet Food" ? "food" : "package",
       });
 
       await fetchMarketplaceProducts();
@@ -278,7 +281,12 @@ export default function MerchantDashboardScreen() {
           <MaterialCommunityIcons name="plus" size={21} color="#FFFFFF" />
           <Text style={styles.addText}>Add New Product</Text>
         </TouchableOpacity>
-        <Text style={styles.sectionTitle}>Global Marketplace Inventory</Text>
+        <View style={styles.marketplaceHeader}>
+          <Text style={styles.sectionTitle}>Global Marketplace Inventory</Text>
+          <TouchableOpacity onPress={() => setMarketplaceBrowseVisible(true)}>
+            <Text style={styles.browseAction}>Browse All</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.grid}>
         {products.map((product) => {
           const badge = getOrderBadge(productOrderStatuses[String(product.id)]);
@@ -308,6 +316,12 @@ export default function MerchantDashboardScreen() {
         })}
         </View>
       </ScrollView>
+      <MarketplaceBrowseModal
+        visible={marketplaceBrowseVisible}
+        products={products}
+        onClose={() => setMarketplaceBrowseVisible(false)}
+        onSelectProduct={setSelectedProduct}
+      />
       <Modal visible={selectedProduct !== null} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
         <View style={styles.productModalOverlay}>
           <View style={styles.productModal}>
@@ -351,7 +365,7 @@ export default function MerchantDashboardScreen() {
             />
             <Text style={styles.label}>Category</Text>
             <View style={styles.categories}>
-              {categories.map((category) => (
+              {PRODUCT_CATEGORIES.map((category) => (
                 <TouchableOpacity
                   key={category}
                   onPress={() => setForm({ ...form, category })}
@@ -376,7 +390,7 @@ export default function MerchantDashboardScreen() {
               value={form.price}
               onChangeText={(price) => setForm({ ...form, price })}
               style={styles.input}
-              placeholder="e.g. 5500"
+              placeholder="e.g. 50,000"
               placeholderTextColor="#64748B"
               keyboardType="decimal-pad"
             />
@@ -478,11 +492,21 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   addText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  marketplaceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   sectionTitle: {
     color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "700",
-    marginBottom: 13,
+  },
+  browseAction: {
+    color: "#3B82F6",
+    fontWeight: "600",
+    fontSize: 13,
   },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   product: {

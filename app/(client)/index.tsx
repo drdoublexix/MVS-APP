@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
 import { requestAiAssistant } from '../../lib/aiAssistant';
@@ -36,6 +37,7 @@ export default function ClientHome() {
   const [productOrderStatuses, setProductOrderStatuses] = useState<Record<string, string>>({});
   const [user, setUser] = useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
   const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
+  const [marketplaceBrowseVisible, setMarketplaceBrowseVisible] = useState(false);
   const messagesScrollRef = useRef<ScrollView>(null);
 
   const firstName = user?.user_metadata?.full_name?.split(' ')[0] || user?.user_metadata?.first_name || 'there';
@@ -266,7 +268,7 @@ export default function ClientHome() {
           </TouchableOpacity>
         </View>
 
-        <SectionHeader title="Marketplace" action="Browse All" />
+        <SectionHeader title="Marketplace" action="Browse All" onAction={() => setMarketplaceBrowseVisible(true)} />
         <View style={styles.grid}>
           {products.map((product) => {
             const badge = getOrderBadge(productOrderStatuses[String(product.id)]);
@@ -290,6 +292,13 @@ export default function ClientHome() {
         </View>
 
       </ScrollView>
+
+      <MarketplaceBrowseModal
+        visible={marketplaceBrowseVisible}
+        products={products}
+        onClose={() => setMarketplaceBrowseVisible(false)}
+        onSelectProduct={openProductDetails}
+      />
 
       <Modal visible={selectedProduct !== null} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
         <View style={styles.productModalOverlay}>

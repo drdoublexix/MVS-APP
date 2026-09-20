@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
 import { requestAiAssistant } from '../../lib/aiAssistant';
@@ -26,6 +27,7 @@ export default function VetDashboardScreen() {
   const router = useRouter();
   const { products } = useMarketplace();
   const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
+  const [marketplaceBrowseVisible, setMarketplaceBrowseVisible] = useState(false);
   const [totalPatients, setTotalPatients] = useState(0);
   const [overallRating, setOverallRating] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
@@ -261,11 +263,23 @@ export default function VetDashboardScreen() {
 
         <KnowledgeHubSection />
 
-        <Text style={styles.sectionTitle}>Global Marketplace</Text>
+        <View style={styles.marketplaceHeader}>
+          <Text style={styles.sectionTitle}>Global Marketplace</Text>
+          <TouchableOpacity onPress={() => setMarketplaceBrowseVisible(true)}>
+            <Text style={styles.browseAction}>Browse All</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.marketplace}>
           {products.map((product) => <TouchableOpacity key={product.id} style={styles.marketProduct} activeOpacity={0.85} onPress={() => setSelectedProduct(product)}>{product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.marketProductImage} /> : <View style={styles.marketProductPlaceholder}><MaterialCommunityIcons name={product.icon as any} size={24} color="#CBD5E1" /></View>}<Text style={styles.marketName} numberOfLines={1}>{product.name}</Text><Text style={styles.marketPrice}>₦{product.price.toLocaleString('en-NG')}</Text><Text style={styles.muted}>{product.merchant}</Text><View style={styles.marketDetailsButton}><Text style={styles.marketDetailsText}>View Details</Text></View></TouchableOpacity>)}
         </View>
       </ScrollView>
+
+      <MarketplaceBrowseModal
+        visible={marketplaceBrowseVisible}
+        products={products}
+        onClose={() => setMarketplaceBrowseVisible(false)}
+        onSelectProduct={setSelectedProduct}
+      />
 
       <Modal visible={selectedProduct !== null} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
         <View style={styles.productModalOverlay}>
@@ -448,7 +462,9 @@ const styles = StyleSheet.create({
   metricIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   muted: { color: '#94A3B8', fontSize: 12 },
   metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 5, textAlign: 'center' },
-  sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  marketplaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  browseAction: { color: '#3B82F6', fontWeight: '600', fontSize: 13 },
   marketplace: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   marketProduct: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 12 },
   marketProductImage: { width: '100%', height: 96, borderRadius: 8, resizeMode: 'cover' },

@@ -1012,7 +1012,7 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.section}>
           <View style={styles.rowHeader}>
-            <Text style={styles.sectionTitle}>My Pets</Text>
+            <Text style={styles.sectionTitle}>My Pets Record</Text>
             <TouchableOpacity onPress={() => openPet()}>
               <Text style={styles.add}>+</Text>
             </TouchableOpacity>
@@ -1057,13 +1057,9 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.section}>
           <View style={styles.rowHeader}>
-            <Text style={styles.sectionTitle}>Farm & Livestock Records</Text>
-            <TouchableOpacity onPress={openAddFarmModal}>
-              <Text
-                style={{ color: "#3B82F6", fontWeight: "700", fontSize: 12 }}
-              >
-                Add Farm Record
-              </Text>
+            <Text style={styles.sectionTitle}>My Farm & Livestock Records</Text>
+            <TouchableOpacity onPress={() => openAddFarmModal()}>
+              <Text style={styles.add}>+</Text>
             </TouchableOpacity>
           </View>
           {farmRecords.length === 0 ? (

@@ -3,6 +3,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { fetchMarketplaceProducts } from '../../lib/marketplace';
+import { parsePriceInput } from '../../lib/price';
+import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
 type InventoryItem = {
@@ -73,9 +75,9 @@ export default function MerchantInventoryScreen() {
   const saveEdit = async () => {
     if (!editingItem) return;
     const title = editDraft.title.trim();
-    const price = Number(editDraft.price);
+    const price = parsePriceInput(editDraft.price);
     const category = editDraft.category.trim();
-    if (!title || !category || !Number.isFinite(price) || price <= 0) {
+    if (!title || !isProductCategory(category) || !Number.isFinite(price) || price <= 0) {
       Alert.alert('Invalid product details', 'Enter a product name, category, and valid price.');
       return;
     }
@@ -200,10 +202,9 @@ export default function MerchantInventoryScreen() {
               <Text style={styles.label}>Description</Text>
               <TextInput value={editDraft.description} onChangeText={(description) => setEditDraft((current) => ({ ...current, description }))} style={[styles.input, styles.descriptionInput]} placeholder="Product description" placeholderTextColor="#64748B" multiline />
               <Text style={styles.label}>Price in NGN</Text>
-              <TextInput value={editDraft.price} onChangeText={(price) => setEditDraft((current) => ({ ...current, price }))} style={styles.input} placeholder="e.g. 5500" placeholderTextColor="#64748B" keyboardType="decimal-pad" />
+              <TextInput value={editDraft.price} onChangeText={(price) => setEditDraft((current) => ({ ...current, price }))} style={styles.input} placeholder="e.g. 50,000" placeholderTextColor="#64748B" keyboardType="decimal-pad" />
               <Text style={styles.label}>Category</Text>
-              <View style={styles.categories}>{['Food', 'Accessories', 'Animals', 'Agro-allied'].map((category) => <TouchableOpacity key={category} onPress={() => setEditDraft((current) => ({ ...current, category }))} style={[styles.category, editDraft.category === category && styles.selected]}><Text style={[styles.categoryText, editDraft.category === category && styles.selectedText]}>{category}</Text></TouchableOpacity>)}</View>
-              <TextInput value={editDraft.category} onChangeText={(category) => setEditDraft((current) => ({ ...current, category }))} style={styles.input} placeholder="Or enter a category" placeholderTextColor="#64748B" />
+              <View style={styles.categories}>{PRODUCT_CATEGORIES.map((category) => <TouchableOpacity key={category} onPress={() => setEditDraft((current) => ({ ...current, category }))} style={[styles.category, editDraft.category === category && styles.selected]}><Text style={[styles.categoryText, editDraft.category === category && styles.selectedText]}>{category}</Text></TouchableOpacity>)}</View>
               <TouchableOpacity style={styles.saveButton} onPress={() => void saveEdit()} disabled={savingEdit}><Text style={styles.saveText}>{savingEdit ? 'Saving...' : 'Save Changes'}</Text></TouchableOpacity>
             </ScrollView>
           </KeyboardAvoidingView>

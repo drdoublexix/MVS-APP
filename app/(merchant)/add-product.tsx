@@ -3,6 +3,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { addMarketplaceProduct } from '../../lib/marketplace';
+import { parsePriceInput } from '../../lib/price';
+import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase, uploadProductImage } from '../../lib/supabase';
 
@@ -17,8 +19,6 @@ export default function AddProductScreen() {
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const categories = ['Dog Accessories', 'Cat Accessories', 'Animals', 'Pet Food', 'Grooming', 'Toys', 'Health & Care'];
-
   const handleAddProduct = async () => {
     setFormError('');
     setSuccessMessage('');
@@ -29,7 +29,7 @@ export default function AddProductScreen() {
 
     setLoading(true);
     try {
-      const priceValue = parseFloat(price);
+      const priceValue = parsePriceInput(price);
       const stockInput = quantity.trim();
       const stockValue = stockInput ? parseInt(stockInput, 10) : 1;
 
@@ -46,6 +46,10 @@ export default function AddProductScreen() {
       const productNameValue = sanitizeInput(productName);
       const productDescription = sanitizeInput(description);
       const cleanCategory = sanitizeInput(category);
+      if (!isProductCategory(cleanCategory)) {
+        setFormError('Select a valid product category.');
+        return;
+      }
       const merchantName = user.user_metadata?.full_name || user.user_metadata?.name || 'MVS Merchant Store';
 
       const { data, error } = await supabase
@@ -59,7 +63,7 @@ export default function AddProductScreen() {
             price: priceValue,
             image_url: imageUrl,
             images: uploadedImages,
-            category: cleanCategory || 'General',
+            category: cleanCategory,
             stock: Number.isNaN(stockValue) ? 1 : stockValue,
           },
         ]);
@@ -69,14 +73,14 @@ export default function AddProductScreen() {
       addMarketplaceProduct({
         name: productNameValue,
         description: productDescription,
-        category: cleanCategory || 'General',
+        category: cleanCategory,
         price: priceValue,
         stock: Number.isNaN(stockValue) ? 1 : stockValue,
         merchant: merchantName,
         merchantId: user.id,
         imageUrl,
         images: uploadedImages,
-        icon: category.includes('Food') ? 'food' : 'package',
+        icon: cleanCategory === 'Animal Feeds' || cleanCategory === 'Pet Food' ? 'food' : 'package',
       });
       setSuccessMessage('Product added successfully.');
       setProductName('');
@@ -146,7 +150,7 @@ export default function AddProductScreen() {
               <Text style={styles.label}>Price (₦) *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="0.00"
+                placeholder="e.g. 50,000"
                 placeholderTextColor="#64748B"
                 value={price}
                 onChangeText={setPrice}
@@ -171,7 +175,7 @@ export default function AddProductScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Category *</Text>
             <View style={styles.categoryGrid}>
-              {categories.map((cat) => (
+              {PRODUCT_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat}
                   style={[
