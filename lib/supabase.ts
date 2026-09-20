@@ -495,6 +495,10 @@ export const subscribeToMessages = (conversationId: string, onMessage: (message:
   const channel = supabase
     .channel(`messages:${conversationId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => onMessage(payload.new as RealtimeMessage))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+      const message = payload.new as RealtimeMessage;
+      if (message.is_deleted && onDelete) onDelete(String(message.id));
+    })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
       if (onDelete) onDelete(String((payload.old as Partial<RealtimeMessage>).id));
     })

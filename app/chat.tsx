@@ -1361,16 +1361,28 @@ export default function ChatScreen() {
       return;
     }
     let mounted = true;
-    void supabase
-      .from("profiles")
-      .select("role, business_name, location, phone_number")
-      .eq("id", active.participantId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (mounted) setRecipientProfile((data as RecipientProfile | null) || null);
-      });
+    const loadRecipientProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("role, business_name, location, phone_number")
+        .eq("id", active.participantId)
+        .maybeSingle();
+      if (mounted) setRecipientProfile((data as RecipientProfile | null) || null);
+    };
+    void loadRecipientProfile();
+    const profileChannel = supabase
+      .channel(`profile:${active.participantId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${active.participantId}` },
+        () => {
+          if (mounted) void loadRecipientProfile();
+        }
+      )
+      .subscribe();
     return () => {
       mounted = false;
+      void supabase.removeChannel(profileChannel);
     };
   }, [active?.participantId]);
 
@@ -1541,6 +1553,31 @@ export default function ChatScreen() {
       .subscribe();
     return () => {
       void supabase.removeChannel(orderChannel);
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    const invoiceChannel = supabase
+      .channel(`invoices:${active.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "invoices", filter: `conversation_id=eq.${active.id}` },
+        (payload) => {
+          const invoice = payload.new as { id?: string; status?: string };
+          if (!invoice.id || !invoice.status) return;
+          setMessages((current) => current.map((item) => {
+            const metadata = item.metadata as Partial<InvoiceMetadata> | null;
+            return metadata?.invoice_id === invoice.id
+              ? { ...item, metadata: { ...metadata, status: invoice.status } }
+              : item;
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(invoiceChannel);
     };
   }, [active]);
 

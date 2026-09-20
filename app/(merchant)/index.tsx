@@ -96,33 +96,47 @@ export default function MerchantDashboardScreen() {
     void fetchMarketplaceProducts().catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const user = await getCurrentUser();
-        if (!user) return;
+  const loadOrderStatuses = useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
 
-        const { data, error } = await supabase
-          .from("orders")
-          .select("product_id, status")
-          .eq("merchant_id", user.id);
+      const { data, error } = await supabase
+        .from("orders")
+        .select("product_id, status")
+        .eq("merchant_id", user.id);
 
-        if (error) throw error;
+      if (error) throw error;
 
-        const statusMap: Record<string, string> = {};
-        for (const item of data || []) {
-          if (item?.product_id)
-            statusMap[String(item.product_id)] = item.status;
-        }
-        setProductOrderStatuses(statusMap);
-      } catch (error) {
-        console.warn(
-          "[Merchant Dashboard] Failed to load order statuses:",
-          error
-        );
+      const statusMap: Record<string, string> = {};
+      for (const item of data || []) {
+        if (item?.product_id) statusMap[String(item.product_id)] = item.status;
       }
-    })();
+      setProductOrderStatuses(statusMap);
+    } catch (error) {
+      console.warn("[Merchant Dashboard] Failed to load order statuses:", error);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadOrderStatuses();
+    let mounted = true;
+    const ordersChannel = supabase
+      .channel("merchant-dashboard-orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          if (mounted) void loadOrderStatuses();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      void supabase.removeChannel(ordersChannel);
+    };
+  }, [loadOrderStatuses]);
 
   const getOrderBadge = (status?: string) => {
     if (!status) return null;
@@ -163,8 +177,18 @@ export default function MerchantDashboardScreen() {
           });
       };
       void loadMetrics();
+      const stateChannel = supabase
+        .channel('merchant-dashboard-state')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          if (mounted) void loadMetrics();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+          if (mounted) void loadMetrics();
+        })
+        .subscribe();
       return () => {
         mounted = false;
+        void supabase.removeChannel(stateChannel);
       };
     }, [])
   );

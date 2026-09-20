@@ -26,7 +26,7 @@ create policy "Farm owners and vets can view farm medical records" on public.far
   for select to authenticated
   using (
     auth.uid() = client_id
-    or exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.role in ('vet', 'veterinarian'))
+    or exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.role::text in ('vet', 'veterinarian'))
   );
 
 drop policy if exists "Vets can create farm medical records" on public.farm_medical_records;
@@ -34,7 +34,7 @@ create policy "Vets can create farm medical records" on public.farm_medical_reco
   for insert to authenticated
   with check (
     auth.uid() = vet_id
-    and exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.role in ('vet', 'veterinarian'))
+    and exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.role::text in ('vet', 'veterinarian'))
   );
 
 drop policy if exists "Vets can update farm medical records" on public.farm_medical_records;
