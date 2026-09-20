@@ -34,6 +34,7 @@ import {
     View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AvatarPreviewModal from "../components/AvatarPreviewModal";
 import FarmMedicalHistory from "../components/FarmMedicalHistory";
 import PetMedicalHistory from "../components/PetMedicalHistory";
 import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
@@ -92,6 +93,7 @@ type Thread = {
 };
 
 type RecipientProfile = {
+  avatar_url?: string | null;
   role?: string | null;
   business_name?: string | null;
   location?: string | null;
@@ -311,6 +313,12 @@ const getLatestThreadTime = (thread: Thread) =>
       0
   ).getTime();
 
+const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
+  if (!avatarPath) return null;
+  if (/^https?:\/\//i.test(avatarPath)) return avatarPath;
+  return supabase.storage.from("avatars").getPublicUrl(avatarPath).data.publicUrl || null;
+};
+
 const firstParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
@@ -385,6 +393,9 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, rec
 }
 
 function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean; profile?: RecipientProfile; onClose: () => void }) {
+  const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
+  const avatarUrl = getPublicAvatarUrl(profile?.avatar_url);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.profileModalBackdrop}>
@@ -395,6 +406,18 @@ function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean;
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
+          <TouchableOpacity
+            style={styles.merchantAvatar}
+            onPress={() => setAvatarPreviewVisible(true)}
+            disabled={!avatarUrl}
+            accessibilityLabel="View merchant profile photo"
+          >
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.merchantAvatarImage} resizeMode="cover" />
+            ) : (
+              <MaterialCommunityIcons name="storefront" size={42} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
           <Text style={styles.profileModalLabel}>Business Name</Text>
           <Text style={styles.profileModalValue}>{profile?.business_name || "N/A"}</Text>
           <Text style={styles.profileModalLabel}>Location</Text>
@@ -402,6 +425,11 @@ function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean;
           <Text style={styles.profileModalLabel}>Phone Number</Text>
           <Text style={styles.profileModalValue}>{profile?.phone_number || "N/A"}</Text>
         </View>
+        <AvatarPreviewModal
+          imageUrl={avatarUrl}
+          visible={avatarPreviewVisible}
+          onClose={() => setAvatarPreviewVisible(false)}
+        />
       </View>
     </Modal>
   );
@@ -548,6 +576,8 @@ const styles = {
   messageSelected: { borderWidth: 2, borderColor: "#34D399" },
   profileModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099", padding: 20 },
   profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
+  merchantAvatar: { width: 96, height: 96, borderRadius: 48, alignSelf: "center", alignItems: "center", justifyContent: "center", backgroundColor: "#10B981", marginBottom: 14, overflow: "hidden" },
+  merchantAvatarImage: { width: "100%", height: "100%" },
   protectionModal: { width: "100%", maxWidth: 420, maxHeight: "88%", backgroundColor: "#1E293B", borderColor: "#92400E", borderWidth: 1, borderRadius: 14, padding: 20 },
   protectionModalTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700", flex: 1, marginRight: 12 },
     protectionTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 },
@@ -805,6 +835,7 @@ export default function ChatScreen() {
   const [deleteCandidate, setDeleteCandidate] =
     useState<RealtimeMessage | null>(null);
   const [threadDeleteCandidate, setThreadDeleteCandidate] = useState<Thread | null>(null);
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [batchDeleteCandidate, setBatchDeleteCandidate] = useState<string[]>([]);
@@ -1071,7 +1102,7 @@ export default function ChatScreen() {
             allParticipantIds.length > 0
               ? await safeSupabaseCall(() => supabase
                   .from("profiles")
-                  .select("id, full_name, email, role, business_name, location, phone_number")
+                  .select("id, full_name, email, role, avatar_url, business_name, location, phone_number")
                   .in("id", allParticipantIds))
               : [];
           const profileMap = new Map(
@@ -1364,7 +1395,7 @@ export default function ChatScreen() {
     const loadRecipientProfile = async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("role, business_name, location, phone_number")
+        .select("role, avatar_url, business_name, location, phone_number")
         .eq("id", active.participantId)
         .maybeSingle();
       if (mounted) setRecipientProfile((data as RecipientProfile | null) || null);
@@ -3062,20 +3093,34 @@ export default function ChatScreen() {
                 {...contextMenuProps(() => handleRequestDelete(thread))}
                 delayLongPress={500}
               >
-                <View style={styles.avatar}>
-                  <MaterialCommunityIcons
-                    name={
-                      thread.participantRole === "merchant"
-                        ? "store"
-                        : thread.participantRole === "vet" ||
-                          thread.participantRole === "veterinarian"
-                        ? "hospital-box"
-                        : "account"
-                    }
-                    size={22}
-                    color="#FFFFFF"
-                  />
-                </View>
+                {getPublicAvatarUrl(thread.recipientProfile?.avatar_url) ? (
+                  <Pressable
+                    style={styles.avatar}
+                    onPress={() => setSelectedAvatarUrl(getPublicAvatarUrl(thread.recipientProfile?.avatar_url))}
+                    accessibilityLabel={`View ${thread.participantName}'s profile photo`}
+                  >
+                    <Image
+                      source={{ uri: getPublicAvatarUrl(thread.recipientProfile?.avatar_url) ?? undefined }}
+                      style={styles.avatar}
+                      resizeMode="cover"
+                    />
+                  </Pressable>
+                ) : (
+                  <View style={styles.avatar}>
+                    <MaterialCommunityIcons
+                      name={
+                        thread.participantRole === "merchant"
+                          ? "store"
+                          : thread.participantRole === "vet" ||
+                            thread.participantRole === "veterinarian"
+                          ? "hospital-box"
+                          : "account"
+                      }
+                      size={22}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                )}
                 <View style={styles.flex}>
                   <View style={styles.threadNameRow}>
                     <Text style={styles.primary}>{thread.participantName}</Text>
@@ -3125,6 +3170,11 @@ export default function ChatScreen() {
           })
         )}
       </ScrollView>
+      <AvatarPreviewModal
+        imageUrl={selectedAvatarUrl}
+        visible={selectedAvatarUrl !== null}
+        onClose={() => setSelectedAvatarUrl(null)}
+      />
       <Modal
         visible={threadDeleteCandidate !== null}
         transparent

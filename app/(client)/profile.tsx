@@ -20,6 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import AvatarPreviewModal from "../../components/AvatarPreviewModal";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
@@ -98,6 +99,7 @@ export default function ProfileScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [petEditorVisible, setPetEditorVisible] = useState(false);
+  const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const [profileState, setProfile] = useState<{
     name?: string;
     phone?: string;
@@ -895,10 +897,8 @@ export default function ProfileScreen() {
               styles.avatarFallback,
               { alignSelf: "auto", marginBottom: 0 },
             ]}
-            onPress={() => {
-              void pickAvatar();
-            }}
-            accessibilityLabel="Change profile photo"
+            onPress={() => setAvatarPreviewVisible(true)}
+            accessibilityLabel="View profile photo"
           >
             {avatarUrl ? (
               <Image
@@ -938,6 +938,11 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <AvatarPreviewModal
+          imageUrl={avatarUrl}
+          visible={avatarPreviewVisible}
+          onClose={() => setAvatarPreviewVisible(false)}
+        />
         <View
           style={{
             backgroundColor: "#1E293B",

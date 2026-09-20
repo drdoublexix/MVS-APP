@@ -18,6 +18,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
@@ -80,6 +81,7 @@ export default function VetProfileScreen() {
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
 
   const [profile, setProfile] = useState({
     name: 'Dr. Veterinarian',
@@ -523,7 +525,7 @@ export default function VetProfileScreen() {
 
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Change profile photo">
+          <TouchableOpacity onPress={() => setAvatarPreviewVisible(true)} accessibilityLabel="View profile photo">
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatar} />
             ) : (
@@ -543,6 +545,11 @@ export default function VetProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <AvatarPreviewModal
+          imageUrl={avatarUrl}
+          visible={avatarPreviewVisible}
+          onClose={() => setAvatarPreviewVisible(false)}
+        />
 
         {/* Practice Information */}
         <View style={styles.section}>

@@ -20,6 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -116,6 +117,7 @@ export default function MerchantProfileScreen() {
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const [profile, setProfile] = useState({
     name: 'Merchant',
     email: '',
@@ -542,7 +544,7 @@ export default function MerchantProfileScreen() {
         <Text style={styles.pageTitle}>My Profile</Text>
 
         <View style={styles.profileHeader}>
-          <TouchableOpacity onPress={pickAvatar} accessibilityLabel="Change profile photo">
+          <TouchableOpacity onPress={() => setAvatarPreviewVisible(true)} accessibilityLabel="View profile photo">
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatar} />
             ) : (
@@ -562,6 +564,11 @@ export default function MerchantProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <AvatarPreviewModal
+          imageUrl={avatarUrl}
+          visible={avatarPreviewVisible}
+          onClose={() => setAvatarPreviewVisible(false)}
+        />
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Business Information</Text>

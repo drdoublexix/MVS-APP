@@ -2,6 +2,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import { requestDeviceLocation } from '../../lib/location';
 import { ensureConsultationRecord, getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
@@ -65,6 +66,7 @@ export default function VetsScreen() {
   const [totalReviews, setTotalReviews] = useState(0);
   const [ratingLoading, setRatingLoading] = useState(false);
   const [failedAvatarIds, setFailedAvatarIds] = useState<Record<string, boolean>>({});
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -338,7 +340,15 @@ export default function VetsScreen() {
                 <TouchableOpacity style={styles.close} onPress={() => setSelectedVet(null)}>
                   <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
                 </TouchableOpacity>
-                <View style={styles.profileAvatar}>
+                <TouchableOpacity
+                  style={styles.profileAvatar}
+                  onPress={() => {
+                    const resolvedAvatarUrl = getPublicAvatarUrl(selectedVet.avatar_url);
+                    if (resolvedAvatarUrl) setSelectedAvatarUrl(resolvedAvatarUrl);
+                  }}
+                  disabled={!getPublicAvatarUrl(selectedVet.avatar_url)}
+                  accessibilityLabel="View veterinarian profile photo"
+                >
                   {(() => {
                     const resolvedAvatarUrl = getPublicAvatarUrl(selectedVet.avatar_url);
                     return resolvedAvatarUrl && !failedAvatarIds[selectedVet.id] ? (
@@ -351,7 +361,7 @@ export default function VetsScreen() {
                       <MaterialCommunityIcons name="doctor" size={52} color="#FFFFFF" />
                     );
                   })()}
-                </View>
+                </TouchableOpacity>
                 <Text style={styles.modalDoctor}>{selectedVet.full_name}</Text>
                 <View style={styles.ratingSection}>
                   <View style={styles.stars}>
@@ -385,6 +395,12 @@ export default function VetsScreen() {
           </View>
         </View>
       </Modal>
+
+      <AvatarPreviewModal
+        imageUrl={selectedAvatarUrl}
+        visible={selectedAvatarUrl !== null}
+        onClose={() => setSelectedAvatarUrl(null)}
+      />
 
       <Modal visible={Boolean(intakeVet)} animationType="slide" transparent onRequestClose={() => setIntakeVet(null)}>
         <View style={styles.overlay}>
