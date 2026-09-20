@@ -26,6 +26,7 @@ export default function FarmMedicalHistory({ farmId }: { farmId: string }) {
         .from('farm_medical_records')
         .select('id, treatment_type, title, dosage, administered_date, next_due_date, status, notes')
         .eq('farm_id', farmId)
+        .gte('next_due_date', new Date().toISOString())
         .order('administered_date', { ascending: false });
       if (error) console.error('[Farm Medical History] Failed to load records:', error);
       if (mounted) {

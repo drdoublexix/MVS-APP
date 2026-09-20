@@ -26,6 +26,7 @@ export default function PetMedicalHistory({ petId }: { petId: string }) {
         .from('pet_medical_records')
         .select('id, treatment_type, title, dose_series_number, total_series_doses, administered_date, next_due_date, notes')
         .eq('pet_id', petId)
+        .gte('next_due_date', new Date().toISOString())
         .order('administered_date', { ascending: false });
       if (error) console.error('[Pet Medical History] Failed to load records:', error);
       if (mounted) {
