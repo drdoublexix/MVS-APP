@@ -26,10 +26,10 @@ const getWelcomeCopy = (role?: string | null) => {
     case 'vet':
       return "Welcome, Doctor! To enable full functionality and seamless payments, please update your practice information and bank account details via the \"Edit Profile\" & \"Bank account\" section.";
     case 'merchant':
-      return 'Welcome! Please complete your profile and business details for full functionality.';
+      return 'Welcome! To enable full functionality and seamless payments, please update your business information and bank account details via the \"Edit Profile\" & \"Bank account\" section.';
     case 'client':
     default:
-      return 'Welcome! To enable full functionality and seamless payments, please update your business information and bank account details via the \"Edit Profile\" & \"Bank account\" section.';
+      return 'Welcome Critter custodian! To enable full functionality and personalized animal care, please complete your profile information and update your phone number in the "Edit Profile" section.\n\nAlso don\'t forget to add your pets and farm records, on your profile page to keep track of their health journey! Enjoy 🎉';
   }
 };
 
