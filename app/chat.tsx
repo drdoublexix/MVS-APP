@@ -3367,6 +3367,7 @@ function ChatRoom({
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
   const initialScrollDone = useRef(false);
+  const previousMessageCount = useRef(0);
   const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
@@ -3382,22 +3383,33 @@ function ChatRoom({
     flexDirection: "column",
     height: visualViewportHeight ?? 0,
   };
-  const scrollToLatest = () => {
+  const scrollToLatest = (animated = false) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        messagesScrollRef.current?.scrollToEnd({ animated: false });
+        messagesScrollRef.current?.scrollToEnd({ animated });
       });
     });
   };
   useEffect(() => {
     initialScrollDone.current = false;
+    previousMessageCount.current = 0;
   }, [active.id]);
   useEffect(() => {
-    if (messages.length > 0 && !initialScrollDone.current) {
-      initialScrollDone.current = true;
-      scrollToLatest();
+    if (!messages.length) {
+      previousMessageCount.current = 0;
+      return;
     }
-  }, [messages.length]);
+    if (!initialScrollDone.current) {
+      initialScrollDone.current = true;
+      previousMessageCount.current = messages.length;
+      scrollToLatest();
+      return;
+    }
+    if (messages.length > previousMessageCount.current && messages[messages.length - 1]?.sender_id === currentUserId) {
+      scrollToLatest(true);
+    }
+    previousMessageCount.current = messages.length;
+  }, [currentUserId, messages]);
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const [searchBarVisible, setSearchBarVisible] = useState(false);
@@ -4089,6 +4101,9 @@ function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
   const positionMillis = status.currentTime * 1000;
   const durationMillis = status.duration * 1000;
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
+  useEffect(() => {
+    player.shouldCorrectPitch = true;
+  }, [player]);
   const togglePlayback = () => {
     if (player.playing) player.pause();
     else player.play();
@@ -4097,7 +4112,8 @@ function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
   const cyclePlaybackSpeed = () => {
     const nextSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1;
     setPlaybackSpeed(nextSpeed);
-    player.setPlaybackRate(nextSpeed);
+    player.shouldCorrectPitch = true;
+    player.setPlaybackRate(nextSpeed, "high");
   };
 
   const formatDuration = (milliseconds: number) => {
@@ -4703,6 +4719,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
 }) {
   const messagesScrollRef = useRef<ScrollView>(null);
   const initialScrollDone = useRef(false);
+  const previousMessageCount = useRef(0);
   const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
   const safeAreaInsets = useSafeAreaInsets();
@@ -4719,24 +4736,35 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     height: visualViewportHeight ?? 0,
   };
 
-  const scrollToLatest = () => {
+  const scrollToLatest = (animated = false) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        messagesScrollRef.current?.scrollToEnd({ animated: false });
+        messagesScrollRef.current?.scrollToEnd({ animated });
       });
     });
   };
 
   useEffect(() => {
     initialScrollDone.current = false;
+    previousMessageCount.current = 0;
   }, [active.id]);
 
   useEffect(() => {
-    if (messages.length > 0 && !initialScrollDone.current) {
-      initialScrollDone.current = true;
-      scrollToLatest();
+    if (!messages.length) {
+      previousMessageCount.current = 0;
+      return;
     }
-  }, [messages.length]);
+    if (!initialScrollDone.current) {
+      initialScrollDone.current = true;
+      previousMessageCount.current = messages.length;
+      scrollToLatest();
+      return;
+    }
+    if (messages.length > previousMessageCount.current && messages[messages.length - 1]?.sender_id === currentUserId) {
+      scrollToLatest(true);
+    }
+    previousMessageCount.current = messages.length;
+  }, [currentUserId, messages]);
 
   const [buyerProtectionVisible, setBuyerProtectionVisible] = useState(false);
   const [headerMenuVisible, setHeaderMenuVisible] = useState(false);

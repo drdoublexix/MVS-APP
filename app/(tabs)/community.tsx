@@ -46,10 +46,10 @@ export default function CommunityScreen() {
   const maximumInputHeight = 132;
   const inputLineHeight = 22;
 
-  const scrollToLatest = () => {
+  const scrollToLatest = (animated = false) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        listRef.current?.scrollToEnd({ animated: false });
+        listRef.current?.scrollToEnd({ animated });
       });
     });
   };
@@ -157,6 +157,7 @@ export default function CommunityScreen() {
       setReplyTarget(null);
       setInputHeight(compactInputHeight);
       setPendingImages([]);
+      scrollToLatest(true);
       setTimeout(() => {
         composerInputRef.current?.focus();
       }, 0);
@@ -284,7 +285,7 @@ export default function CommunityScreen() {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView style={styles.keyboardRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
         <View style={styles.banner}><Text style={styles.heroTitle}>MVS Hub</Text><Text style={styles.kicker}>Community + Marketplace</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
-        <FlatList ref={listRef} data={messages.filter((item) => !(item.hidden_for_users || []).includes(currentUserId || ''))} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={scrollToLatest} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={scrollToLatest} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}><Text style={{ fontSize: 28, fontWeight: '700', color: '#10B981', textAlign: 'center', letterSpacing: 0.5 }}>Coming soon.</Text><Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>The community and marketplace experience is on its way.</Text></View>} />
+        <FlatList ref={listRef} data={messages.filter((item) => !(item.hidden_for_users || []).includes(currentUserId || ''))} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={() => scrollToLatest()} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={() => scrollToLatest()} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}><Text style={{ fontSize: 28, fontWeight: '700', color: '#10B981', textAlign: 'center', letterSpacing: 0.5 }}>Coming soon.</Text><Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>The community and marketplace experience is on its way.</Text></View>} />
         {replyTarget ? <View style={styles.replyPreview}><View style={styles.replyPreviewCopy}><Text style={styles.replyPreviewName}>{replyTarget.senderName}</Text><Text style={styles.replyPreviewText} numberOfLines={1}>{replyTarget.content}</Text></View><TouchableOpacity onPress={() => setReplyTarget(null)} accessibilityLabel="Cancel reply"><MaterialCommunityIcons name="close" size={20} color="#CBD5E1" /></TouchableOpacity></View> : null}
         {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
         {/* <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View> */}
