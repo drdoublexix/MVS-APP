@@ -8,6 +8,7 @@ import {
     useAudioPlayerStatus,
     useAudioRecorder,
 } from "expo-audio";
+import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -37,6 +38,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../components/AvatarPreviewModal";
 import FarmMedicalHistory from "../components/FarmMedicalHistory";
 import PetMedicalHistory from "../components/PetMedicalHistory";
+import SwipeableMessage from "../components/SwipeableMessage";
 import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
@@ -56,7 +58,8 @@ import {
     supabase,
     uploadChatAttachment,
     type ConsultationStatus,
-    type RealtimeMessage
+    type RealtimeMessage,
+    type ReplySnippet
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
@@ -79,6 +82,13 @@ type ChatParams = {
   inquiryKey?: string;
   resetThread?: string;
 };
+
+type ReplyTarget = { id: string; senderName: string; content: string };
+
+const toReplySnippet = (replyTarget: ReplyTarget | null | undefined): ReplySnippet | null =>
+  replyTarget
+    ? { id: replyTarget.id, sender_name: replyTarget.senderName, content: replyTarget.content }
+    : null;
 
 type Thread = {
   id: string;
@@ -621,6 +631,9 @@ const styles = {
   activeConsultBadge: { backgroundColor: "#065F46", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   activeConsultBadgeText: { color: "#10B981", fontSize: 10, fontWeight: "700" },
   primary: { color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
+  quotedMessage: { borderLeftWidth: 3, borderLeftColor: "#6EE7B7", backgroundColor: "#0F172A66", borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 8 },
+  quotedMessageSender: { color: "#6EE7B7", fontSize: 11, fontWeight: "700" },
+  quotedMessageText: { color: "#CBD5E1", fontSize: 12, marginTop: 2 },
   messageTimestamp: { color: "#A7F3D0", fontSize: 10, alignSelf: "flex-end", marginTop: 5 },
   muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
@@ -678,6 +691,12 @@ const styles = {
     flexShrink: 0,
     backgroundColor: "#0F172A",
   },
+  replyPreview: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, borderLeftWidth: 3, borderLeftColor: "#10B981", backgroundColor: "#1E293B", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  replyPreviewCopy: { flex: 1, minWidth: 0 },
+  replyPreviewName: { color: "#6EE7B7", fontSize: 11, fontWeight: "700" },
+  replyPreviewText: { color: "#CBD5E1", fontSize: 12, marginTop: 2 },
+  copyToast: { position: "absolute", alignSelf: "center", bottom: 86, backgroundColor: "#1E293B", borderColor: "#475569", borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, zIndex: 20 },
+  copyToastText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   composerRow: { flexDirection: "row", gap: 8, minHeight: 42, alignItems: "center" },
   composerInputShell: {
     flex: 1,
@@ -2832,7 +2851,7 @@ export default function ChatScreen() {
     }
   };
 
-  const sendMessage = async () => {
+  const sendMessage = async (replyTarget?: ReplyTarget | null) => {
     const cleanSenderId = normalizeUuid(currentUserId);
     const cleanReceiverId = normalizeUuid(active?.participantId);
     const text = sanitizeInput(message);
@@ -2905,6 +2924,7 @@ export default function ChatScreen() {
         sender_email: senderEmail,
         client_generated_id: tempId,
       },
+      reply_to: toReplySnippet(replyTarget),
       media_url: uploaded?.publicUrl,
       media_type: uploaded?.mediaType,
       created_at: new Date().toISOString(),
@@ -2920,6 +2940,7 @@ export default function ChatScreen() {
         metadata: optimistic.metadata,
         media_url: uploaded?.publicUrl,
         media_type: uploaded?.mediaType,
+        reply_to: toReplySnippet(replyTarget),
       });
       setMessages((current) =>
         appendUniqueMessage(current, { ...confirmed, temp_id: tempId })
@@ -3288,7 +3309,7 @@ function ChatRoom({
   selectedImageUri: string | null;
   onRemoveImage: () => void;
   onBack: () => void;
-  onSend: () => void;
+  onSend: (replyTarget?: ReplyTarget | null) => void | Promise<void>;
   onAttach: () => void;
   onSendPhoto: () => void;
   attachmentVisible: boolean;
@@ -3385,6 +3406,8 @@ function ChatRoom({
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [clearThreadConfirmVisible, setClearThreadConfirmVisible] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [copyToast, setCopyToast] = useState(false);
   const selectedCount = selectedMessageIds.length;
   const dismissSearchBar = () => {
     setSearchBarVisible(false);
@@ -3398,6 +3421,14 @@ function ChatRoom({
   const openClearThreadConfirm = () => {
     setHeaderMenuVisible(false);
     setClearThreadConfirmVisible(true);
+  };
+
+  const handleCopyMessage = async () => {
+    if (!deleteCandidate?.content) return;
+    await Clipboard.setStringAsync(deleteCandidate.content);
+    onCancelDelete();
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 1800);
   };
   useEffect(() => {
     setHeaderMenuVisible(false);
@@ -3746,6 +3777,12 @@ function ChatRoom({
                     {isSelected ? <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" /> : null}
                   </TouchableOpacity>
                 ) : null}
+                <SwipeableMessage
+                  onReply={() => {
+                    setReplyTarget({ id: item.id, senderName: item.sender_id === currentUserId ? "You" : active.participantName, content: item.content || "Attachment" });
+                  }}
+                  disabled={multiSelectMode}
+                >
                 <TouchableOpacity
                   {...(!multiSelectMode ? contextMenuProps(() => onDeleteMessage(item)) : {})}
                   activeOpacity={0.8}
@@ -3780,6 +3817,12 @@ function ChatRoom({
                       : styles.incoming,
                   ]}
                 >
+                  {item.reply_to ? (
+                    <View style={styles.quotedMessage}>
+                      <Text style={styles.quotedMessageSender} numberOfLines={1}>{item.reply_to.sender_name}</Text>
+                      <Text style={styles.quotedMessageText} numberOfLines={2}>{item.reply_to.content}</Text>
+                    </View>
+                  ) : null}
                   {item.media_url && item.media_type === "image" ? (
                     <Image
                       source={{ uri: item.media_url }}
@@ -3805,6 +3848,7 @@ function ChatRoom({
                   ) : null}
                   <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
                 </TouchableOpacity>
+                </SwipeableMessage>
               </View>
             );
           })
@@ -3834,7 +3878,9 @@ function ChatRoom({
         selectedImageUri={selectedImageUri}
         onRemoveImage={onRemoveImage}
         onAttach={onAttach}
-        onSend={onSend}
+        onSend={async () => { await onSend(replyTarget); setReplyTarget(null); }}
+        replyTarget={replyTarget}
+        onCancelReply={() => setReplyTarget(null)}
         uploading={uploading}
         bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
@@ -3857,6 +3903,11 @@ function ChatRoom({
           <View style={styles.modalBackdrop}>
             <View style={styles.deleteModalCard}>
               <Text style={styles.deleteModalTitle}>Delete message?</Text>
+              {deleteCandidate.content ? (
+                <TouchableOpacity style={styles.deleteModalAction} onPress={() => void handleCopyMessage()}>
+                  <Text style={styles.deleteModalActionText}>Copy</Text>
+                </TouchableOpacity>
+              ) : null}
               {deleteCandidate.sender_id === currentUserId ? (
                 <TouchableOpacity style={styles.deleteModalAction} onPress={() => onConfirmDelete('everyone')}>
                   <Text style={styles.deleteModalActionText}>Delete for Everyone</Text>
@@ -3872,6 +3923,7 @@ function ChatRoom({
           </View>
         </Modal>
       ) : null}
+      {copyToast ? <View style={styles.copyToast}><Text style={styles.copyToastText}>Message copied</Text></View> : null}
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
     </SafeAreaView>
@@ -3885,6 +3937,8 @@ function ChatComposer({
   onRemoveImage,
   onAttach,
   onSend,
+  replyTarget,
+  onCancelReply,
   uploading,
   bottomInset,
   voiceNoteControls,
@@ -3894,7 +3948,9 @@ function ChatComposer({
   selectedImageUri: string | null;
   onRemoveImage: () => void;
   onAttach: () => void;
-  onSend: () => void;
+  onSend: (replyTarget?: ReplyTarget | null) => void | Promise<void>;
+  replyTarget: ReplyTarget | null;
+  onCancelReply: () => void;
   uploading: boolean;
   bottomInset: number;
   voiceNoteControls: VoiceNoteControls;
@@ -3905,6 +3961,12 @@ function ChatComposer({
   const compactInputHeight = 42;
   const maximumInputHeight = 132;
   const inputLineHeight = 22;
+
+  useEffect(() => {
+    if (replyTarget) {
+      requestAnimationFrame(() => messageInputRef.current?.focus());
+    }
+  }, [replyTarget]);
 
   const handleInputContentSizeChange = (event: any) => {
     const contentHeight = event.nativeEvent.contentSize.height;
@@ -3943,6 +4005,17 @@ function ChatComposer({
 
   return (
     <View style={[styles.composer, { marginBottom: bottomInset }]}>
+      {replyTarget ? (
+        <View style={styles.replyPreview}>
+          <View style={styles.replyPreviewCopy}>
+            <Text style={styles.replyPreviewName} numberOfLines={1}>{replyTarget.senderName}</Text>
+            <Text style={styles.replyPreviewText} numberOfLines={1}>{replyTarget.content}</Text>
+          </View>
+          <TouchableOpacity onPress={onCancelReply} accessibilityLabel="Cancel reply">
+            <MaterialCommunityIcons name="close" size={20} color="#CBD5E1" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
       {selectedImageUri ? (
         <View style={styles.selectedAttachment}>
           <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
@@ -4573,7 +4646,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   selectedImageUri: string | null;
   onRemoveImage: () => void;
   onBack: () => void;
-  onSend: () => void;
+  onSend: (replyTarget?: ReplyTarget | null) => void | Promise<void>;
   onAttach: () => void;
   onSendPhoto: () => void;
   attachmentVisible: boolean;
@@ -4673,6 +4746,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [clearThreadConfirmVisible, setClearThreadConfirmVisible] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [copyToast, setCopyToast] = useState(false);
 
   const dismissSearchBar = () => {
     setSearchBarVisible(false);
@@ -4688,6 +4763,14 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const openClearThreadConfirm = () => {
     setHeaderMenuVisible(false);
     setClearThreadConfirmVisible(true);
+  };
+
+  const handleCopyMessage = async () => {
+    if (!deleteCandidate?.content) return;
+    await Clipboard.setStringAsync(deleteCandidate.content);
+    onCancelDelete();
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 1800);
   };
 
   useEffect(() => {
@@ -4984,6 +5067,12 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                     {isSelected ? <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" /> : null}
                   </TouchableOpacity>
                 ) : null}
+                <SwipeableMessage
+                  onReply={() => {
+                    setReplyTarget({ id: item.id, senderName: item.sender_id === currentUserId ? "You" : active.participantName, content: item.content || "Attachment" });
+                  }}
+                  disabled={multiSelectMode}
+                >
                 <TouchableOpacity
                   {...(!multiSelectMode ? contextMenuProps(() => onDeleteMessage(item)) : {})}
                   activeOpacity={0.8}
@@ -5018,6 +5107,12 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                     item.sender_id === currentUserId ? styles.outgoing : styles.incoming,
                   ]}
                 >
+                  {item.reply_to ? (
+                    <View style={styles.quotedMessage}>
+                      <Text style={styles.quotedMessageSender} numberOfLines={1}>{item.reply_to.sender_name}</Text>
+                      <Text style={styles.quotedMessageText} numberOfLines={2}>{item.reply_to.content}</Text>
+                    </View>
+                  ) : null}
                   {item.media_url && item.media_type === "image" ? (
                     <Image source={{ uri: item.media_url }} style={styles.attachment} />
                   ) : null}
@@ -5040,6 +5135,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                   ) : null}
                   <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
                 </TouchableOpacity>
+                </SwipeableMessage>
               </View>
             );
           })
@@ -5071,7 +5167,9 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         selectedImageUri={selectedImageUri}
         onRemoveImage={onRemoveImage}
         onAttach={onAttach}
-        onSend={onSend}
+        onSend={async () => { await onSend(replyTarget); setReplyTarget(null); }}
+        replyTarget={replyTarget}
+        onCancelReply={() => setReplyTarget(null)}
         uploading={uploading}
         bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
@@ -5096,6 +5194,11 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           <View style={styles.modalBackdrop}>
             <View style={styles.deleteModalCard}>
               <Text style={styles.deleteModalTitle}>Delete message?</Text>
+              {deleteCandidate.content ? (
+                <TouchableOpacity style={styles.deleteModalAction} onPress={() => void handleCopyMessage()}>
+                  <Text style={styles.deleteModalActionText}>Copy</Text>
+                </TouchableOpacity>
+              ) : null}
               {deleteCandidate.sender_id === currentUserId ? (
                 <TouchableOpacity style={styles.deleteModalAction} onPress={() => onConfirmDelete('everyone')}>
                   <Text style={styles.deleteModalActionText}>Delete for Everyone</Text>
@@ -5111,6 +5214,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           </View>
         </Modal>
       ) : null}
+      {copyToast ? <View style={styles.copyToast}><Text style={styles.copyToastText}>Message copied</Text></View> : null}
       {invoiceVisible ? (
         <InvoiceModal
           visible={invoiceVisible}

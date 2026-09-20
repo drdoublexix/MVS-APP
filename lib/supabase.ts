@@ -270,6 +270,11 @@ export const loginUser = async (email: string, password: string) => {
 
 export type AppRole = 'client' | 'vet' | 'merchant';
 export type DatabaseRole = 'client' | 'vet' | 'merchant';
+export type ReplySnippet = {
+  id: string;
+  sender_name: string;
+  content: string;
+};
 export type RealtimeMessage = {
   id: string;
   temp_id?: string;
@@ -284,6 +289,7 @@ export type RealtimeMessage = {
     addressName?: string;
   } | null;
   metadata?: Record<string, unknown> | null;
+  reply_to?: ReplySnippet | null;
   media_url?: string | null;
   media_type?: 'image' | 'video' | null;
   hidden_for_users?: string[] | null;
@@ -486,7 +492,7 @@ export const ensureConsultationRecord = async (conversationId: string, currentUs
 };
 
 export const getConversationMessages = async (conversationId: string) => {
-  const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at');
+  const { data, error } = await supabase.from('messages').select('*, reply_to').eq('conversation_id', conversationId).order('created_at');
   if (error) throw error;
   return (data || []) as RealtimeMessage[];
 };

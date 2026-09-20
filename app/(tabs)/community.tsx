@@ -1,13 +1,17 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import SwipeableMessage from '../../components/SwipeableMessage';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, supabase } from '../../lib/supabase';
 
 type Profile = { full_name: string | null; avatar_url: string | null; role: string | null };
-type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null };
+type ReplySnippet = { id: string; sender_name: string; content: string };
+type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null; reply_to?: ReplySnippet | null; hidden_for_users?: string[] | null };
 type PendingImage = ImagePicker.ImagePickerAsset;
+type ReplyTarget = { id: string; senderName: string; content: string };
 
 const roleLabels: Record<string, string> = { vet: 'Vet', veterinarian: 'Vet', merchant: 'Merchant', client: 'Client' };
 const emptyProfile: Profile = { full_name: null, avatar_url: null, role: null };
@@ -18,6 +22,7 @@ const getAvatarUrl = (avatarPath: string | null) => {
   return /^https?:\/\//i.test(avatarPath) ? avatarPath : supabase.storage.from('avatars').getPublicUrl(avatarPath).data.publicUrl;
 };
 const formatMessageTime = (createdAt: string) => new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const toReplySnippet = (replyTarget: ReplyTarget | null): ReplySnippet | null => replyTarget ? { id: replyTarget.id, sender_name: replyTarget.senderName, content: replyTarget.content } : null;
 
 export default function CommunityScreen() {
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
@@ -28,6 +33,9 @@ export default function CommunityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
+  const [actionMessageId, setActionMessageId] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [copyToast, setCopyToast] = useState(false);
   const [deletingMessage, setDeletingMessage] = useState(false);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [inputHeight, setInputHeight] = useState(42);
@@ -55,7 +63,7 @@ export default function CommunityScreen() {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     const { data, error } = await supabase
       .from('community_messages')
-      .select('id, user_id, content, media_urls, created_at, profiles(full_name, avatar_url, role)')
+      .select('id, user_id, content, media_urls, created_at, reply_to, hidden_for_users, profiles(full_name, avatar_url, role)')
       .order('created_at', { ascending: true });
     if (error) Alert.alert('Could not load community', error.message);
     else setMessages((data || []) as CommunityMessage[]);
@@ -89,10 +97,10 @@ export default function CommunityScreen() {
         if (payload.eventType === 'INSERT') {
           const { data, error } = await supabase
             .from('community_messages')
-            .select('id, user_id, content, media_urls, created_at, profiles(full_name, avatar_url, role)')
+            .select('id, user_id, content, media_urls, created_at, reply_to, hidden_for_users, profiles(full_name, avatar_url, role)')
             .eq('id', messageId)
             .single();
-          if (mounted && !error && data) {
+          if (mounted && !error && data && !(Array.isArray((data as CommunityMessage).hidden_for_users) && (data as CommunityMessage).hidden_for_users!.includes(currentUserId || ''))) {
             setMessages((current) => current.some((message) => message.id === messageId) ? current : [...current, data as CommunityMessage]);
           }
         }
@@ -143,9 +151,10 @@ export default function CommunityScreen() {
         if (error) throw error;
         return supabase.storage.from('community-uploads').getPublicUrl(path).data.publicUrl;
       }));
-      const { error } = await supabase.from('community_messages').insert({ user_id: user.id, content: trimmedContent, media_urls: mediaUrls });
+      const { error } = await supabase.from('community_messages').insert({ user_id: user.id, content: trimmedContent, media_urls: mediaUrls, reply_to: toReplySnippet(replyTarget) });
       if (error) throw error;
       setContent('');
+      setReplyTarget(null);
       setInputHeight(compactInputHeight);
       setPendingImages([]);
       setTimeout(() => {
@@ -159,27 +168,36 @@ export default function CommunityScreen() {
   };
 
   const confirmDelete = (messageId: string) => {
+    setActionMessageId(null);
     setDeleteCandidateId(messageId);
   };
 
-  const deleteMessage = async () => {
+  const copyMessage = async () => {
+    const message = messages.find((item) => item.id === actionMessageId);
+    if (!message?.content) return;
+    await Clipboard.setStringAsync(message.content);
+    setActionMessageId(null);
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 1800);
+  };
+
+  const deleteMessage = async (mode: 'everyone' | 'me') => {
     if (!deleteCandidateId) return;
     const messageId = deleteCandidateId;
     const user = await getCurrentUser();
     const message = messages.find((item) => item.id === messageId);
-    if (!user || !message || message.user_id !== user.id) {
+    if (!user || !message || (mode === 'everyone' && message.user_id !== user.id)) {
       setDeleteCandidateId(null);
-      Alert.alert('Delete failed', 'You can only delete your own messages.');
+      Alert.alert('Delete failed', mode === 'everyone' ? 'You can only delete your own messages for everyone.' : 'Could not delete this message for you.');
       return;
     }
 
     setDeletingMessage(true);
-    const { data, error } = await supabase
-      .from('community_messages')
-      .delete()
-      .eq('id', messageId)
-      .select('id')
-      .maybeSingle();
+    const hiddenUsers = Array.isArray(message.hidden_for_users) ? message.hidden_for_users : [];
+    const result = mode === 'everyone'
+      ? await supabase.from('community_messages').delete().eq('id', messageId).select('id').maybeSingle()
+      : await supabase.from('community_messages').update({ hidden_for_users: Array.from(new Set([...hiddenUsers, user.id])) }).eq('id', messageId).select('id').maybeSingle();
+    const { data, error } = result;
     setDeletingMessage(false);
     if (error) {
       Alert.alert('Could not delete message', error.message);
@@ -218,15 +236,22 @@ export default function CommunityScreen() {
         {!isOwnMessage && (avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><MaterialCommunityIcons name="account" size={18} color="#10B981" /></View>)}
         <View style={[styles.messageColumn, isOwnMessage && styles.messageColumnOwn]}>
           <View style={[styles.senderRow, isOwnMessage && styles.senderRowOwn]}><Text style={styles.senderName}>{profile.full_name || 'MVS member'}</Text><Text style={styles.roleBadge}>{roleLabels[profile.role || ''] || 'Member'}</Text></View>
+          <SwipeableMessage
+            onReply={() => {
+              setReplyTarget({ id: item.id, senderName: profile.full_name || 'MVS member', content: item.content || 'Image' });
+              requestAnimationFrame(() => composerInputRef.current?.focus());
+            }}
+          >
           <TouchableOpacity
             activeOpacity={0.85}
-            onLongPress={isOwnMessage ? () => setDeleteCandidateId(item.id) : undefined}
+            onLongPress={() => setActionMessageId(item.id)}
             onPress={() => {
               if (previewImageUrl) setSelectedImagePreview(previewImageUrl);
             }}
             disabled={!isOwnMessage && !hasImage}
             style={[styles.bubble, isOwnMessage ? styles.bubbleOwn : styles.bubbleOther]}
           >
+            {item.reply_to ? <View style={styles.quotedMessage}><Text style={styles.quotedMessageSender} numberOfLines={1}>{item.reply_to.sender_name}</Text><Text style={styles.quotedMessageText} numberOfLines={2}>{item.reply_to.content}</Text></View> : null}
             {item.content ? <Text style={[styles.messageText, isOwnMessage && styles.messageTextOwn]}>{item.content}</Text> : null}
             {hasImage ? (
               <View style={styles.mediaGrid}>
@@ -248,6 +273,7 @@ export default function CommunityScreen() {
             ) : null}
             <View style={styles.messageFooter}><Text style={[styles.time, isOwnMessage && styles.timeOwn]}>{formatMessageTime(item.created_at)}</Text></View>
           </TouchableOpacity>
+          </SwipeableMessage>
         </View>
         {isOwnMessage && (avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.avatarOwn} /> : <View style={styles.avatarFallbackOwn}><MaterialCommunityIcons name="account" size={18} color="#10B981" /></View>)}
       </View>
@@ -258,19 +284,23 @@ export default function CommunityScreen() {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView style={styles.keyboardRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
         <View style={styles.banner}><Text style={styles.heroTitle}>MVS Hub</Text><Text style={styles.kicker}>Community + Marketplace</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
-        <FlatList ref={listRef} data={messages} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={scrollToLatest} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={scrollToLatest} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}><Text style={{ fontSize: 28, fontWeight: '700', color: '#10B981', textAlign: 'center', letterSpacing: 0.5 }}>Coming soon.</Text><Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>The community and marketplace experience is on its way.</Text></View>} />
-        {/*
-      {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
-      <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View>
-      */}
+        <FlatList ref={listRef} data={messages.filter((item) => !(item.hidden_for_users || []).includes(currentUserId || ''))} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={scrollToLatest} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={scrollToLatest} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}><Text style={{ fontSize: 28, fontWeight: '700', color: '#10B981', textAlign: 'center', letterSpacing: 0.5 }}>Coming soon.</Text><Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>The community and marketplace experience is on its way.</Text></View>} />
+        {replyTarget ? <View style={styles.replyPreview}><View style={styles.replyPreviewCopy}><Text style={styles.replyPreviewName}>{replyTarget.senderName}</Text><Text style={styles.replyPreviewText} numberOfLines={1}>{replyTarget.content}</Text></View><TouchableOpacity onPress={() => setReplyTarget(null)} accessibilityLabel="Cancel reply"><MaterialCommunityIcons name="close" size={20} color="#CBD5E1" /></TouchableOpacity></View> : null}
+        {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
+        {/* <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View> */}
+        <Modal visible={actionMessageId !== null} transparent animationType="fade" onRequestClose={() => setActionMessageId(null)}>
+          <View style={styles.confirmOverlay}><View style={styles.confirmCard}><Text style={styles.confirmTitle}>Message actions</Text><TouchableOpacity style={styles.actionOption} onPress={() => void copyMessage()}><MaterialCommunityIcons name="content-copy" size={20} color="#10B981" /><Text style={styles.actionOptionText}>Copy</Text></TouchableOpacity><TouchableOpacity style={styles.actionOption} onPress={() => confirmDelete(actionMessageId!)}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /><Text style={styles.actionOptionText}>Delete</Text></TouchableOpacity><TouchableOpacity style={styles.locationCancelAction} onPress={() => setActionMessageId(null)}><Text style={styles.locationCancelActionText}>Cancel</Text></TouchableOpacity></View></View>
+        </Modal>
+        {copyToast ? <View style={styles.copyToast}><Text style={styles.copyToastText}>Message copied</Text></View> : null}
         <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
           <View style={styles.confirmOverlay}>
             <View style={styles.confirmCard}>
               <Text style={styles.confirmTitle}>Delete message?</Text>
-              <Text style={styles.confirmText}>This message will be removed for everyone.</Text>
+              <Text style={styles.confirmText}>{messages.find((item) => item.id === deleteCandidateId)?.user_id === currentUserId ? 'Choose who should no longer see this message.' : 'This message will be removed for you.'}</Text>
               <View style={styles.confirmActions}>
+                {messages.find((item) => item.id === deleteCandidateId)?.user_id === currentUserId ? <TouchableOpacity style={styles.deleteConfirmButton} onPress={() => { void deleteMessage('everyone'); }} disabled={deletingMessage}><Text style={styles.deleteConfirmText}>Delete for Everyone</Text></TouchableOpacity> : null}
+                <TouchableOpacity style={styles.deleteConfirmButton} onPress={() => { void deleteMessage('me'); }} disabled={deletingMessage}>{deletingMessage ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.deleteConfirmText}>Delete for Me</Text>}</TouchableOpacity>
                 <TouchableOpacity style={styles.cancelButton} onPress={() => setDeleteCandidateId(null)} disabled={deletingMessage}><Text style={styles.cancelButtonText}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.deleteConfirmButton} onPress={() => { void deleteMessage(); }} disabled={deletingMessage}>{deletingMessage ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.deleteConfirmText}>Delete</Text>}</TouchableOpacity>
               </View>
             </View>
           </View>
@@ -305,13 +335,13 @@ const styles = StyleSheet.create({
   messageColumn: { maxWidth: '84%' },
   messageColumnOwn: { alignItems: 'flex-end' },
   confirmOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000000B8', padding: 24 },
-  confirmCard: { width: '100%', maxWidth: 360, backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 14, padding: 20 },
+  confirmCard: { width: '100%', maxWidth: 360, minHeight: 270, backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 14, padding: 20, justifyContent: 'center' },
   confirmTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '700' },
   confirmText: { color: '#94A3B8', fontSize: 14, lineHeight: 20, marginTop: 8 },
-  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
-  cancelButton: { borderColor: '#475569', borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 10 },
+  confirmActions: { flexDirection: 'column', alignItems: 'stretch', gap: 12, marginTop: 20, width: '100%' },
+  cancelButton: { width: '100%', alignItems: 'center', borderColor: '#475569', borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12 },
   cancelButtonText: { color: '#CBD5E1', fontWeight: '700' },
-  deleteConfirmButton: { minWidth: 82, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 10 },
+  deleteConfirmButton: { width: '100%', minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12 },
   deleteConfirmText: { color: '#FFFFFF', fontWeight: '700' },
   senderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3, marginLeft: 4 },
   senderRowOwn: { justifyContent: 'flex-end', marginLeft: 0, marginRight: 4 },
@@ -322,6 +352,9 @@ const styles = StyleSheet.create({
   bubbleOwn: { backgroundColor: '#0E7490', borderBottomRightRadius: 4, borderRightWidth: 2, borderRightColor: '#10B981' },
   messageText: { color: '#FFFFFF', fontSize: 15, lineHeight: 21 },
   messageTextOwn: { color: '#FFFFFF' },
+  quotedMessage: { borderLeftWidth: 3, borderLeftColor: '#6EE7B7', backgroundColor: '#0F172A66', borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 8 },
+  quotedMessageSender: { color: '#6EE7B7', fontSize: 11, fontWeight: '700' },
+  quotedMessageText: { color: '#CBD5E1', fontSize: 12, marginTop: 2 },
   mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2, marginBottom: 4 },
   mediaSingleWrapper: { width: 220, height: 170, borderRadius: 10, overflow: 'hidden' },
   mediaTileWrapper: { width: 96, height: 96, borderRadius: 8, overflow: 'hidden' },
@@ -338,6 +371,16 @@ const styles = StyleSheet.create({
   pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
   pendingImage: { width: 52, height: 52, borderRadius: 8 },
   composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
+  replyPreview: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderLeftWidth: 3, borderLeftColor: '#10B981', backgroundColor: '#1E293B', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  replyPreviewCopy: { flex: 1, minWidth: 0 },
+  replyPreviewName: { color: '#6EE7B7', fontSize: 11, fontWeight: '700' },
+  replyPreviewText: { color: '#CBD5E1', fontSize: 12, marginTop: 2 },
+  actionOption: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#334155' },
+  actionOptionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  locationCancelAction: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
+  locationCancelActionText: { color: '#94A3B8', fontSize: 14, fontWeight: '600' },
+  copyToast: { position: 'absolute', alignSelf: 'center', bottom: 86, backgroundColor: '#1E293B', borderColor: '#475569', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, zIndex: 20 },
+  copyToastText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   iconButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   inputShell: { flex: 1, minHeight: 42, maxHeight: 132, justifyContent: 'center', borderWidth: 1, borderColor: '#334155', borderRadius: 22, paddingHorizontal: 15, paddingVertical: 6, backgroundColor: '#1E293B' },
   input: { flex: 1, color: '#FFFFFF', paddingVertical: 0, paddingHorizontal: 0, backgroundColor: 'transparent', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}), fontSize: 16, textAlignVertical: 'top' },
