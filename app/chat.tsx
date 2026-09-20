@@ -4305,6 +4305,8 @@ function SoapConsultationModal({ visible, submitting, onClose, onSubmit }: { vis
 function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeMessage; currentUserId: string; onPayInvoice: (orderId: string) => Promise<void> }) {
   const metadata = (item.metadata || {}) as Partial<InvoiceMetadata>;
   const [customer, setCustomer] = useState<{ email: string; name: string } | null>(null);
+  const [sellerSubaccountId, setSellerSubaccountId] = useState<string | undefined>();
+  const [sellerProfileLoaded, setSellerProfileLoaded] = useState(false);
   const isBuyer = item.receiver_id === currentUserId && item.sender_id !== currentUserId;
   const isPendingInvoice = metadata.status === "pending" && Boolean(metadata.invoice_id) && isBuyer;
 
@@ -4314,6 +4316,35 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
       if (user?.email) setCustomer({ email: user.email, name: user.user_metadata?.full_name || user.user_metadata?.name || user.email });
     });
   }, [isPendingInvoice]);
+
+  useEffect(() => {
+    if (!isPendingInvoice || !item.sender_id) {
+      setSellerSubaccountId(undefined);
+      setSellerProfileLoaded(true);
+      return;
+    }
+
+    let mounted = true;
+    setSellerProfileLoaded(false);
+    void supabase
+      .from("profiles")
+      .select("flutterwave_subaccount_id")
+      .eq("id", item.sender_id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("[Invoice] Seller Flutterwave subaccount unavailable:", error.message);
+        }
+        if (!mounted) return;
+        const candidate = data?.flutterwave_subaccount_id;
+        setSellerSubaccountId(typeof candidate === "string" && /^RS_[A-Za-z0-9_-]+$/.test(candidate) ? candidate : undefined);
+        setSellerProfileLoaded(true);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isPendingInvoice, item.sender_id]);
 
   const handlePaymentSuccess = (response: unknown) => {
     const paymentResponse = response as { status?: string; transaction_id?: string };
@@ -4332,13 +4363,13 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
       amount: Number(metadata.amount),
       currency: "NGN",
       customer,
-      subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined,
+      subaccounts: sellerSubaccountId ? [{ id: sellerSubaccountId, transaction_split_ratio: 90 }] : undefined,
       onSuccess: handlePaymentSuccess,
       onClose: () => Alert.alert("Payment not completed", "Payment was not completed. Please try again."),
     });
   };
 
-  const payButton = isPendingInvoice && customer ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.invoice_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: metadata.seller_subaccount_id ? [{ id: metadata.seller_subaccount_id, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
+  const payButton = isPendingInvoice && customer && sellerProfileLoaded ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.invoice_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: sellerSubaccountId ? [{ id: sellerSubaccountId, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
 
   return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>NGN {Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
 }

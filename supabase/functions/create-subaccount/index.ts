@@ -13,7 +13,24 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, bankCode, accountNumber, businessName, email, phone } = await req.json();
+    const { userId, bankCode, accountNumber, accountName, businessName, email, phone } = await req.json();
+    if (!userId || !bankCode || !accountNumber || !accountName) {
+      return new Response(JSON.stringify({ success: false, error: "User, bank, account number, and account name are required." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const authorization = req.headers.get("Authorization");
+    const accessToken = authorization?.replace(/^Bearer\s+/i, "").trim();
+    if (!accessToken || !supabaseUrl || !serviceRoleKey) {
+      return new Response(JSON.stringify({ success: false, error: "Authentication or Supabase service configuration is missing." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+    const { data: { user } } = await supabaseAdmin.auth.getUser(accessToken);
+    if (!user || user.id !== userId) {
+      return new Response(JSON.stringify({ success: false, error: "You can only create a subaccount for your own profile." }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const flwSecretKey = Deno.env.get("FLW_SECRET_KEY");
     if (!flwSecretKey) {
@@ -32,7 +49,7 @@ serve(async (req) => {
       body: JSON.stringify({
         account_bank: bankCode,
         account_number: accountNumber,
-        business_name: businessName || "MVS Partner",
+        business_name: businessName || accountName || "MVS Partner",
         business_email: email || "partner@mvsc.com.ng",
         business_mobile: phone || "08000000000",
         country: "NG",
@@ -51,12 +68,13 @@ serve(async (req) => {
       );
     }
 
-    const subaccountId = flwData.data.subaccount_id;
-
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    const subaccountId = flwData.data?.subaccount_id;
+    if (typeof subaccountId !== "string" || !/^RS_[A-Za-z0-9_-]+$/.test(subaccountId)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Flutterwave returned an invalid subaccount ID." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const { error: dbError } = await supabaseAdmin
       .from("profiles")

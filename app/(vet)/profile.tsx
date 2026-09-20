@@ -3,20 +3,20 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
@@ -53,17 +53,11 @@ const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null
 const NIGERIAN_BANKS = [
   { label: 'Access Bank', code: '044' },
   { label: 'Ecobank Nigeria', code: '050' },
-  { label: 'FairMoney MFB', code: '51318' },
   { label: 'FCMB (First City Monument Bank)', code: '214' },
   { label: 'Fidelity Bank', code: '070' },
   { label: 'First Bank of Nigeria', code: '011' },
   { label: 'GTBank (Guaranty Trust Bank)', code: '058' },
   { label: 'Keystone Bank', code: '082' },
-  { label: 'Kuda Bank', code: '50211' },
-  { label: 'Moniepoint Microfinance Bank', code: '50515' },
-  { label: 'OPay Digital Services (Paycom)', code: '999992' },
-  { label: 'Paga', code: '100002' },
-  { label: 'PalmPay', code: '999991' },
   { label: 'Providus Bank', code: '101' },
   { label: 'Stanbic IBTC Bank', code: '221' },
   { label: 'Sterling Bank', code: '232' },
@@ -83,6 +77,7 @@ export default function VetProfileScreen() {
   const [locationStatePicker, setLocationStatePicker] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [bankSaving, setBankSaving] = useState(false);
+  const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
@@ -298,19 +293,28 @@ export default function VetProfileScreen() {
 
   const handleSaveBankDetails = async () => {
     if (bankSaving) return;
+    const showBankNotice = (kind: 'success' | 'error', message: string) => {
+      setBankNotice({ kind, message });
+      setTimeout(() => setBankNotice(null), 6000);
+    };
     setBankSaving(true);
     try {
       const user = await getCurrentUser();
-      if (!user) return;
+      if (!user) {
+        showBankNotice('error', 'Your session has expired. Please sign in again.');
+        return;
+      }
       const bankCode = profile.bankCode || '221';
       const accountNumber = profile.accountNumber || '';
       const selectedBank = NIGERIAN_BANKS.find((bank) => bank.code === bankCode);
 
       if (!selectedBank) {
+        showBankNotice('error', 'Select a bank before saving your account details.');
         Alert.alert('Select a bank', 'Choose your Nigerian bank before saving.');
         return;
       }
       if (!/^\d{10}$/.test(accountNumber)) {
+        showBankNotice('error', 'Account number must contain exactly 10 digits.');
         Alert.alert('Invalid account number', 'Account number must contain exactly 10 digits.');
         return;
       }
@@ -323,6 +327,7 @@ export default function VetProfileScreen() {
       }).eq('id', user.id);
 
       if (dbErr) {
+        showBankNotice('error', `Bank details could not be saved: ${dbErr.message}`);
         Alert.alert('Database Error', dbErr.message);
         return;
       }
@@ -332,6 +337,7 @@ export default function VetProfileScreen() {
           userId: user.id,
           bankCode,
           accountNumber,
+          accountName: sanitizeInput(profile.accountName),
           businessName: user.user_metadata?.full_name || profile.name,
           email: user.email || profile.email,
           phone: user.user_metadata?.phone || profile.phone,
@@ -339,20 +345,32 @@ export default function VetProfileScreen() {
       });
 
       if (edgeErr || !edgeData?.success) {
-        Alert.alert('Warning', `Bank saved, but subaccount creation failed: ${edgeErr?.message || edgeData?.error || 'Unknown error'}`);
+        const message = `Bank saved, but subaccount creation failed: ${edgeErr?.message || edgeData?.error || 'Unknown error'}`;
+        showBankNotice('error', message);
+        Alert.alert('Warning', message);
+        return;
+      }
+
+      if (!edgeData.subaccount_id) {
+        const message = 'Bank saved, but Flutterwave did not return a subaccount ID.';
+        showBankNotice('error', message);
+        Alert.alert('Warning', message);
         return;
       }
 
       if (edgeData.subaccount_id) {
         const { error: subaccountProfileError } = await supabase.from('profiles').update({ flutterwave_subaccount_id: edgeData.subaccount_id }).eq('id', user.id);
         if (subaccountProfileError) {
-          Alert.alert('Warning', `Bank saved, but subaccount ID could not be saved: ${subaccountProfileError.message}`);
+          const message = `Bank saved, but subaccount ID could not be saved: ${subaccountProfileError.message}`;
+          showBankNotice('error', message);
+          Alert.alert('Warning', message);
           return;
         }
       }
 
       const { data: refreshedProfile, error: refreshError } = await supabase.from('profiles').select('bank_name, bank_code, account_number, account_name, flutterwave_subaccount_id').eq('id', user.id).maybeSingle();
       if (refreshError) {
+        showBankNotice('error', `Bank account was saved, but it could not be refreshed: ${refreshError.message}`);
         Alert.alert('Database Error', refreshError.message);
         return;
       }
@@ -368,8 +386,12 @@ export default function VetProfileScreen() {
         }));
       }
 
+      showBankNotice('success', 'Bank account and Flutterwave subaccount added successfully.');
       Alert.alert('Success', 'Bank account & Flutterwave subaccount setup complete!');
       setModal(null);
+    } catch (error) {
+      console.error('[Vet Profile] Bank account save failed:', error);
+      Alert.alert('Could not add bank account', error instanceof Error ? error.message : 'Please check your details and try again.');
     } finally {
       setBankSaving(false);
     }
@@ -487,6 +509,12 @@ export default function VetProfileScreen() {
         <View style={styles.toast}>
           <MaterialCommunityIcons name="check-circle" size={18} color="#D1FAE5" />
           <Text style={styles.toastText}>{successMessage}</Text>
+        </View>
+      ) : null}
+      {bankNotice ? (
+        <View style={[styles.toast, bankNotice.kind === 'error' && styles.bankErrorToast]}>
+          <MaterialCommunityIcons name={bankNotice.kind === 'success' ? 'check-circle' : 'alert-circle'} size={18} color={bankNotice.kind === 'success' ? '#D1FAE5' : '#FEE2E2'} />
+          <Text style={bankNotice.kind === 'success' ? styles.toastText : styles.bankErrorText}>{bankNotice.message}</Text>
         </View>
       ) : null}
 
@@ -1145,5 +1173,13 @@ const styles = StyleSheet.create({
   toastText: {
     color: '#D1FAE5',
     fontWeight: '600',
+  },
+  bankErrorToast: {
+    backgroundColor: '#991B1B',
+  },
+  bankErrorText: {
+    color: '#FEE2E2',
+    fontWeight: '600',
+    flex: 1,
   },
 });
