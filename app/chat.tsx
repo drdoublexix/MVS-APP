@@ -58,6 +58,7 @@ import {
     supabase,
     uploadChatAttachment,
     type ConsultationStatus,
+    type MessageReactions,
     type RealtimeMessage,
     type ReplySnippet
 } from "../lib/supabase";
@@ -84,6 +85,7 @@ type ChatParams = {
 };
 
 type ReplyTarget = { id: string; senderName: string; content: string };
+const reactionOptions = ["👍", "❤️", "😂", "😮", "😢", "🙏", "💯"] as const;
 
 const toReplySnippet = (replyTarget: ReplyTarget | null | undefined): ReplySnippet | null =>
   replyTarget
@@ -639,6 +641,11 @@ const styles = {
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
   bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
+  reactionBadge: { position: "absolute", right: 8, bottom: -9, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", zIndex: 2, elevation: 2 },
+  reactionBadgeText: { fontSize: 17 },
+  reactionBar: { flexDirection: "row", alignSelf: "center", alignItems: "center", backgroundColor: "#1E293B", borderColor: "#475569", borderWidth: 1, borderRadius: 24, paddingHorizontal: 6, paddingVertical: 5, marginBottom: 10, elevation: 6 },
+  reactionButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19 },
+  reactionEmoji: { fontSize: 24 },
   videoBubble: { cursor: "pointer" },
   outgoing: { alignSelf: "flex-end", backgroundColor: "#0E7490" },
   incoming: { alignSelf: "flex-start", backgroundColor: "#1E293B" },
@@ -1702,7 +1709,11 @@ export default function ChatScreen() {
         setMessages((current) => {
           const visibleCurrent = filterVisibleMessages(current, currentUserId);
           if (isMessageHiddenForUser(incoming, currentUserId)) return visibleCurrent;
-          return appendUniqueMessage(visibleCurrent, incoming, currentUserId);
+          const existingMessage = visibleCurrent.some((message) => message.id === incoming.id);
+          const nextMessages = existingMessage
+            ? visibleCurrent.map((message) => message.id === incoming.id ? incoming : message)
+            : appendUniqueMessage(visibleCurrent, incoming, currentUserId);
+          return nextMessages;
         });
       },
       (messageId) => {
@@ -2659,6 +2670,27 @@ export default function ChatScreen() {
     handleDeleteMessage(message);
   };
 
+  const handleReactMessage = async (messageToReact: RealtimeMessage, emoji: string) => {
+    if (messageToReact.id.startsWith("temp-")) return;
+    const nextReactions: MessageReactions = { ...(messageToReact.reactions || {}) };
+    if (emoji) nextReactions[currentUserId] = emoji;
+    else delete nextReactions[currentUserId];
+    setMessages((current) => current.map((message) => (
+      message.id === messageToReact.id ? { ...message, reactions: nextReactions } : message
+    )));
+    setDeleteCandidate(null);
+    const { error } = await supabase
+      .from("messages")
+      .update({ reactions: nextReactions })
+      .eq("id", messageToReact.id);
+    if (error) {
+      setMessages((current) => current.map((message) => (
+        message.id === messageToReact.id ? { ...message, reactions: messageToReact.reactions || {} } : message
+      )));
+      Alert.alert("Reaction failed", "Could not save your reaction. Please try again.");
+    }
+  };
+
   const confirmDeleteMessage = async (mode: "everyone" | "me" = "everyone") => {
     if (!deleteCandidate) return;
     try {
@@ -3015,6 +3047,7 @@ export default function ChatScreen() {
         liveLocationActive={liveLocationActive}
         onStopLiveLocation={stopLiveLocation}
         onDeleteMessage={handleDeleteMessage}
+        onReactMessage={handleReactMessage}
         deleteCandidate={deleteCandidate}
         onConfirmDelete={confirmDeleteMessage}
         onCancelDelete={() => setDeleteCandidate(null)}
@@ -3257,6 +3290,7 @@ function ChatRoom({
   liveLocationActive,
   onStopLiveLocation,
   onDeleteMessage,
+  onReactMessage,
   deleteCandidate,
   onConfirmDelete,
   onCancelDelete,
@@ -3322,6 +3356,7 @@ function ChatRoom({
   liveLocationActive: boolean;
   onStopLiveLocation: () => void;
   onDeleteMessage: (message: RealtimeMessage) => void;
+  onReactMessage: (message: RealtimeMessage, emoji: string) => Promise<void>;
   deleteCandidate: RealtimeMessage | null;
   onConfirmDelete: (mode?: "everyone" | "me") => void;
   onCancelDelete: () => void;
@@ -3521,6 +3556,7 @@ function ChatRoom({
         liveLocationActive={liveLocationActive}
         onStopLiveLocation={onStopLiveLocation}
         onDeleteMessage={onDeleteMessage}
+        onReactMessage={onReactMessage}
         deleteCandidate={deleteCandidate}
         onConfirmDelete={onConfirmDelete}
         onCancelDelete={onCancelDelete}
@@ -3859,6 +3895,18 @@ function ChatRoom({
                     <Text style={styles.primary}>{item.content}</Text>
                   ) : null}
                   <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                  {Object.values(item.reactions || {}).length > 0 ? (
+                    <TouchableOpacity
+                      style={styles.reactionBadge}
+                      onPress={() => {
+                        if (item.reactions?.[currentUserId]) void onReactMessage(item, "");
+                      }}
+                      disabled={!item.reactions?.[currentUserId]}
+                      accessibilityLabel={item.reactions?.[currentUserId] ? "Remove your reaction" : "Message reactions"}
+                    >
+                      <Text style={styles.reactionBadgeText}>{Array.from(new Set(Object.values(item.reactions || {}))).join(" ")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </TouchableOpacity>
                 </SwipeableMessage>
               </View>
@@ -3913,6 +3961,7 @@ function ChatRoom({
       {deleteCandidate ? (
         <Modal transparent animationType="fade" visible={Boolean(deleteCandidate)} onRequestClose={onCancelDelete}>
           <View style={styles.modalBackdrop}>
+            <ReactionBar onSelect={(emoji) => { void onReactMessage(deleteCandidate, emoji); }} />
             <View style={styles.deleteModalCard}>
               <Text style={styles.deleteModalTitle}>Delete message?</Text>
               {deleteCandidate.content ? (
@@ -4090,6 +4139,18 @@ function ChatComposer({
           </>
         )}
       </View>
+    </View>
+  );
+}
+
+function ReactionBar({ onSelect }: { onSelect: (emoji: string) => void }) {
+  return (
+    <View style={styles.reactionBar}>
+      {reactionOptions.map((emoji) => (
+        <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => onSelect(emoji)} accessibilityLabel={`React ${emoji}`}>
+          <Text style={styles.reactionEmoji}>{emoji}</Text>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }
@@ -4611,6 +4672,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   liveLocationActive,
   onStopLiveLocation,
   onDeleteMessage,
+  onReactMessage,
   deleteCandidate,
   onConfirmDelete,
   onCancelDelete,
@@ -4675,6 +4737,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   liveLocationActive: boolean;
   onStopLiveLocation: () => void;
   onDeleteMessage: (message: RealtimeMessage) => void;
+  onReactMessage: (message: RealtimeMessage, emoji: string) => Promise<void>;
   deleteCandidate: RealtimeMessage | null;
   onConfirmDelete: (mode?: "everyone" | "me") => void;
   onCancelDelete: () => void;
@@ -5162,6 +5225,18 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                     <Text style={styles.primary}>{item.content}</Text>
                   ) : null}
                   <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                  {Object.values(item.reactions || {}).length > 0 ? (
+                    <TouchableOpacity
+                      style={styles.reactionBadge}
+                      onPress={() => {
+                        if (item.reactions?.[currentUserId]) void onReactMessage(item, "");
+                      }}
+                      disabled={!item.reactions?.[currentUserId]}
+                      accessibilityLabel={item.reactions?.[currentUserId] ? "Remove your reaction" : "Message reactions"}
+                    >
+                      <Text style={styles.reactionBadgeText}>{Array.from(new Set(Object.values(item.reactions || {}))).join(" ")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </TouchableOpacity>
                 </SwipeableMessage>
               </View>
@@ -5220,6 +5295,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       {deleteCandidate ? (
         <Modal transparent animationType="fade" visible={Boolean(deleteCandidate)} onRequestClose={onCancelDelete}>
           <View style={styles.modalBackdrop}>
+            <ReactionBar onSelect={(emoji) => { void onReactMessage(deleteCandidate, emoji); }} />
             <View style={styles.deleteModalCard}>
               <Text style={styles.deleteModalTitle}>Delete message?</Text>
               {deleteCandidate.content ? (

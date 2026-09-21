@@ -126,7 +126,8 @@
       "expo-web-browser",
       "expo-video",
       "expo-asset",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-maps"
     ],
     "owner": "drdoublexix"
   }

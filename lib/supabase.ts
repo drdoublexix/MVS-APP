@@ -275,6 +275,7 @@ export type ReplySnippet = {
   sender_name: string;
   content: string;
 };
+export type MessageReactions = Record<string, string>;
 export type RealtimeMessage = {
   id: string;
   temp_id?: string;
@@ -290,6 +291,7 @@ export type RealtimeMessage = {
   } | null;
   metadata?: Record<string, unknown> | null;
   reply_to?: ReplySnippet | null;
+  reactions?: MessageReactions | null;
   media_url?: string | null;
   media_type?: 'image' | 'video' | null;
   hidden_for_users?: string[] | null;
@@ -503,7 +505,11 @@ export const subscribeToMessages = (conversationId: string, onMessage: (message:
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => onMessage(payload.new as RealtimeMessage))
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
       const message = payload.new as RealtimeMessage;
-      if (message.is_deleted && onDelete) onDelete(String(message.id));
+      if (message.is_deleted && onDelete) {
+        onDelete(String(message.id));
+        return;
+      }
+      onMessage(message);
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
       if (onDelete) onDelete(String((payload.old as Partial<RealtimeMessage>).id));

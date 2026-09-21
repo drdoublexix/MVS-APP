@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
+import VetLocationMap from '../../components/VetLocationMap';
 import { requestDeviceLocation } from '../../lib/location';
 import { ensureConsultationRecord, getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 
@@ -26,7 +27,7 @@ type VetProfile = {
 };
 
 type Category = 'Online Consultation' | 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'General Inquiry' | 'Others';
-type VetModalProfile = Pick<VetProfile, 'bio' | 'clinic' | 'specialty' | 'phone_number'>;
+type VetModalProfile = Pick<VetProfile, 'bio' | 'clinic' | 'specialty' | 'phone_number' | 'city' | 'state'>;
 
 const categories: Category[] = ['Online Consultation', 'Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
 const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
@@ -37,6 +38,7 @@ const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
 
 const isValidCoordinate = (value: unknown, minimum: number, maximum: number): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= minimum && value <= maximum;
+const formatLocation = (city?: string | null, state?: string | null) => [city, state].filter(Boolean).join(', ') || 'Not provided';
 
 const haversineDistanceKm = (latitudeOne: number, longitudeOne: number, latitudeTwo: number, longitudeTwo: number) => {
   const earthRadiusKm = 6371;
@@ -67,6 +69,7 @@ export default function VetsScreen() {
   const [ratingLoading, setRatingLoading] = useState(false);
   const [failedAvatarIds, setFailedAvatarIds] = useState<Record<string, boolean>>({});
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(null);
+  const [mapVisible, setMapVisible] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -167,7 +170,7 @@ export default function VetsScreen() {
 
     let profileQuery = await supabase
       .from('profiles')
-      .select('bio, clinic, specialty, phone_number')
+      .select('bio, clinic, specialty, city, state, phone_number')
       .eq('id', vet.id)
       .maybeSingle();
 
@@ -175,7 +178,7 @@ export default function VetsScreen() {
       console.warn('Retrying live vet profile details:', profileQuery.error.message);
       profileQuery = await supabase
         .from('profiles')
-        .select('bio, clinic, specialty, phone_number')
+        .select('bio, clinic, specialty, city, state, phone_number')
         .eq('id', vet.id)
         .maybeSingle();
     }
@@ -274,10 +277,37 @@ export default function VetsScreen() {
     openIntake(vet, 'Online Consultation');
   };
 
+  const vetsWithCoordinates = vets.filter((vet) =>
+    isValidCoordinate(vet.latitude, -90, 90) && isValidCoordinate(vet.longitude, -180, 180),
+  );
+
+  const openVetMap = async () => {
+    if (vetsWithCoordinates.length === 0) {
+      Alert.alert('Locations unavailable', 'No veterinarian locations are available yet.');
+      return;
+    }
+    setMapVisible(true);
+  };
+
+  const openVetFromMap = (vetId?: string) => {
+    const vet = vetsWithCoordinates.find((item) => item.id === vetId);
+    if (!vet) return;
+    setMapVisible(false);
+    void openVetProfile(vet);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Nearby Veterinarians</Text>
+        <TouchableOpacity
+          style={styles.mapButton}
+          onPress={() => { void openVetMap(); }}
+          accessibilityLabel="Open veterinarian locations in maps"
+          accessibilityRole="button"
+        >
+          <MaterialCommunityIcons name="map-marker-radius" size={25} color="#10B981" />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -332,6 +362,19 @@ export default function VetsScreen() {
         </ScrollView>
       )}
 
+      <VetLocationMap
+        visible={mapVisible}
+        vets={vetsWithCoordinates.map((vet) => ({
+          id: vet.id,
+          full_name: vet.full_name,
+          specialty: vet.specialty || vet.title || 'Veterinarian',
+          latitude: vet.latitude!,
+          longitude: vet.longitude!,
+        }))}
+        onClose={() => setMapVisible(false)}
+        onSelectVet={openVetFromMap}
+      />
+
       <Modal visible={Boolean(selectedVet)} animationType="slide" transparent onRequestClose={() => { setSelectedVet(null); setSelectedVetProfile(null); }} onShow={() => { if (selectedVet) void fetchVetRating(selectedVet); }}>
         <View style={styles.overlay}>
           <View style={styles.modal}>
@@ -381,6 +424,8 @@ export default function VetsScreen() {
                     <Text style={styles.detailValue}>{selectedVetProfile?.clinic || 'Not provided'}</Text>
                     <Text style={styles.detailLabel}>Specialty</Text>
                     <Text style={styles.detailValue}>{selectedVetProfile?.specialty || 'Not provided'}</Text>
+                    <Text style={styles.detailLabel}>Location</Text>
+                    <Text style={styles.detailValue}>{formatLocation(selectedVetProfile?.city, selectedVetProfile?.state)}</Text>
                     <Text style={styles.detailLabel}>Phone Number</Text>
                     <Text style={styles.detailValue}>{selectedVetProfile?.phone_number || 'Not provided'}</Text>
                   </View>
@@ -427,8 +472,9 @@ export default function VetsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  header: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#334155', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' },
+  header: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#334155', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700' },
+  mapButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 21, backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
   list: { padding: 16 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyState: { color: '#94A3B8', marginTop: 20, textAlign: 'center' },

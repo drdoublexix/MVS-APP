@@ -5,16 +5,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import SwipeableMessage from '../../components/SwipeableMessage';
 import { sanitizeInput } from '../../lib/sanitize';
-import { getCurrentUser, readCachedAuthState, supabase } from '../../lib/supabase';
+import { getCurrentUser, readCachedAuthState, supabase, type MessageReactions } from '../../lib/supabase';
 
 type Profile = { full_name: string | null; avatar_url: string | null; role: string | null };
 type ReplySnippet = { id: string; sender_name: string; content: string };
-type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null; reply_to?: ReplySnippet | null; hidden_for_users?: string[] | null };
+type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null; reply_to?: ReplySnippet | null; hidden_for_users?: string[] | null; reactions?: MessageReactions | null };
 type PendingImage = ImagePicker.ImagePickerAsset;
 type ReplyTarget = { id: string; senderName: string; content: string };
 
 const roleLabels: Record<string, string> = { vet: 'Vet', veterinarian: 'Vet', merchant: 'Merchant', client: 'Client' };
 const emptyProfile: Profile = { full_name: null, avatar_url: null, role: null };
+const reactionOptions = ['👍', '❤️', '😂', '😮', '😢', '🙏', '💯'] as const;
 
 const getProfile = (profile: CommunityMessage['profiles']): Profile => Array.isArray(profile) ? profile[0] || emptyProfile : profile || emptyProfile;
 const getAvatarUrl = (avatarPath: string | null) => {
@@ -63,7 +64,7 @@ export default function CommunityScreen() {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     const { data, error } = await supabase
       .from('community_messages')
-      .select('id, user_id, content, media_urls, created_at, reply_to, hidden_for_users, profiles(full_name, avatar_url, role)')
+      .select('id, user_id, content, media_urls, created_at, reply_to, hidden_for_users, reactions, profiles(full_name, avatar_url, role)')
       .order('created_at', { ascending: true });
     if (error) Alert.alert('Could not load community', error.message);
     else setMessages((data || []) as CommunityMessage[]);
@@ -94,14 +95,16 @@ export default function CommunityScreen() {
           return;
         }
 
-        if (payload.eventType === 'INSERT') {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           const { data, error } = await supabase
             .from('community_messages')
-            .select('id, user_id, content, media_urls, created_at, reply_to, hidden_for_users, profiles(full_name, avatar_url, role)')
+            .select('id, user_id, content, media_urls, created_at, reply_to, hidden_for_users, reactions, profiles(full_name, avatar_url, role)')
             .eq('id', messageId)
             .single();
           if (mounted && !error && data && !(Array.isArray((data as CommunityMessage).hidden_for_users) && (data as CommunityMessage).hidden_for_users!.includes(currentUserId || ''))) {
-            setMessages((current) => current.some((message) => message.id === messageId) ? current : [...current, data as CommunityMessage]);
+            setMessages((current) => current.some((message) => message.id === messageId)
+              ? current.map((message) => message.id === messageId ? data as CommunityMessage : message)
+              : [...current, data as CommunityMessage]);
           }
         }
       })
@@ -116,7 +119,7 @@ export default function CommunityScreen() {
       authListener.subscription.unsubscribe();
       void supabase.removeChannel(channel);
     };
-  }, [loadMessages]);
+  }, [currentUserId, loadMessages]);
 
   useEffect(() => {
     if (messages.length > 0) scrollToLatest();
@@ -180,6 +183,24 @@ export default function CommunityScreen() {
     setActionMessageId(null);
     setCopyToast(true);
     setTimeout(() => setCopyToast(false), 1800);
+  };
+
+  const reactToMessage = async (messageId: string, emoji: string) => {
+    const user = await getCurrentUser();
+    if (!user) return;
+    const message = messages.find((item) => item.id === messageId);
+    if (!message) return;
+    const nextReactions: MessageReactions = { ...(message.reactions || {}) };
+    if (emoji) nextReactions[user.id] = emoji;
+    else delete nextReactions[user.id];
+    setMessages((current) => current.map((item) => item.id === messageId ? { ...item, reactions: nextReactions } : item));
+    setActionMessageId(null);
+    setDeleteCandidateId(null);
+    const { error } = await supabase.from('community_messages').update({ reactions: nextReactions }).eq('id', messageId);
+    if (error) {
+      setMessages((current) => current.map((item) => item.id === messageId ? { ...item, reactions: message.reactions || {} } : item));
+      Alert.alert('Reaction failed', 'Could not save your reaction. Please try again.');
+    }
   };
 
   const deleteMessage = async (mode: 'everyone' | 'me') => {
@@ -273,6 +294,7 @@ export default function CommunityScreen() {
               </View>
             ) : null}
             <View style={styles.messageFooter}><Text style={[styles.time, isOwnMessage && styles.timeOwn]}>{formatMessageTime(item.created_at)}</Text></View>
+            {Object.values(item.reactions || {}).length > 0 ? <TouchableOpacity style={styles.reactionBadge} onPress={() => { if (item.reactions?.[currentUserId || '']) void reactToMessage(item.id, ''); }} disabled={!item.reactions?.[currentUserId || '']} accessibilityLabel={item.reactions?.[currentUserId || ''] ? 'Remove your reaction' : 'Message reactions'}><Text style={styles.reactionBadgeText}>{Array.from(new Set(Object.values(item.reactions || {}))).join(' ')}</Text></TouchableOpacity> : null}
           </TouchableOpacity>
           </SwipeableMessage>
         </View>
@@ -290,7 +312,7 @@ export default function CommunityScreen() {
         {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
         {/* <View style={styles.composer}><TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending} accessibilityLabel="Attach images"><MaterialCommunityIcons name="image-outline" size={24} color="#10B981" /></TouchableOpacity><View style={[styles.inputShell, { height: inputHeight, maxHeight: maximumInputHeight }]}><TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= maximumInputHeight} onContentSizeChange={handleInputContentSizeChange} /></View><TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send message">{sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}</TouchableOpacity></View> */}
         <Modal visible={actionMessageId !== null} transparent animationType="fade" onRequestClose={() => setActionMessageId(null)}>
-          <View style={styles.confirmOverlay}><View style={styles.confirmCard}><Text style={styles.confirmTitle}>Message actions</Text><TouchableOpacity style={styles.actionOption} onPress={() => void copyMessage()}><MaterialCommunityIcons name="content-copy" size={20} color="#10B981" /><Text style={styles.actionOptionText}>Copy</Text></TouchableOpacity><TouchableOpacity style={styles.actionOption} onPress={() => confirmDelete(actionMessageId!)}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /><Text style={styles.actionOptionText}>Delete</Text></TouchableOpacity><TouchableOpacity style={styles.locationCancelAction} onPress={() => setActionMessageId(null)}><Text style={styles.locationCancelActionText}>Cancel</Text></TouchableOpacity></View></View>
+          <View style={styles.confirmOverlay}><View style={styles.confirmCard}><View style={styles.reactionBar}>{reactionOptions.map((emoji) => <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => { void reactToMessage(actionMessageId!, emoji); }} accessibilityLabel={`React ${emoji}`}><Text style={styles.reactionEmoji}>{emoji}</Text></TouchableOpacity>)}</View><Text style={styles.confirmTitle}>Message actions</Text><TouchableOpacity style={styles.actionOption} onPress={() => void copyMessage()}><MaterialCommunityIcons name="content-copy" size={20} color="#10B981" /><Text style={styles.actionOptionText}>Copy</Text></TouchableOpacity><TouchableOpacity style={styles.actionOption} onPress={() => confirmDelete(actionMessageId!)}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /><Text style={styles.actionOptionText}>Delete</Text></TouchableOpacity><TouchableOpacity style={styles.locationCancelAction} onPress={() => setActionMessageId(null)}><Text style={styles.locationCancelActionText}>Cancel</Text></TouchableOpacity></View></View>
         </Modal>
         {copyToast ? <View style={styles.copyToast}><Text style={styles.copyToastText}>Message copied</Text></View> : null}
         <Modal visible={deleteCandidateId !== null} transparent animationType="fade" onRequestClose={() => { if (!deletingMessage) setDeleteCandidateId(null); }}>
@@ -349,6 +371,8 @@ const styles = StyleSheet.create({
   senderName: { color: '#F8FAFC', fontSize: 11, fontWeight: '800', marginRight: 6 },
   roleBadge: { color: '#10B981', backgroundColor: '#065F46', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, fontSize: 9, fontWeight: '800' },
   bubble: { borderRadius: 16, paddingHorizontal: 12, paddingTop: 9, paddingBottom: 6, minWidth: 70 },
+  reactionBadge: { alignSelf: 'flex-end', minWidth: 28, minHeight: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', marginTop: 3 },
+  reactionBadgeText: { fontSize: 17 },
   bubbleOther: { backgroundColor: '#1E293B', borderBottomLeftRadius: 4, borderLeftWidth: 2, borderLeftColor: '#10B981' },
   bubbleOwn: { backgroundColor: '#0E7490', borderBottomRightRadius: 4, borderRightWidth: 2, borderRightColor: '#10B981' },
   messageText: { color: '#FFFFFF', fontSize: 15, lineHeight: 21 },
@@ -378,6 +402,9 @@ const styles = StyleSheet.create({
   replyPreviewText: { color: '#CBD5E1', fontSize: 12, marginTop: 2 },
   actionOption: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#334155' },
   actionOptionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  reactionBar: { flexDirection: 'row', alignSelf: 'center', alignItems: 'center', backgroundColor: '#0F172A', borderColor: '#475569', borderWidth: 1, borderRadius: 24, paddingHorizontal: 6, paddingVertical: 5, marginBottom: 12 },
+  reactionButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
+  reactionEmoji: { fontSize: 23 },
   locationCancelAction: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   locationCancelActionText: { color: '#94A3B8', fontSize: 14, fontWeight: '600' },
   copyToast: { position: 'absolute', alignSelf: 'center', bottom: 86, backgroundColor: '#1E293B', borderColor: '#475569', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, zIndex: 20 },
