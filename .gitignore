@@ -38,6 +38,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Ignore local scripts folder
+/scripts/
+
 example
 
 # generated native folders
