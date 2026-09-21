@@ -641,7 +641,7 @@ const styles = {
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
   bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
-  reactionBadge: { position: "absolute", right: 8, bottom: -9, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", zIndex: 2, elevation: 2 },
+  reactionBadge: { position: "absolute", right: -4, bottom: -12, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", zIndex: 2, elevation: 2 },
   reactionBadgeText: { fontSize: 17 },
   reactionBar: { flexDirection: "row", alignSelf: "center", alignItems: "center", backgroundColor: "#1E293B", borderColor: "#475569", borderWidth: 1, borderRadius: 24, paddingHorizontal: 6, paddingVertical: 5, marginBottom: 10, elevation: 6 },
   reactionButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19 },

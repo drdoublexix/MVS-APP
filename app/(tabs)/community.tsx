@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
   senderName: { color: '#F8FAFC', fontSize: 11, fontWeight: '800', marginRight: 6 },
   roleBadge: { color: '#10B981', backgroundColor: '#065F46', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, fontSize: 9, fontWeight: '800' },
   bubble: { borderRadius: 16, paddingHorizontal: 12, paddingTop: 9, paddingBottom: 6, minWidth: 70 },
-  reactionBadge: { alignSelf: 'flex-end', minWidth: 28, minHeight: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', marginTop: 3 },
+  reactionBadge: { position: 'absolute', right: -4, bottom: -12, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', zIndex: 2, elevation: 2 },
   reactionBadgeText: { fontSize: 17 },
   bubbleOther: { backgroundColor: '#1E293B', borderBottomLeftRadius: 4, borderLeftWidth: 2, borderLeftColor: '#10B981' },
   bubbleOwn: { backgroundColor: '#0E7490', borderBottomRightRadius: 4, borderRightWidth: 2, borderRightColor: '#10B981' },
