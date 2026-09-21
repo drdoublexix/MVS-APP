@@ -299,7 +299,7 @@ const chooseRandomTip = (tips: string[]) => {
   return shuffledTips[0];
 };
 
-const sendExpoNotification = async (token: string, title: string, body: string) => {
+const sendExpoNotification = async (token: string, title: string, body: string, notificationId?: string) => {
   const response = await fetch(EXPO_PUSH_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -308,14 +308,14 @@ const sendExpoNotification = async (token: string, title: string, body: string) 
       sound: 'default',
       title,
       body,
-      data: { url: '/' },
+      data: { url: '/', notificationId },
     }),
   });
 
   return response.json();
 };
 
-const sendWebNotification = async (subscriptionString: string, title: string, body: string) => {
+const sendWebNotification = async (subscriptionString: string, title: string, body: string, notificationId?: string) => {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     throw new Error('Web push VAPID keys are not configured for this Edge Function.');
   }
@@ -325,7 +325,7 @@ const sendWebNotification = async (subscriptionString: string, title: string, bo
   await webPush.sendNotification(parsedSubscription, JSON.stringify({
     title,
     body,
-    data: { url: '/' },
+    data: { url: '/', notificationId },
   }));
 };
 
@@ -378,12 +378,12 @@ Deno.serve(async () => {
 
     const tip = chooseRandomTip(personalizedTips);
     const title = 'MVS Pet Care Tip 🐾';
-    const { error: notificationError } = await supabase.from('notifications').insert({
+    const { data: storedNotification, error: notificationError } = await supabase.from('notifications').insert({
       user_id: profile.id,
       title,
       body: tip,
       read_status: false,
-    });
+    }).select('id').single();
     if (notificationError) {
       outcome.notificationError = notificationError.message;
       console.error('Failed to persist scheduled tip notification:', notificationError);
@@ -391,12 +391,12 @@ Deno.serve(async () => {
 
     try {
       if (profile.expo_push_token) {
-        const expoResult = await sendExpoNotification(profile.expo_push_token, title, tip);
+        const expoResult = await sendExpoNotification(profile.expo_push_token, title, tip, storedNotification?.id);
         outcome.expo = expoResult;
       }
 
       if (profile.web_push_subscription) {
-        await sendWebNotification(profile.web_push_subscription, title, tip);
+        await sendWebNotification(profile.web_push_subscription, title, tip, storedNotification?.id);
         outcome.web = { sent: true };
       }
     } catch (error) {

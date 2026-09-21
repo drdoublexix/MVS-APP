@@ -64,12 +64,12 @@ serve(async (req: Request) => {
       const title = "Vaccination Due Reminder 🐾";
       const body = `${reminder.pet_name}'s ${reminder.treatment_title} (${reminder.dose_info}) is due in ${daysRemaining} day(s)! Tap to view details or book a vet.`;
 
-      const { error: notificationError } = await supabase.from("notifications").insert({
+      const { data: storedNotification, error: notificationError } = await supabase.from("notifications").insert({
         user_id: reminder.owner_id,
         title,
         body,
         read_status: false,
-      });
+      }).select("id").single();
       if (notificationError) {
         console.error("Failed to persist vaccine reminder notification:", notificationError);
       }
@@ -85,7 +85,7 @@ serve(async (req: Request) => {
         continue;
       }
 
-      const data = { petId: record?.pet_id || null, recordId: reminder.record_id, url: "/" };
+      const data = { petId: record?.pet_id || null, recordId: reminder.record_id, notificationId: storedNotification?.id, url: "/" };
 
       const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
 
@@ -119,12 +119,12 @@ serve(async (req: Request) => {
       const title = "Livestock Treatment Due Reminder";
       const body = `${reminder.species}'s ${reminder.treatment_title} is due in ${daysRemaining} day(s). Tap to view the farm medical timeline.`;
 
-      const { error: notificationError } = await supabase.from("notifications").insert({
+      const { data: storedNotification, error: notificationError } = await supabase.from("notifications").insert({
         user_id: reminder.owner_id,
         title,
         body,
         read_status: false,
-      });
+      }).select("id").single();
       if (notificationError) {
         console.error("Failed to persist farm reminder notification:", notificationError);
       }
@@ -141,7 +141,7 @@ serve(async (req: Request) => {
         continue;
       }
 
-      const data = { farmId: reminder.farm_id, recordId: reminder.record_id, url: "/profile" };
+      const data = { farmId: reminder.farm_id, recordId: reminder.record_id, notificationId: storedNotification?.id, url: "/profile" };
       const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
 
       try {

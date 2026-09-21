@@ -39,6 +39,25 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const { data: storedNotification, error: notificationError } = await supabaseAdmin
+      .from('notifications')
+      .insert({
+        user_id: recipientId,
+        title,
+        body,
+        read_status: false,
+      })
+      .select('id')
+      .single();
+
+    if (notificationError) {
+      console.error('Failed to persist notification before push delivery:', notificationError);
+      return new Response(JSON.stringify({ error: 'Notification could not be saved.' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { data: profileRows, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('expo_push_token, web_push_subscription')
@@ -61,6 +80,7 @@ serve(async (req) => {
 
     const notificationData = {
       ...(payloadData || {}),
+      notificationId: storedNotification.id,
       url: payloadData?.url || '/',
     };
 
