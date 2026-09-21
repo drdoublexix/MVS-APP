@@ -67,16 +67,16 @@ export function LogoutButton() {
         if (typeof window !== 'undefined') {
           window.localStorage.clear();
           window.sessionStorage.clear();
-          window.location.replace('/login');
+          window.location.replace('/auth?mode=signin');
         }
       } else {
-        router.replace('/(auth)/login');
+        router.replace('/auth?mode=signin');
       }
     } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.location.replace('/login');
+        window.location.replace('/auth?mode=signin');
       } else {
-        router.replace('/(auth)/login');
+        router.replace('/auth?mode=signin');
       }
     } finally {
       setLoading(false);
@@ -465,7 +465,7 @@ export default function MerchantProfileScreen() {
         await signOutUser();
         setProfile((current) => ({ ...current, name: '', email: '', phone: '', business: '', location: '', cacRegNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '' }));
         setAvatarUrl(null);
-        router.replace('/(auth)/login');
+        router.replace('/auth?mode=signin');
       } catch (error) {
         Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');
       }

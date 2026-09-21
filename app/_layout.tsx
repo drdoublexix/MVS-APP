@@ -184,7 +184,7 @@ function RootAuthGate() {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.removeItem('mvs_logout_requested');
         }
-        if (mounted) router.replace('/(auth)/login');
+        if (mounted) router.replace('/auth?mode=signin');
         void finalizeLoading();
         return;
       }
@@ -197,11 +197,10 @@ function RootAuthGate() {
 
       const href = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
       const pathname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : '';
-      const isAuthPage = /\/(?:signup|login|reset-password)(?:\/|$)/.test(pathname) || /\/auth\/(?:signup|login)(?:\/|$)/.test(pathname);
-      const isOAuthCallback = /\/auth\/callback(?:[/?#]|$)/.test(href) || pathname.includes('/auth/callback');
+      const isAuthPage = pathname === '/auth' || pathname.startsWith('/auth/') || /\/reset-password(?:\/|$)/.test(pathname);
 
-      if (isOAuthCallback) {
-        console.log('[AUTH ROUTER] Deferring to OAuth callback page handler...');
+      if (pathname === '/auth' || pathname.startsWith('/auth/')) {
+        console.log('[AUTH ROUTER] Deferring to unified auth page handler...');
         return;
       }
 
@@ -216,7 +215,7 @@ function RootAuthGate() {
         }
         if (isAuthPage) return;
         if (mounted) {
-          router.replace('/(auth)/login');
+          router.replace('/auth?mode=signin');
         }
         return;
       }
@@ -235,23 +234,29 @@ function RootAuthGate() {
 
         console.log('[AUTH ROUTER] Profile query result:', { profileData });
         const resolvedProfile = profileData || cachedProfile || null;
-        if (mounted) setProfile(resolvedProfile);
-        if (session.user) {
-          await writeCachedAuthState(session.user, resolvedProfile || session.user.user_metadata || null);
-        }
-
-        const pendingRole = Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' ? window.localStorage.getItem('mvs_pending_signup_role') : null;
-        // STRICT ROLE RESOLUTION: Prioritize database role first
-        let userRole = resolvedProfile?.role || profileData?.role;
+        const pendingManualRole = Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+          ? window.localStorage.getItem('mvs_pending_signup_role')
+          : null;
+        const pendingRole = pendingManualRole;
+        let userRole = pendingRole || resolvedProfile?.role || profileData?.role;
 
         if (!userRole) {
           // If no role exists yet, use metadata only. Profile creation belongs to signup.
           userRole = session.user.user_metadata?.role || pendingRole || 'client';
         }
 
-        // Always clean up pending signup role after role determination
-        if (pendingRole && Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+        if (pendingManualRole && Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.removeItem('mvs_pending_signup_role');
+        }
+
+        if (mounted) setProfile(userRole === resolvedProfile?.role || !resolvedProfile
+          ? resolvedProfile
+          : { ...resolvedProfile, role: userRole });
+        if (session.user) {
+          await writeCachedAuthState(session.user, {
+            ...(resolvedProfile || session.user.user_metadata || {}),
+            role: userRole,
+          });
         }
 
         void registerForPushNotifications(session.user.id).catch((error) => {
@@ -277,7 +282,7 @@ function RootAuthGate() {
           void finalizeLoading();
           return;
         }
-        if (mounted) router.replace('/(auth)/login');
+        if (mounted) router.replace('/auth?mode=signin');
       }
     };
 
@@ -309,7 +314,7 @@ function RootAuthGate() {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.setItem('mvs_logout_requested', '1');
         }
-        if (mounted) router.replace('/(auth)/login');
+        if (mounted) router.replace('/auth?mode=signin');
         if (mounted) setLoading(false);
         void hideSplashSafely();
         return;
@@ -358,7 +363,7 @@ function RootAuthGate() {
       })
       .catch((error) => {
         console.error('[Auth Layout] Initial session lookup failed:', error);
-        if (mounted) router.replace('/(auth)/login');
+        if (mounted) router.replace('/auth?mode=signin');
       })
       .finally(() => {
         void finalizeLoading();
@@ -422,9 +427,8 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
-          <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+          <Stack.Screen name="auth" options={{ headerShown: false }} />
           <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="(client)" options={{ headerShown: false }} />
           <Stack.Screen name="(vet)" options={{ headerShown: false }} />
           <Stack.Screen name="(merchant)" options={{ headerShown: false }} />

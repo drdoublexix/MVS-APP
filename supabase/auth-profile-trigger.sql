@@ -121,10 +121,11 @@ begin
   on conflict (id) do update set
     email = excluded.email,
     full_name = coalesce(excluded.full_name, public.profiles.full_name),
-    -- Never change an existing account's role during auth re-sync. The role
-    -- from raw_user_meta_data is used when this profile is first created.
-    role = public.profiles.role,
-    specialty = case when requested_role = 'vet' then excluded.specialty else null end,
+    role = case
+      when public.profiles.role = 'client' and requested_role in ('vet', 'merchant') then requested_role
+      else public.profiles.role
+    end,
+    specialty = case when requested_role = 'vet' then excluded.specialty else public.profiles.specialty end,
     loyalty_points = case when requested_role = 'client' then coalesce(excluded.loyalty_points, public.profiles.loyalty_points, 0) else null end,
     is_verified = public.profiles.is_verified or excluded.is_verified;
 

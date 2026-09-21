@@ -35,7 +35,7 @@ export default function ResetPasswordScreen() {
       setSuccessMessage('Password updated successfully. Redirecting to sign in...');
       Alert.alert('Password updated', 'Your password was updated successfully.');
       setTimeout(() => {
-        router.replace('/login');
+        router.replace('/auth?mode=signin');
       }, 900);
     } catch (error) {
       Alert.alert('Could not update password', error instanceof Error ? error.message : 'Please try again.');

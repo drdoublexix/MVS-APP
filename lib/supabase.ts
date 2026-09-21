@@ -534,53 +534,6 @@ export const subscribeToMessages = (conversationId: string, onMessage: (message:
   return () => { void supabase.removeChannel(channel); };
 };
 
-export const startGoogleLogin = async (redirectTo: string, role: AppRole = 'client') => {
-  try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo,
-        skipBrowserRedirect: false,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'select_account',
-        },
-      },
-    });
-
-    if (error) throw error;
-
-    // Explicit fallback for Expo Web: force Google Auth consent screen redirect
-    if (data?.url && typeof window !== 'undefined') {
-      console.log('Redirecting to Google OAuth URL:', data.url);
-      window.location.href = data.url;
-    }
-
-    return data.url;
-  } catch (error: any) {
-    console.error('Google login initiation error:', error.message);
-    throw error;
-  }
-};
-
-export const finishGoogleLogin = async (callbackUrl: string) => {
-  const query = callbackUrl.split('?')[1]?.split('#')[0] || '';
-  const hash = callbackUrl.split('#')[1] || '';
-  const values = new URLSearchParams(`${query}&${hash}`);
-  const code = values.get('code');
-  if (code) {
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) throw error;
-    return data;
-  }
-  const accessToken = values.get('access_token');
-  const refreshToken = values.get('refresh_token');
-  if (!accessToken || !refreshToken) throw new Error('Google login did not return a session.');
-  const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-  if (error) throw error;
- return data;
-};
-
 // Helper function to invoke the send-push-notification edge function
 export const sendPushNotification = async (
   recipientId: string,

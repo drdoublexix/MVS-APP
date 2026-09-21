@@ -734,7 +734,7 @@ export default function ProfileScreen() {
     setCurrentUserId("");
     setPets([]);
     setFarmRecords([]);
-    router.replace("/(auth)/login");
+    router.replace('/auth?mode=signin');
   };
   const handleDeleteAccount = () => {
     const confirmDelete = async () => {
@@ -748,7 +748,7 @@ export default function ProfileScreen() {
         setCurrentUserId("");
         setPets([]);
         setFarmRecords([]);
-        router.replace("/(auth)/login");
+        router.replace('/auth?mode=signin');
       } catch (error) {
         Alert.alert(
           "Error",

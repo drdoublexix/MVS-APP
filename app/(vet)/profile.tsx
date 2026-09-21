@@ -433,7 +433,7 @@ export default function VetProfileScreen() {
       await signOutUser();
       setProfile((current) => ({ ...current, name: '', email: '', phone: '', specialty: '', clinic: '', licenseNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '', latitude: null, longitude: null, city: '', state: '' }));
       setAvatarUrl(null);
-      router.replace('/(auth)/login');
+      router.replace('/auth?mode=signin');
     } catch (error) {
       Alert.alert('Logout failed', error instanceof Error ? error.message : 'Could not log out.');
     }
@@ -458,7 +458,7 @@ export default function VetProfileScreen() {
         if (error) throw error;
 
         await signOutUser();
-        router.replace('/(auth)/login');
+        router.replace('/auth?mode=signin');
       } catch (error) {
         Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');
       }

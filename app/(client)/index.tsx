@@ -161,8 +161,9 @@ export default function ClientHome() {
     void loadOrderStatuses();
 
     let mounted = true;
+    const channelName = `client-home-orders:${Date.now()}`;
     const ordersChannel = supabase
-      .channel('client-home-orders')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },

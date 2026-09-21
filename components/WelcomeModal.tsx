@@ -68,7 +68,10 @@ export default function WelcomeModal() {
         const metadataRole = user.user_metadata?.role === 'vet' || user.user_metadata?.role === 'merchant' || user.user_metadata?.role === 'client'
           ? user.user_metadata.role
           : null;
-        const nextProfile = data || (metadataRole ? { role: metadataRole, has_seen_welcome: false } : null);
+        const selectedRole = metadataRole;
+        const nextProfile = data
+          ? { ...data, role: selectedRole || data.role }
+          : (selectedRole ? { role: selectedRole, has_seen_welcome: false } : null);
         if (!nextProfile) {
           setVisible(false);
           setLoading(false);
