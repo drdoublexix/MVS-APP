@@ -1,12 +1,12 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    AudioModule,
-    RecordingPresets,
-    setAudioModeAsync,
-    useAudioPlayer,
-    useAudioPlayerStatus,
-    useAudioRecorder,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
 } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
@@ -16,23 +16,23 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { PayWithFlutterwave } from "flutterwave-react-native";
-import { ShieldCheck, X } from "lucide-react-native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ShieldCheck as LucideShieldCheck, X as LucideX } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { ViewStyle } from "react-native";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../components/AvatarPreviewModal";
@@ -46,24 +46,34 @@ import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-    deleteMessageForEveryone,
-    ensureConsultationRecord,
-    getCurrentUser,
-    hideMessageForCurrentUser,
-    isUuid,
-    normalizeUuid,
-    safeSupabaseCall,
-    sendRealtimeMessage,
-    subscribeToMessages,
-    supabase,
-    uploadChatAttachment,
-    type ConsultationStatus,
-    type MessageReactions,
-    type RealtimeMessage,
-    type ReplySnippet
+  deleteMessageForEveryone,
+  ensureConsultationRecord,
+  getCurrentUser,
+  hideMessageForCurrentUser,
+  isUuid,
+  normalizeUuid,
+  safeSupabaseCall,
+  sendRealtimeMessage,
+  subscribeToMessages,
+  supabase,
+  uploadChatAttachment,
+  type ConsultationStatus,
+  type MessageReactions,
+  type RealtimeMessage,
+  type ReplySnippet
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
+
+type ChatIconProps = { color?: string; stroke?: string };
+const ShieldCheck = ({ color, stroke, ...props }: ComponentProps<typeof LucideShieldCheck> & ChatIconProps) => {
+  const Icon = LucideShieldCheck as any;
+  return <Icon {...props} color={color ?? stroke} />;
+};
+const X = ({ color, stroke, ...props }: ComponentProps<typeof LucideX> & ChatIconProps) => {
+  const Icon = LucideX as any;
+  return <Icon {...props} color={color ?? stroke} />;
+};
 
 type ChatParams = {
   conversationId?: string;
@@ -454,7 +464,7 @@ function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose:
         <View style={styles.protectionModal}>
           <View style={styles.profileModalHeader}>
             <View style={styles.protectionTitle}>
-              <ShieldCheck size={18} color="#FFFFFF" />
+              <ShieldCheck size={18} stroke="#FFFFFF" />
               <Text style={styles.protectionModalTitle}>MVS User Protection & 48-Hour Refund Policy</Text>
             </View>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close buyer protection">
@@ -641,7 +651,7 @@ const styles = {
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
   bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
-  reactionBadge: { position: "absolute", right: -4, bottom: -12, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", zIndex: 2, elevation: 2 },
+  reactionBadge: { position: "absolute", right: -8, bottom: -12, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", zIndex: 2, elevation: 2 },
   reactionBadgeText: { fontSize: 17 },
   reactionBar: { flexDirection: "row", alignSelf: "center", alignItems: "center", backgroundColor: "#1E293B", borderColor: "#475569", borderWidth: 1, borderRadius: 24, paddingHorizontal: 6, paddingVertical: 5, marginBottom: 10, elevation: 6 },
   reactionButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19 },
@@ -944,7 +954,7 @@ export default function ChatScreen() {
         Alert.alert("Microphone permission required", "Allow MVS to record a voice note.");
         return;
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, interruptionMode: "doNotMix", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setRecording(true);
@@ -969,7 +979,7 @@ export default function ChatScreen() {
         console.warn("[Voice Note] Failed to discard recording:", error);
       }
     }
-    await setAudioModeAsync({ allowsRecording: false });
+    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: "mixWithOthers", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
   };
 
   const sendRecording = async () => {
@@ -1009,7 +1019,7 @@ export default function ChatScreen() {
       console.error("[Voice Note] Failed to send recording:", error);
       Alert.alert("Voice note failed", "Could not upload the recording.");
     } finally {
-      await setAudioModeAsync({ allowsRecording: false });
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: "mixWithOthers", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
     }
   };
 
@@ -3679,7 +3689,7 @@ function ChatRoom({
             ) : null}
             {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
               <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-                <ShieldCheck size={16} color="#FFFFFF" />
+                <ShieldCheck size={16} stroke="#FFFFFF" />
                 <Text style={styles.completeButtonText}>MVS User Protection</Text>
               </TouchableOpacity>
             ) : null}
@@ -4367,7 +4377,7 @@ function VideoPreviewModal({ videoUrl, onClose }: { videoUrl: string | null; onC
             </TouchableOpacity>
           </View>
         </View>
-        <VideoView player={player} style={styles.videoPreview} nativeControls contentFit="contain" fullscreenOptions={{ enable: true }} />
+        <VideoView player={player as unknown as ComponentProps<typeof VideoView>["player"]} style={styles.videoPreview} nativeControls contentFit="contain" fullscreenOptions={{ enable: true }} />
       </View>
     </Modal>
   );
@@ -4462,7 +4472,7 @@ function PatientFileOverlay({ visible, loading, pets, activePetId, records, user
     <View style={styles.patientOverlay}>
       <View style={styles.patientSheet}>
         <TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close patient file">
-          <X size={22} color="#FFFFFF" />
+          <X size={22} stroke="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.patientTitle}>Pet Records</Text>
         {loading ? <ActivityIndicator color="#10B981" /> : pets.length === 0 ? (

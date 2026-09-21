@@ -1,6 +1,18 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Alert, Platform } from 'react-native';
 import { supabase } from './supabase';
+
+export type StoredNotification = {
+  id: string;
+  user_id: string;
+  title: string;
+  body: string;
+  read_status: boolean;
+  created_at: string;
+};
+
+const locallyNotifiedKey = (userId: string) => `mvs_notified_notifications:${userId}`;
 
 try {
   Notifications.setNotificationHandler({
@@ -17,7 +29,6 @@ try {
 }
 
 const ANDROID_CHANNEL_ID = 'default';
-const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
 const EXPO_PROJECT_ID = '5013bac6-0c3a-4c17-b268-e477a44b';
 
 const showWebPermissionAlert = () => {
@@ -185,4 +196,67 @@ export const sendPushNotification = async (
   } catch {
     // Swallow notification delivery failures so messaging and status updates continue normally.
   }
+};
+
+const showPendingNotificationLocally = async (notification: StoredNotification) => {
+  if (Platform.OS === 'web') return;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: notification.title,
+      body: notification.body,
+      data: { notificationId: notification.id },
+    },
+    trigger: null,
+  });
+};
+
+export const syncPendingNotifications = async (userId: string): Promise<StoredNotification[]> => {
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('id, user_id, title, body, read_status, created_at')
+    .eq('user_id', userId)
+    .eq('read_status', false)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) throw error;
+
+  const notifications = (data || []) as StoredNotification[];
+  let notifiedIds: string[] = [];
+  try {
+    const cachedIds = await AsyncStorage.getItem(locallyNotifiedKey(userId));
+    notifiedIds = cachedIds ? JSON.parse(cachedIds) : [];
+  } catch {
+    notifiedIds = [];
+  }
+
+  const notifiedIdSet = new Set(notifiedIds);
+  const missedNotifications = notifications.filter((notification) => !notifiedIdSet.has(notification.id));
+  for (const notification of missedNotifications) {
+    try {
+      await showPendingNotificationLocally(notification);
+      notifiedIdSet.add(notification.id);
+    } catch (notificationError) {
+      console.warn('[Notifications] Failed to show pending notification locally:', notificationError);
+    }
+  }
+
+  await AsyncStorage.setItem(
+    locallyNotifiedKey(userId),
+    JSON.stringify(Array.from(notifiedIdSet).slice(-100))
+  );
+
+  return notifications;
+};
+
+export const markNotificationRead = async (notificationId: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_status: true })
+    .eq('id', notificationId);
+
+  if (error) throw error;
 };

@@ -1,10 +1,13 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-get-random-values';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
 import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 
 const registerForPushNotifications = async (userId: string) => {
@@ -85,6 +88,7 @@ function RootAuthGate() {
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
   const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null } | null>(null);
+  const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const router = useRouter();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
@@ -92,6 +96,47 @@ function RootAuthGate() {
   useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
+
+  useEffect(() => {
+    const userId = authUser?.id;
+    if (!userId) {
+      return;
+    }
+
+    let mounted = true;
+    let syncing = false;
+    let lastConnected = false;
+    const syncNotifications = async () => {
+      if (syncing) return;
+      const networkState = await NetInfo.fetch();
+      if (!networkState.isConnected || networkState.isInternetReachable === false) return;
+      syncing = true;
+      try {
+        const notifications = await syncPendingNotifications(userId);
+        if (mounted) setPendingNotifications(notifications);
+      } catch (error) {
+        console.warn('[Notifications] Pending notification sync failed:', error);
+      } finally {
+        syncing = false;
+      }
+    };
+
+    void syncNotifications();
+    const unsubscribeNetwork = NetInfo.addEventListener((state) => {
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      if (connected && !lastConnected) void syncNotifications();
+      lastConnected = connected;
+    });
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncNotifications();
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribeNetwork();
+      appStateSubscription.remove();
+    };
+  }, [authUser?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -349,7 +394,19 @@ function RootAuthGate() {
     );
   }
 
-  return null;
+  return (
+    <NotificationCenter
+      notifications={authUser ? pendingNotifications : []}
+      onRead={async (notificationId) => {
+        try {
+          await markNotificationRead(notificationId);
+          setPendingNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+        } catch (error) {
+          console.warn('[Notifications] Failed to mark notification as read:', error);
+        }
+      }}
+    />
+  );
 }
 
 export default function RootLayout() {
@@ -390,6 +447,39 @@ function NetworkStatusBanner() {
         {status === 'retrying' ? 'Connection hiccup. Retrying...' : 'Connection unavailable. Your saved session is still active.'}
       </Text>
     </View>
+  );
+}
+
+function NotificationCenter({ notifications, onRead }: { notifications: StoredNotification[]; onRead: (notificationId: string) => Promise<void> }) {
+  const [visible, setVisible] = useState(false);
+  if (notifications.length === 0) return null;
+
+  return (
+    <>
+      <TouchableOpacity style={styles.notificationBell} onPress={() => setVisible(true)} accessibilityLabel={`${notifications.length} unread notifications`}>
+        <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
+        <View style={styles.notificationCount}><Text style={styles.notificationCountText}>{notifications.length > 99 ? '99+' : notifications.length}</Text></View>
+      </TouchableOpacity>
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+        <Pressable style={styles.notificationBackdrop} onPress={() => setVisible(false)}>
+          <Pressable style={styles.notificationPanel} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.notificationHeader}>
+              <Text style={styles.notificationTitle}>Notifications</Text>
+              <TouchableOpacity onPress={() => setVisible(false)} accessibilityLabel="Close notifications">
+                <MaterialCommunityIcons name="close" size={22} color="#CBD5E1" />
+              </TouchableOpacity>
+            </View>
+            {notifications.map((notification) => (
+              <TouchableOpacity key={notification.id} style={styles.notificationItem} onPress={() => void onRead(notification.id)}>
+                <Text style={styles.notificationItemTitle}>{notification.title}</Text>
+                <Text style={styles.notificationItemBody}>{notification.body}</Text>
+                <Text style={styles.notificationItemTime}>{new Date(notification.created_at).toLocaleString()}</Text>
+              </TouchableOpacity>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -456,4 +546,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  notificationBell: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    zIndex: 110,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0E7490',
+    borderWidth: 1,
+    borderColor: '#67E8F9',
+  },
+  notificationCount: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+  },
+  notificationCountText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  notificationBackdrop: { flex: 1, alignItems: 'flex-end', paddingTop: 64, paddingHorizontal: 16, backgroundColor: '#00000066' },
+  notificationPanel: { width: '100%', maxWidth: 380, maxHeight: '75%', backgroundColor: '#1E293B', borderRadius: 12, borderWidth: 1, borderColor: '#475569', padding: 14 },
+  notificationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  notificationTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+  notificationItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  notificationItemTitle: { color: '#6EE7B7', fontSize: 13, fontWeight: '800' },
+  notificationItemBody: { color: '#E2E8F0', fontSize: 13, lineHeight: 19, marginTop: 4 },
+  notificationItemTime: { color: '#94A3B8', fontSize: 10, marginTop: 6 },
 });

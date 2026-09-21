@@ -60,6 +60,20 @@ serve(async (req: Request) => {
 
     const results = [];
     for (const reminder of reminders || []) {
+      const daysRemaining = Number(reminder.days_remaining);
+      const title = "Vaccination Due Reminder 🐾";
+      const body = `${reminder.pet_name}'s ${reminder.treatment_title} (${reminder.dose_info}) is due in ${daysRemaining} day(s)! Tap to view details or book a vet.`;
+
+      const { error: notificationError } = await supabase.from("notifications").insert({
+        user_id: reminder.owner_id,
+        title,
+        body,
+        read_status: false,
+      });
+      if (notificationError) {
+        console.error("Failed to persist vaccine reminder notification:", notificationError);
+      }
+
       const [{ data: profile, error: profileError }, { data: record, error: recordError }] = await Promise.all([
         supabase.from("profiles").select("expo_push_token, web_push_subscription").eq("id", reminder.owner_id).maybeSingle(),
         supabase.from("pet_medical_records").select("pet_id").eq("id", reminder.record_id).maybeSingle(),
@@ -71,9 +85,6 @@ serve(async (req: Request) => {
         continue;
       }
 
-      const daysRemaining = Number(reminder.days_remaining);
-      const title = "Vaccination Due Reminder 🐾";
-      const body = `${reminder.pet_name}'s ${reminder.treatment_title} (${reminder.dose_info}) is due in ${daysRemaining} day(s)! Tap to view details or book a vet.`;
       const data = { petId: record?.pet_id || null, recordId: reminder.record_id, url: "/" };
 
       const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
@@ -104,6 +115,20 @@ serve(async (req: Request) => {
     if (farmReminderError) throw farmReminderError;
 
     for (const reminder of farmReminders || []) {
+      const daysRemaining = Number(reminder.days_remaining);
+      const title = "Livestock Treatment Due Reminder";
+      const body = `${reminder.species}'s ${reminder.treatment_title} is due in ${daysRemaining} day(s). Tap to view the farm medical timeline.`;
+
+      const { error: notificationError } = await supabase.from("notifications").insert({
+        user_id: reminder.owner_id,
+        title,
+        body,
+        read_status: false,
+      });
+      if (notificationError) {
+        console.error("Failed to persist farm reminder notification:", notificationError);
+      }
+
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("expo_push_token, web_push_subscription")
@@ -116,9 +141,6 @@ serve(async (req: Request) => {
         continue;
       }
 
-      const daysRemaining = Number(reminder.days_remaining);
-      const title = "Livestock Treatment Due Reminder";
-      const body = `${reminder.species}'s ${reminder.treatment_title} is due in ${daysRemaining} day(s). Tap to view the farm medical timeline.`;
       const data = { farmId: reminder.farm_id, recordId: reminder.record_id, url: "/profile" };
       const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
 
