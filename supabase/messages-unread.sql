@@ -1,9 +1,16 @@
 alter table public.messages
   add column if not exists is_read boolean not null default false;
 
+alter table public.messages
+  add column if not exists is_delivered boolean not null default false;
+
 create index if not exists messages_unread_recipient_idx
   on public.messages (receiver_id, is_read)
   where is_read = false;
+
+create index if not exists messages_delivery_recipient_idx
+  on public.messages (receiver_id, is_delivered)
+  where is_delivered = false;
 
 alter table public.messages enable row level security;
 alter table public.messages replica identity full;

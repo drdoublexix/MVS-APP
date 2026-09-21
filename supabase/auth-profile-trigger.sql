@@ -26,7 +26,6 @@ create table if not exists public.profiles (
   role text default 'client',
   phone_number text,
   specialty text,
-  title text,
   loyalty_points integer,
   is_verified boolean not null default false
 );
@@ -37,7 +36,6 @@ alter table public.profiles
   add column if not exists role text default 'client',
   add column if not exists phone_number text,
   add column if not exists specialty text,
-  add column if not exists title text,
   add column if not exists loyalty_points integer,
   add column if not exists is_verified boolean not null default false,
   add column if not exists notification_preferences jsonb
@@ -49,22 +47,6 @@ alter table public.profiles
 create unique index if not exists profiles_phone_number_unique
   on public.profiles (phone_number)
   where phone_number is not null;
-
-create or replace function public.enforce_vet_profile_fields()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if new.role is distinct from 'vet' then
-    new.specialty := null;
-    new.title := null;
-  end if;
-
-  return new;
-end;
-$$;
 
 create or replace function public.sync_profile_verification()
 returns trigger
@@ -93,7 +75,6 @@ declare
   requested_role public."user_role";
   requested_phone text;
   requested_specialty text;
-  requested_title text;
   requested_loyalty_points integer;
   requested_is_verified boolean;
 begin
@@ -109,10 +90,6 @@ begin
     when requested_role = 'vet' then nullif(new.raw_user_meta_data ->> 'specialty', '')
     else null
   end;
-  requested_title := case
-    when requested_role = 'vet' then nullif(new.raw_user_meta_data ->> 'title', '')
-    else null
-  end;
   requested_loyalty_points := case
     when requested_role = 'client' then 0
     else null
@@ -126,7 +103,6 @@ begin
     role,
     phone_number,
     specialty,
-    title,
     loyalty_points,
     is_verified,
     notification_preferences
@@ -138,7 +114,6 @@ begin
     requested_role,
     requested_phone,
     requested_specialty,
-    requested_title,
     requested_loyalty_points,
     requested_is_verified,
     '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
@@ -148,7 +123,6 @@ begin
     full_name = coalesce(excluded.full_name, public.profiles.full_name),
     role = coalesce(excluded.role, public.profiles.role),
     specialty = case when requested_role = 'vet' then excluded.specialty else null end,
-    title = case when requested_role = 'vet' then excluded.title else null end,
     loyalty_points = case when requested_role = 'client' then coalesce(excluded.loyalty_points, public.profiles.loyalty_points, 0) else null end,
     is_verified = public.profiles.is_verified or excluded.is_verified;
 
@@ -163,7 +137,6 @@ exception
       full_name,
       role,
       specialty,
-      title,
       loyalty_points,
       is_verified,
       notification_preferences
@@ -174,7 +147,6 @@ exception
       coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), nullif(new.raw_user_meta_data ->> 'name', '')),
       requested_role,
       requested_specialty,
-      requested_title,
       requested_loyalty_points,
       requested_is_verified,
       '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
@@ -213,10 +185,6 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
-create trigger profiles_enforce_vet_fields
-before insert or update of role, specialty, title on public.profiles
-for each row execute function public.enforce_vet_profile_fields();
-
 create trigger on_auth_user_email_confirmed
 after update of email_confirmed_at on auth.users
 for each row
@@ -228,9 +196,6 @@ grant execute on function public.handle_new_user() to authenticated, service_rol
 
 revoke all on function public.sync_profile_verification() from public;
 grant execute on function public.sync_profile_verification() to authenticated, service_role;
-
-revoke all on function public.enforce_vet_profile_fields() from public;
-grant execute on function public.enforce_vet_profile_fields() to authenticated, service_role;
 
 -- Confirm that exactly one application trigger remains:
 -- select tgname, pg_get_triggerdef(oid)

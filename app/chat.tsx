@@ -1,12 +1,12 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
-  useAudioRecorder,
+    AudioModule,
+    RecordingPresets,
+    setAudioModeAsync,
+    useAudioPlayer,
+    useAudioPlayerStatus,
+    useAudioRecorder,
 } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
@@ -20,19 +20,19 @@ import { ShieldCheck as LucideShieldCheck, X as LucideX } from "lucide-react-nat
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { ViewStyle } from "react-native";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../components/AvatarPreviewModal";
@@ -46,21 +46,21 @@ import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-  deleteMessageForEveryone,
-  ensureConsultationRecord,
-  getCurrentUser,
-  hideMessageForCurrentUser,
-  isUuid,
-  normalizeUuid,
-  safeSupabaseCall,
-  sendRealtimeMessage,
-  subscribeToMessages,
-  supabase,
-  uploadChatAttachment,
-  type ConsultationStatus,
-  type MessageReactions,
-  type RealtimeMessage,
-  type ReplySnippet
+    deleteMessageForEveryone,
+    ensureConsultationRecord,
+    getCurrentUser,
+    hideMessageForCurrentUser,
+    isUuid,
+    normalizeUuid,
+    safeSupabaseCall,
+    sendRealtimeMessage,
+    subscribeToMessages,
+    supabase,
+    uploadChatAttachment,
+    type ConsultationStatus,
+    type MessageReactions,
+    type RealtimeMessage,
+    type ReplySnippet
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
@@ -101,6 +101,20 @@ const toReplySnippet = (replyTarget: ReplyTarget | null | undefined): ReplySnipp
   replyTarget
     ? { id: replyTarget.id, sender_name: replyTarget.senderName, content: replyTarget.content }
     : null;
+
+const MessageReceipt = ({ message }: { message: RealtimeMessage }) => {
+  if (!message.is_delivered) {
+    return <MaterialCommunityIcons name="check" size={14} color="#94A3B8" />;
+  }
+
+  return (
+    <MaterialCommunityIcons
+      name="check-all"
+      size={14}
+      color={message.is_read ? "#34D399" : "#CBD5E1"}
+    />
+  );
+};
 
 type Thread = {
   id: string;
@@ -270,17 +284,17 @@ type Category = "Online Consultation" | "Emergency Request" | "Vaccination" | "R
 const getCategoryInitialMessage = (category: Category, vetName: string) => {
   switch (category) {
     case "Online Consultation":
-      return `Hello Dr. ${vetName}, I would like to book an online consultation for my `;
+      return `Hello ${vetName}, I would like to book an online consultation for my `;
     case "Emergency Request":
-      return `Hello Dr. ${vetName}, I have an urgent medical emergency regarding my pet: `;
+      return `Hello ${vetName}, I have an urgent medical emergency regarding my pet: `;
     case "Vaccination":
-      return `Hello Dr. ${vetName}, I would like to inquire about vaccination services for my `;
+      return `Hello ${vetName}, I would like to inquire about vaccination services for my `;
     case "Routine Checks":
-      return `Hello Dr. ${vetName}, I would like to schedule a routine health check for my `;
+      return `Hello ${vetName}, I would like to schedule a routine health check for my `;
     case "General Inquiry":
-      return `Hello Dr. ${vetName}, I have a general consultation inquiry regarding `;
+      return `Hello ${vetName}, I have a general consultation inquiry regarding `;
     case "Others":
-      return `Hello Dr. ${vetName}, I would like to consult with you regarding `;
+      return `Hello ${vetName}, I would like to consult with you regarding `;
   }
 };
 
@@ -647,6 +661,7 @@ const styles = {
   quotedMessageSender: { color: "#6EE7B7", fontSize: 11, fontWeight: "700" },
   quotedMessageText: { color: "#CBD5E1", fontSize: 12, marginTop: 2 },
   messageTimestamp: { color: "#A7F3D0", fontSize: 10, alignSelf: "flex-end", marginTop: 5 },
+  messageTimestampRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 5 },
   muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
@@ -936,6 +951,7 @@ export default function ChatScreen() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const openedRoute = useRef<string | null>(null);
+  const chatFocusedRef = useRef(false);
   const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveLocationSubscription = useRef<Location.LocationSubscription | null>(null);
   const activeLiveMessageIdRef = useRef<string | null>(null);
@@ -1030,7 +1046,11 @@ export default function ChatScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      chatFocusedRef.current = true;
       void refreshUnreadCounts();
+      return () => {
+        chatFocusedRef.current = false;
+      };
     }, [refreshUnreadCounts])
   );
 
@@ -1063,7 +1083,6 @@ export default function ChatScreen() {
               return hasVisibleMessage;
             });
             setThreads(filteredCachedThreads);
-            setLoading(false);
           } else {
             void readCachedInboxThreads(cleanUserId).then((storedThreads) => {
               if (!mounted || freshInboxLoaded || !storedThreads) return;
@@ -1077,7 +1096,6 @@ export default function ChatScreen() {
                 return hasVisibleMessage;
               });
               setThreads(filteredStoredThreads);
-              setLoading(false);
             });
           }
 
@@ -1323,6 +1341,20 @@ export default function ChatScreen() {
             return;
           }
 
+          if (
+            payload.eventType !== "DELETE" &&
+            incoming.receiver_id === currentUserId &&
+            incoming.sender_id !== currentUserId &&
+            !incoming.is_delivered
+          ) {
+            void supabase
+              .from("messages")
+              .update({ is_delivered: true })
+              .eq("id", incoming.id)
+              .eq("receiver_id", currentUserId)
+              .eq("is_delivered", false);
+          }
+
           if (incoming.conversation_id && clearedThreadsRef.current.has(incoming.conversation_id)) {
             clearedThreadsRef.current.delete(incoming.conversation_id);
             void syncClearedThreadStorage(currentUserId, clearedThreadsRef.current);
@@ -1339,7 +1371,36 @@ export default function ChatScreen() {
             const threadIndex = current.findIndex(
               (thread) => thread.participantId === participantId
             );
-            if (threadIndex === -1) return current;
+            if (threadIndex === -1) {
+              if (payload.eventType === "DELETE") return current;
+              void (async () => {
+                try {
+                  const { data: profile } = await supabase
+                    .from("profiles")
+                    .select("id, full_name, email, role, avatar_url, business_name, location, phone_number")
+                    .eq("id", participantId)
+                    .maybeSingle();
+                  if (!profile) return;
+                  const nextThread: Thread = {
+                    id: incoming.conversation_id || conversationIdFor(currentUserId, participantId),
+                    participantId,
+                    participantName: profile.full_name || profile.email || "Contact",
+                    participantRole: profile.role || "user",
+                    recipientProfile: profile as RecipientProfile,
+                    messages: [incoming],
+                  };
+                  setThreads((latest) => {
+                    if (latest.some((thread) => thread.id === nextThread.id)) return latest;
+                    const nextThreads = [nextThread, ...latest];
+                    rememberInboxThreads(currentUserId, nextThreads);
+                    return nextThreads;
+                  });
+                } catch (error) {
+                  console.warn("[Chat] Failed to load new inbox participant:", error);
+                }
+              })();
+              return current;
+            }
             const thread = current[threadIndex];
 
             let nextMessages = thread.messages;
@@ -1715,6 +1776,32 @@ export default function ChatScreen() {
           void syncClearedThreadStorage(currentUserId, clearedThreadsRef.current);
         }
         if (isMessageHiddenForUser(incoming, currentUserId)) return;
+
+        const incomingFromOtherUser = incoming.sender_id === active.participantId
+          && incoming.receiver_id === currentUserId;
+        if (chatFocusedRef.current && incomingFromOtherUser && (!incoming.is_read || !incoming.is_delivered)) {
+          void supabase
+            .from("messages")
+            .update({ is_delivered: true, is_read: true })
+            .eq("id", incoming.id)
+            .eq("receiver_id", currentUserId)
+            .eq("sender_id", active.participantId)
+            .then(({ data, error }) => {
+              if (error) {
+                console.error("[Chat] Failed to mark realtime message as read:", error);
+                return;
+              }
+
+              if (mounted) {
+                setMessages((current) => current.map((message) =>
+                  message.id === incoming.id
+                    ? { ...message, ...(data?.[0] || {}), is_delivered: true, is_read: true }
+                    : message
+                ));
+                void refreshUnreadCounts();
+              }
+            });
+        }
 
         setMessages((current) => {
           const visibleCurrent = filterVisibleMessages(current, currentUserId);
@@ -2966,6 +3053,8 @@ export default function ChatScreen() {
         sender_email: senderEmail,
         client_generated_id: tempId,
       },
+        is_delivered: false,
+        is_read: false,
       reply_to: toReplySnippet(replyTarget),
       media_url: uploaded?.publicUrl,
       media_type: uploaded?.mediaType,
@@ -3904,7 +3993,10 @@ function ChatRoom({
                   ) : item.content ? (
                     <Text style={styles.primary}>{item.content}</Text>
                   ) : null}
-                  <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                  <View style={styles.messageTimestampRow}>
+                    <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                    {item.sender_id === currentUserId ? <MessageReceipt message={item} /> : null}
+                  </View>
                   {Object.values(item.reactions || {}).length > 0 ? (
                     <TouchableOpacity
                       style={styles.reactionBadge}
@@ -5234,7 +5326,10 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                   ) : item.content ? (
                     <Text style={styles.primary}>{item.content}</Text>
                   ) : null}
-                  <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                  <View style={styles.messageTimestampRow}>
+                    <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                    {item.sender_id === currentUserId ? <MessageReceipt message={item} /> : null}
+                  </View>
                   {Object.values(item.reactions || {}).length > 0 ? (
                     <TouchableOpacity
                       style={styles.reactionBadge}

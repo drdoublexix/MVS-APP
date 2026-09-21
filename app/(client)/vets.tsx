@@ -13,7 +13,6 @@ type VetProfile = {
   role: string;
   avatar_url?: string | null;
   specialty?: string;
-  title?: string;
   clinic?: string;
   bio?: string;
   phone_number?: string | null;
@@ -95,7 +94,7 @@ export default function VetsScreen() {
             console.warn('Client location unavailable for vet sorting', locationError);
           }
         }
-        const vetDirectoryFields = 'id, full_name, role, avatar_url, specialty, title, clinic, bio, email, created_at, latitude, longitude, city, state, phone_number';
+        const vetDirectoryFields = 'id, full_name, role, avatar_url, specialty, clinic, bio, email, created_at, latitude, longitude, city, state, phone_number';
         const detailedQuery = await supabase
           .from('profiles')
           .select(vetDirectoryFields)
@@ -109,7 +108,7 @@ export default function VetsScreen() {
           console.warn('Retrying vet directory query without optional profile columns:', error.message);
           const fallbackQuery = await supabase
             .from('profiles')
-            .select('id, full_name, role, avatar_url, specialty, title, clinic, bio, latitude, longitude, city, state, phone_number')
+            .select('id, full_name, role, avatar_url, specialty, clinic, bio, latitude, longitude, city, state, phone_number')
             .eq('role', 'vet')
             .order('full_name', { ascending: true });
           data = fallbackQuery.data as VetProfile[] | null;
@@ -127,7 +126,7 @@ export default function VetsScreen() {
         const sortedVets = ((data || []) as VetProfile[]).map((vet) => ({
           ...vet,
           full_name: vet.full_name || 'Veterinarian',
-          specialty: vet.specialty || vet.title || '',
+          specialty: vet.specialty || '',
           city: vet.city || null,
           state: vet.state || null,
           distanceKm: clientLatitude !== null && clientLongitude !== null && isValidCoordinate(vet.latitude, -90, 90) && isValidCoordinate(vet.longitude, -180, 180)
@@ -320,7 +319,7 @@ export default function VetsScreen() {
             <Text style={styles.emptyState}>No veterinarians are available yet.</Text>
           ) : (
             vets.map((vet) => {
-              const specialty = vet.specialty || vet.title || 'Veterinarian';
+              const specialty = vet.specialty || 'Veterinarian';
               const location = [vet.city, vet.state].filter(Boolean).join(', ');
               const distance = vet.distanceKm !== null
                 ? `${vet.distanceKm < 10 ? vet.distanceKm.toFixed(1) : Math.round(vet.distanceKm)} km away`
@@ -375,7 +374,7 @@ export default function VetsScreen() {
         vets={vetsWithCoordinates.map((vet) => ({
           id: vet.id,
           full_name: vet.full_name,
-          specialty: vet.specialty || vet.title || 'Veterinarian',
+          specialty: vet.specialty || 'Veterinarian',
           latitude: vet.latitude!,
           longitude: vet.longitude!,
         }))}

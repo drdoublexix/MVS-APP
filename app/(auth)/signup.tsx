@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { makeRedirectUri } from 'expo-auth-session';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useRef, useState } from 'react';
+import { startTransition, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestDeviceLocation } from '../../lib/location';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
@@ -13,6 +13,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function SignupScreen() {
   const router = useRouter();
+  const { role: roleParam } = useLocalSearchParams<{ role?: string | string[] }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,11 +21,26 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [role, setRole] = useState<AppRole>('client');
+  const [selectedRole, setSelectedRole] = useState<AppRole>('client');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const googleButtonRef = useRef<View>(null);
+
+  useEffect(() => {
+    const requestedRole = Array.isArray(roleParam) ? roleParam[0] : roleParam;
+    const nextRole: AppRole = requestedRole === 'vet' || requestedRole === 'merchant' ? requestedRole : 'client';
+
+    startTransition(() => setSelectedRole(nextRole));
+    if (requestedRole !== nextRole) {
+      router.replace({ pathname: '/(auth)/signup', params: { role: nextRole } });
+    }
+  }, [roleParam, router]);
+
+  const handleRoleChange = (nextRole: AppRole) => {
+    setSelectedRole(nextRole);
+    router.replace({ pathname: '/(auth)/signup', params: { role: nextRole } });
+  };
 
   const handleSignup = async () => {
     const normalizedPhoneNumber = phoneNumber.trim().replace(/[\s()-]/g, '');
@@ -65,8 +81,8 @@ export default function SignupScreen() {
       }
 
       let userRole: AppRole = 'client';
-      if (role === 'vet') userRole = 'vet';
-      if (role === 'merchant') userRole = 'merchant';
+      if (selectedRole === 'vet') userRole = 'vet';
+      if (selectedRole === 'merchant') userRole = 'merchant';
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('mvs_pending_signup_role', userRole);
@@ -113,7 +129,6 @@ export default function SignupScreen() {
             phone_number: cleanPhoneNumber,
             role: userRole,
             specialty: null,
-            title: null,
             loyalty_points: userRole === 'client' ? 0 : null,
             ...location,
           },
@@ -139,34 +154,40 @@ export default function SignupScreen() {
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('Google Auth Clicked for role:', role);
+    console.log('Google Auth Clicked for role:', selectedRole);
     setLoading(true);
     setError('');
 
     try {
       let userRole: AppRole = 'client';
-      if (role === 'vet') userRole = 'vet';
-      if (role === 'merchant') userRole = 'merchant';
+      if (selectedRole === 'vet') userRole = 'vet';
+      if (selectedRole === 'merchant') userRole = 'merchant';
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('mvs_selected_role', userRole);
       }
 
-      const redirectUrl = Platform.OS === 'web'
+      const callbackUrl = Platform.OS === 'web'
         ? 'https://mvsapp.com.ng/auth/callback'
         : makeRedirectUri({ scheme: 'mvsapp', path: 'auth/callback' });
+      const redirectUrl = `${callbackUrl}${callbackUrl.includes('?') ? '&' : '?'}role=${encodeURIComponent(userRole)}`;
 
       console.log('Initiating Google OAuth with role:', userRole, 'redirect:', redirectUrl);
 
+      const oauthOptions = {
+        redirectTo: redirectUrl,
+        data: {
+          role: userRole,
+        },
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account',
+        },
+      };
+
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          },
-        },
+        options: oauthOptions,
       });
 
       if (oauthError) {
@@ -236,14 +257,14 @@ export default function SignupScreen() {
                 return (
                   <TouchableOpacity
                     key={option}
-                    style={[styles.roleButton, role === option && styles.roleButtonSelected]}
+                    style={[styles.roleButton, selectedRole === option && styles.roleButtonSelected]}
                     onPress={() => {
-                      setRole(option);
+                      handleRoleChange(option);
                     }}
                     disabled={loading || Boolean(successMessage)}
                   >
-                    <MaterialCommunityIcons name={icon as any} size={22} color={role === option ? '#08111F' : '#8EA3B8'} />
-                    <Text style={[styles.roleButtonText, role === option && styles.roleButtonTextSelected]}>{label}</Text>
+                    <MaterialCommunityIcons name={icon as any} size={22} color={selectedRole === option ? '#08111F' : '#8EA3B8'} />
+                    <Text style={[styles.roleButtonText, selectedRole === option && styles.roleButtonTextSelected]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}

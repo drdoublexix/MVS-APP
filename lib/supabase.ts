@@ -296,6 +296,8 @@ export type RealtimeMessage = {
   media_type?: 'image' | 'video' | null;
   hidden_for_users?: string[] | null;
   is_deleted?: boolean | null;
+  is_delivered?: boolean | null;
+  is_read?: boolean | null;
   created_at: string;
 };
 
@@ -390,7 +392,21 @@ export const sendRealtimeMessage = async (message: Omit<RealtimeMessage, 'id' | 
   if (!senderId || !receiverId) throw new Error('Chat participants must use valid UUIDs.');
   const { data, error } = await supabase.from('messages').insert({ ...message, sender_id: senderId, receiver_id: receiverId }).select().single();
   if (error) throw error;
-  return data as RealtimeMessage;
+
+  // A successful insert means the message has reached the server. Promote it
+  // to delivered immediately; the recipient's read flow owns is_read.
+  const { data: deliveredMessage, error: deliveryError } = await supabase
+    .from('messages')
+    .update({ is_delivered: true })
+    .eq('id', data.id)
+    .eq('sender_id', senderId)
+    .select()
+    .single();
+  if (deliveryError) {
+    console.warn('[Chat] Message saved but delivery status could not be updated:', deliveryError);
+    return data as RealtimeMessage;
+  }
+  return deliveredMessage as RealtimeMessage;
 };
 
 export const deleteRealtimeMessage = async (messageId: string, userId: string) => {

@@ -33,12 +33,19 @@ export default function AuthCallbackScreen() {
         avatar_url?: string | null;
         picture?: string | null;
       };
-    }) => {
+    }, requestedRole?: 'client' | 'vet' | 'merchant') => {
       if (navigating) return;
       navigating = true;
 
       try {
-        const profileRole = await getProfileRole(user.id);
+        if (requestedRole) {
+          const { error: metadataError } = await supabase.auth.updateUser({
+            data: { role: requestedRole },
+          });
+          if (metadataError) throw metadataError;
+        }
+
+        const profileRole = requestedRole || await getProfileRole(user.id);
         if (!profileRole) {
           await supabase.auth.signOut().catch(() => undefined);
           await persistAuthNotice('error', 'This account does not exist. Please sign up first.');
@@ -90,6 +97,10 @@ export default function AuthCallbackScreen() {
         const values = new URLSearchParams(`${search}&${hash}`);
 
         const flowType = values.get('type');
+        const requestedRole = values.get('role');
+        const oauthRole = requestedRole === 'vet' || requestedRole === 'merchant' || requestedRole === 'client'
+          ? requestedRole
+          : undefined;
         const successMessage = 'Email verified successfully! Please sign in to MVS.';
         console.log('[Auth Callback] Processing OAuth return URL:', href, 'type:', flowType);
 
@@ -119,13 +130,13 @@ export default function AuthCallbackScreen() {
         const { data: { session } } = await supabase.auth.getSession();
         console.log('[Auth Callback] Active session detected:', session?.user?.email);
         if (session?.user) {
-          await processAuthenticatedUser(session.user);
+          await processAuthenticatedUser(session.user, oauthRole);
           return;
         }
 
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
           console.log('[Auth Callback] Auth State Event:', event);
-          if (currentSession?.user && mounted) await processAuthenticatedUser(currentSession.user);
+          if (currentSession?.user && mounted) await processAuthenticatedUser(currentSession.user, oauthRole);
         });
         unsubscribe = () => authListener.subscription.unsubscribe();
 

@@ -84,7 +84,7 @@ export default function VetProfileScreen() {
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
 
   const [profile, setProfile] = useState({
-    name: 'Dr. Veterinarian',
+    name: 'Veterinarian',
     email: '',
     phone: '',
     specialty: '',
@@ -144,7 +144,7 @@ export default function VetProfileScreen() {
         const cachedAvatar = cachedProfile?.avatar_url || cachedUser.user_metadata?.avatar_url || cachedUser.user_metadata?.picture || null;
         setAvatarUrl(cachedAvatar);
         setProfile((current) => ({
-          name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Dr. Veterinarian',
+          name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Veterinarian',
           email: cachedUser.email || cachedProfile?.email || '',
           phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
           specialty: cachedProfile?.specialty || cachedUser.user_metadata?.specialty || '',
@@ -167,12 +167,12 @@ export default function VetProfileScreen() {
       const user = await getCurrentUser();
       if (!user) return;
 
-      const { data: profileData } = await supabase.from('profiles').select('avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio').eq('id', user.id).single();
+      const { data: profileData } = await supabase.from('profiles').select('full_name, avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio').eq('id', user.id).single();
       const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
       setAvatarUrl(activeAvatar);
 
       setProfile((current) => ({
-        name: user.user_metadata?.full_name || user.user_metadata?.name || 'Dr. Veterinarian',
+        name: profileData?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || 'Veterinarian',
         email: user.email || '',
         phone: profileData?.phone_number || user.user_metadata?.phone || '',
         specialty: profileData?.specialty || user.user_metadata?.specialty || '',

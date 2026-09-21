@@ -75,7 +75,8 @@ export const markConversationRead = async (conversationId: string, userId: strin
 
   const { data, error } = await supabase
     .from('messages')
-    .update({ is_read: true })
+    .update({ is_delivered: true, is_read: true })
+    .eq('conversation_id', conversationId)
     .eq('receiver_id', userId)
     .eq('sender_id', participantId)
     .eq('is_read', false)
