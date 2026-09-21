@@ -65,7 +65,15 @@ export default function WelcomeModal() {
           return;
         }
 
-        const nextProfile = data || { role: user.user_metadata?.role || 'client', has_seen_welcome: false };
+        const metadataRole = user.user_metadata?.role === 'vet' || user.user_metadata?.role === 'merchant' || user.user_metadata?.role === 'client'
+          ? user.user_metadata.role
+          : null;
+        const nextProfile = data || (metadataRole ? { role: metadataRole, has_seen_welcome: false } : null);
+        if (!nextProfile) {
+          setVisible(false);
+          setLoading(false);
+          return;
+        }
         setProfile(nextProfile);
         setVisible(nextProfile.has_seen_welcome === false || nextProfile.has_seen_welcome === null || nextProfile.has_seen_welcome === undefined);
       } catch (error) {

@@ -30,6 +30,7 @@ export default function AuthCallbackScreen() {
         full_name?: string;
         name?: string;
         display_name?: string;
+        role?: string;
         avatar_url?: string | null;
         picture?: string | null;
       };
@@ -38,14 +39,11 @@ export default function AuthCallbackScreen() {
       navigating = true;
 
       try {
-        if (requestedRole) {
-          const { error: metadataError } = await supabase.auth.updateUser({
-            data: { role: requestedRole },
-          });
-          if (metadataError) throw metadataError;
-        }
-
-        const profileRole = requestedRole || await getProfileRole(user.id);
+        const existingProfileRole = await getProfileRole(user.id);
+        const metadataRole = user.user_metadata?.role === 'vet' || user.user_metadata?.role === 'merchant' || user.user_metadata?.role === 'client'
+          ? user.user_metadata.role
+          : undefined;
+        const profileRole = existingProfileRole || metadataRole || requestedRole;
         if (!profileRole) {
           await supabase.auth.signOut().catch(() => undefined);
           await persistAuthNotice('error', 'This account does not exist. Please sign up first.');
@@ -65,7 +63,7 @@ export default function AuthCallbackScreen() {
             id: user.id,
             email: user.email,
             full_name: fullName,
-            role: profileRole,
+            role: existingProfileRole || profileRole,
           }, { onConflict: 'id' });
         if (upsertError) throw upsertError;
 

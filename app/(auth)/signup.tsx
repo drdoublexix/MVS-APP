@@ -121,15 +121,23 @@ export default function SignupScreen() {
         } catch (locationError) {
           console.warn('[Signup] Location unavailable:', locationError);
         }
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+        const persistedRole = existingProfile?.role === 'vet' || existingProfile?.role === 'merchant' || existingProfile?.role === 'client'
+          ? existingProfile.role
+          : userRole;
         const { error: profileError } = await supabase.from('profiles').upsert(
           {
             id: user.id,
             email: sanitizeInput(user.email),
             full_name: profileName,
             phone_number: cleanPhoneNumber,
-            role: userRole,
+            role: persistedRole,
             specialty: null,
-            loyalty_points: userRole === 'client' ? 0 : null,
+            loyalty_points: persistedRole === 'client' ? 0 : null,
             ...location,
           },
           { onConflict: 'id' },
@@ -141,7 +149,7 @@ export default function SignupScreen() {
           throw profileError;
         }
         if (typeof window !== 'undefined') localStorage.removeItem('mvs_pending_signup_role');
-        router.replace(userRole === 'merchant' ? '/(merchant)' : userRole === 'vet' ? '/(vet)' : '/(client)');
+        router.replace(persistedRole === 'merchant' ? '/(merchant)' : persistedRole === 'vet' ? '/(vet)' : '/(client)');
       } else {
         setSuccessMessage('An email has been sent to your email for confirmation. Please proceed to confirm your email and then come back to log in.');
       }
