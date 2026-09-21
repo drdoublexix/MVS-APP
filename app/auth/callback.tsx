@@ -34,7 +34,7 @@ export default function AuthCallbackScreen() {
         avatar_url?: string | null;
         picture?: string | null;
       };
-    }, requestedRole?: 'client' | 'vet' | 'merchant') => {
+    }, requestedRole?: 'client' | 'vet' | 'merchant', isSignupFlow = false) => {
       if (navigating) return;
       navigating = true;
 
@@ -43,7 +43,8 @@ export default function AuthCallbackScreen() {
         const metadataRole = user.user_metadata?.role === 'vet' || user.user_metadata?.role === 'merchant' || user.user_metadata?.role === 'client'
           ? user.user_metadata.role
           : undefined;
-        const profileRole = existingProfileRole || metadataRole || requestedRole;
+        const signupRole = isSignupFlow ? requestedRole : undefined;
+        const profileRole = signupRole || existingProfileRole || metadataRole;
         if (!profileRole) {
           await supabase.auth.signOut().catch(() => undefined);
           await persistAuthNotice('error', 'This account does not exist. Please sign up first.');
@@ -57,13 +58,20 @@ export default function AuthCallbackScreen() {
           || user.email?.split('@')[0]
           || 'Pet Parent';
 
+        if (signupRole) {
+          const { error: metadataError } = await supabase.auth.updateUser({
+            data: { role: signupRole },
+          });
+          if (metadataError) throw metadataError;
+        }
+
         const { error: upsertError } = await supabase
           .from('profiles')
           .upsert({
             id: user.id,
             email: user.email,
             full_name: fullName,
-            role: existingProfileRole || profileRole,
+            role: signupRole || existingProfileRole || profileRole,
           }, { onConflict: 'id' });
         if (upsertError) throw upsertError;
 
@@ -96,9 +104,12 @@ export default function AuthCallbackScreen() {
 
         const flowType = values.get('type');
         const requestedRole = values.get('role');
-        const oauthRole = requestedRole === 'vet' || requestedRole === 'merchant' || requestedRole === 'client'
+        const urlRole = requestedRole === 'vet' || requestedRole === 'merchant' || requestedRole === 'client'
           ? requestedRole
           : undefined;
+        const storedRole = typeof window !== 'undefined' ? window.localStorage.getItem('mvs_google_signup_role') : null;
+        const oauthRole = urlRole || (storedRole === 'vet' || storedRole === 'merchant' || storedRole === 'client' ? storedRole : undefined);
+        const isSignupFlow = Boolean(oauthRole);
         const successMessage = 'Email verified successfully! Please sign in to MVS.';
         console.log('[Auth Callback] Processing OAuth return URL:', href, 'type:', flowType);
 
@@ -106,7 +117,7 @@ export default function AuthCallbackScreen() {
         const accessToken = values.get('access_token');
         const refreshToken = values.get('refresh_token');
 
-        if (flowType === 'signup' || flowType === 'email_change' || flowType === 'magiclink' || flowType === 'invite' || flowType === 'email_confirmation') {
+        if (!oauthRole && (flowType === 'signup' || flowType === 'email_change' || flowType === 'magiclink' || flowType === 'invite' || flowType === 'email_confirmation')) {
           if (code) {
             const { error } = await supabase.auth.exchangeCodeForSession(code);
             if (error) throw error;
@@ -128,13 +139,14 @@ export default function AuthCallbackScreen() {
         const { data: { session } } = await supabase.auth.getSession();
         console.log('[Auth Callback] Active session detected:', session?.user?.email);
         if (session?.user) {
-          await processAuthenticatedUser(session.user, oauthRole);
+          await processAuthenticatedUser(session.user, oauthRole, isSignupFlow);
+          if (typeof window !== 'undefined') window.localStorage.removeItem('mvs_google_signup_role');
           return;
         }
 
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
           console.log('[Auth Callback] Auth State Event:', event);
-          if (currentSession?.user && mounted) await processAuthenticatedUser(currentSession.user, oauthRole);
+          if (currentSession?.user && mounted) await processAuthenticatedUser(currentSession.user, oauthRole, isSignupFlow);
         });
         unsubscribe = () => authListener.subscription.unsubscribe();
 
@@ -142,7 +154,7 @@ export default function AuthCallbackScreen() {
           if (mounted && !navigating) {
             console.warn('[Auth Callback] Session resolution timed out. Force checking session...');
             supabase.auth.getSession().then(({ data: { session: fallbackSession } }) => {
-              if (fallbackSession?.user) processAuthenticatedUser(fallbackSession.user);
+              if (fallbackSession?.user) processAuthenticatedUser(fallbackSession.user, oauthRole, isSignupFlow);
               else {
                 persistAuthNotice('error', 'This account does not exist. Please sign up first.');
                 router.replace('/(auth)/login');

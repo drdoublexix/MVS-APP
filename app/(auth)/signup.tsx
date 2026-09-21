@@ -173,6 +173,7 @@ export default function SignupScreen() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('mvs_selected_role', userRole);
+        localStorage.setItem('mvs_google_signup_role', userRole);
       }
 
       const callbackUrl = Platform.OS === 'web'
