@@ -30,10 +30,58 @@ type FlutterwaveCheckout = (options: {
   onclose: () => void;
 }) => void;
 
+const FLUTTERWAVE_SCRIPT_URL = 'https://checkout.flutterwave.com/v3.js';
+const FLUTTERWAVE_SCRIPT_ID = 'flutterwave-js';
+let flutterwaveScriptPromise: Promise<void> | null = null;
+
+const getFlutterwaveCheckout = () =>
+  (window as Window & { FlutterwaveCheckout?: FlutterwaveCheckout }).FlutterwaveCheckout;
+
+const loadFlutterwaveScript = (): Promise<void> => {
+  if (getFlutterwaveCheckout()) {
+    return Promise.resolve();
+  }
+
+  if (flutterwaveScriptPromise) {
+    return flutterwaveScriptPromise;
+  }
+
+  flutterwaveScriptPromise = new Promise<void>((resolve, reject) => {
+    const existingScript = document.head.querySelector<HTMLScriptElement>(
+      `script[src="${FLUTTERWAVE_SCRIPT_URL}"]`
+    );
+    const script = existingScript || document.createElement('script');
+
+    script.id = script.id || FLUTTERWAVE_SCRIPT_ID;
+    script.addEventListener('load', () => resolve(), { once: true });
+    script.addEventListener(
+      'error',
+      () => reject(new Error('Failed to load the Flutterwave checkout script.')),
+      { once: true }
+    );
+
+    if (!existingScript) {
+      script.src = FLUTTERWAVE_SCRIPT_URL;
+      document.head.appendChild(script);
+    } else {
+      setTimeout(() => {
+        if (getFlutterwaveCheckout()) {
+          resolve();
+        }
+      }, 0);
+    }
+  }).catch((error: unknown) => {
+    flutterwaveScriptPromise = null;
+    throw error;
+  });
+
+  return flutterwaveScriptPromise;
+};
+
 const triggerFlutterwaveWebModal = (config: FlutterwaveWebPaymentConfig) => {
-  const checkout = (window as Window & { FlutterwaveCheckout?: FlutterwaveCheckout }).FlutterwaveCheckout;
+  const checkout = getFlutterwaveCheckout();
   if (!checkout) {
-    console.error('Flutterwave checkout is unavailable.');
+    console.error('Flutterwave checkout is unavailable after the script loaded.');
     config.onClose();
     return;
   }
@@ -57,21 +105,16 @@ export const handleFlutterwaveWebPayment = (config: FlutterwaveWebPaymentConfig)
     return;
   }
 
-  const existingScript = document.getElementById('flutterwave-js') as HTMLScriptElement | null;
-  if (existingScript) {
-    triggerFlutterwaveWebModal(config);
-    return;
+  if (!getFlutterwaveCheckout()) {
+    window.alert('Initializing payment gateway, please click confirm to proceed...');
   }
 
-  const script = document.createElement('script');
-  script.src = 'https://checkout.flutterwave.com/v3.js';
-  script.id = 'flutterwave-js';
-  script.onload = () => triggerFlutterwaveWebModal(config);
-  script.onerror = () => {
-    console.error('Failed to load Flutterwave checkout.');
-    config.onClose();
-  };
-  document.body.appendChild(script);
+  loadFlutterwaveScript()
+    .then(() => triggerFlutterwaveWebModal(config))
+    .catch((error: unknown) => {
+      console.error('Failed to load Flutterwave checkout.', error);
+      config.onClose();
+    });
 };
 
 export type FlutterwavePaymentPayload = {
