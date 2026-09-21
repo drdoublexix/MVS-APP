@@ -174,9 +174,7 @@ export default function AuthScreen() {
         </View>
         <Text style={styles.eyebrow}>MOBILE VETERINARY SERVICES</Text>
         <Text style={styles.title}>Your farm animals/pet care circle starts here.</Text>
-        <Text style={styles.subtitle}>Create an account to access trusted animal care and supplies, or join us as a certified veterinary professional or merchant to serve our growing ecosystem.</Text>
-        <Text style={styles.registrationPrompt}>Please select your registration type to proceed:</Text>
-
+        <Text style={styles.subtitle}>Create an account or sign in to access trusted animal care and supplies, or join us as a certified veterinary professional or merchant to serve our growing ecosystem.</Text>
         <View style={styles.modeSwitch}>
           <TouchableOpacity style={[styles.modeButton, mode === 'sign-in' && styles.activeMode]} onPress={() => updateMode('sign-in')}>
             <Text style={[styles.modeText, mode === 'sign-in' && styles.activeModeText]}>Sign in</Text>
@@ -185,6 +183,8 @@ export default function AuthScreen() {
             <Text style={[styles.modeText, mode === 'sign-up' && styles.activeModeText]}>Create account</Text>
           </TouchableOpacity>
         </View>
+
+        {mode === 'sign-up' ? <Text style={styles.registrationPrompt}>Please select your registration type to proceed:</Text> : null}
 
         {mode === 'sign-up' ? (
           <View style={styles.roles}>
