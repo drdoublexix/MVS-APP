@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -90,6 +90,7 @@ function RootAuthGate() {
   const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null } | null>(null);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const router = useRouter();
+  const pathname = usePathname();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
 
@@ -396,7 +397,7 @@ function RootAuthGate() {
 
   return (
     <NotificationCenter
-      notifications={authUser ? pendingNotifications : []}
+      notifications={authUser && pathname === '/' ? pendingNotifications : []}
       onRead={async (notificationId) => {
         try {
           await markNotificationRead(notificationId);
