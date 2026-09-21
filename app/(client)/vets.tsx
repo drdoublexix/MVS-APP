@@ -321,6 +321,10 @@ export default function VetsScreen() {
           ) : (
             vets.map((vet) => {
               const specialty = vet.specialty || vet.title || 'Veterinarian';
+              const location = [vet.city, vet.state].filter(Boolean).join(', ');
+              const distance = vet.distanceKm !== null
+                ? `${vet.distanceKm < 10 ? vet.distanceKm.toFixed(1) : Math.round(vet.distanceKm)} km away`
+                : null;
               const resolvedAvatarUrl = getPublicAvatarUrl(vet.avatar_url);
               return (
                 <View key={vet.id} style={styles.card}>
@@ -339,7 +343,11 @@ export default function VetsScreen() {
                     <View style={styles.flex}>
                       <Text style={styles.doctor}>{vet.full_name}</Text>
                       <Text style={styles.clinic}>{specialty}</Text>
-                      <Text style={styles.distanceBadge}>{vet.distanceKm !== null ? `${vet.distanceKm < 10 ? vet.distanceKm.toFixed(1) : Math.round(vet.distanceKm)} km away` : vet.city || vet.state ? `${vet.city || 'Unknown city'}, ${vet.state || 'NG'}` : 'Location Pending'}</Text>
+                      <Text style={styles.distanceBadge}>
+                        {location || 'Location Pending'}
+                        {location && distance ? <Text style={styles.locationSeparator}> • </Text> : null}
+                        {distance || (!location ? '' : null)}
+                      </Text>
                     </View>
                   </View>
 
@@ -486,6 +494,7 @@ const styles = StyleSheet.create({
   doctor: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   clinic: { color: '#94A3B8', fontSize: 12, marginTop: 3 },
   distanceBadge: { color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 5 },
+  locationSeparator: { color: '#e8f0f0' },
   bioText: { color: '#CBD5E1', marginTop: 12, lineHeight: 20 },
   actionsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 16 },
   secondaryButton: { flex: 1, backgroundColor: '#0F172A', borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
