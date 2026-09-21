@@ -106,7 +106,7 @@ export const handleFlutterwaveWebPayment = (config: FlutterwaveWebPaymentConfig)
   }
 
   if (!getFlutterwaveCheckout()) {
-    window.alert('Initializing payment gateway, please click confirm to proceed...');
+    window.alert('Initializing payment gateway, please confirm to proceed...');
   }
 
   loadFlutterwaveScript()
