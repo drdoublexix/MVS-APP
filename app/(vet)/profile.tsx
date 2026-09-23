@@ -9,7 +9,6 @@ import {
     KeyboardAvoidingView,
     Modal,
     Platform,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Switch,
@@ -18,6 +17,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
@@ -105,7 +105,7 @@ export default function VetProfileScreen() {
 
   const [password, setPassword] = useState({ next: '', confirm: '' });
 
-  const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
+  const notificationOptions: { key: keyof NotificationPreferences; label: string }[] = [
     { key: 'consultations', label: 'Consultation Updates / New Consult Requests' },
     { key: 'chat', label: 'Chat Messages / Patient Messages' },
     { key: 'payouts', label: 'Payout Notifications / Payout & Earnings' },
@@ -585,7 +585,7 @@ export default function VetProfileScreen() {
       </ScrollView>
 
       {/* Edit Profile Modal */}
-      <Modal visible={modal === 'profile'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
+      <Modal visible={modal === 'profile'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -596,7 +596,8 @@ export default function VetProfileScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <KeyboardAvoidingView style={styles.formKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
               <Field label="Full Name" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} placeholder="Dr. Your Name" />
               <Field label="Email" value={profile.email} onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))} editable={false} />
               <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
@@ -634,6 +635,7 @@ export default function VetProfileScreen() {
                 <Text style={styles.saveText}>Save Changes</Text>
               </TouchableOpacity>
             </ScrollView>
+            </KeyboardAvoidingView>
           </View>
         </View>
       </Modal>
@@ -671,7 +673,7 @@ export default function VetProfileScreen() {
       </Modal>
 
       {/* Location Picker Modal */}
-      <Modal visible={locationPickerVisible} transparent animationType="slide" onRequestClose={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}>
+      <Modal visible={locationPickerVisible} transparent animationType="fade" onRequestClose={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.locationPickerContent}>
             <View style={styles.locationHeader}>
@@ -714,7 +716,7 @@ export default function VetProfileScreen() {
       </Modal>
 
       {/* Bank Picker Modal */}
-      <Modal visible={bankPickerVisible} animationType="slide" transparent onRequestClose={() => setBankPickerVisible(false)}>
+      <Modal visible={bankPickerVisible} animationType="fade" transparent onRequestClose={() => setBankPickerVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.pickerContent}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -739,8 +741,8 @@ export default function VetProfileScreen() {
       </Modal>
 
       {/* Change Password Modal */}
-      <Modal visible={modal === 'password'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
-        <View style={styles.modalOverlay}>
+      <Modal visible={modal === 'password'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setModal(null)}>
@@ -750,7 +752,7 @@ export default function VetProfileScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
               <Text style={styles.info}>Or use the button below to send yourself a password reset link.</Text>
               <Text style={styles.info}>Password must contain at least 8 characters including a capital letter, small letters, numbers, and symbols.</Text>
 
@@ -765,11 +767,11 @@ export default function VetProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* Notifications Modal */}
-      <Modal visible={modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
-        <View style={styles.modalOverlay}>
+      <Modal visible={modal === 'notifications'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setModal(null)}>
@@ -779,7 +781,7 @@ export default function VetProfileScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
               {notificationOptions.map((option) => (
                 <Toggle
                   key={option.key}
@@ -798,7 +800,7 @@ export default function VetProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1002,13 +1004,17 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   modalContent: {
+    width: '100%',
+    maxWidth: 500,
     backgroundColor: '#1E293B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
+    borderRadius: 16,
+    height: '88%',
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1024,7 +1030,16 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
   },
   modalBody: {
+    flex: 1,
+    minHeight: 0,
     padding: 20,
+  },
+  modalBodyContent: {
+    paddingBottom: 32,
+  },
+  formKeyboard: {
+    flex: 1,
+    minHeight: 0,
   },
   field: {
     marginBottom: 16,
@@ -1106,13 +1121,17 @@ const styles = StyleSheet.create({
   bankModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   bankModalContent: {
+    width: '100%',
+    maxWidth: 500,
     backgroundColor: '#1E293B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
+    borderRadius: 16,
+    height: '88%',
+    maxHeight: '88%',
   },
   pickerContent: {
     backgroundColor: '#1E293B',

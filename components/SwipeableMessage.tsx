@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useMemo, useState } from "react";
 import { Animated, PanResponder, StyleSheet, View } from "react-native";
 
 type SwipeableMessageProps = {
@@ -8,9 +8,9 @@ type SwipeableMessageProps = {
 };
 
 export default function SwipeableMessage({ children, onReply, disabled = false }: SwipeableMessageProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const panResponder = useRef(
-    PanResponder.create({
+  const [translateX] = useState(() => new Animated.Value(0));
+  const panResponder = useMemo(
+    () => PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
         !disabled && Math.abs(gestureState.dx) > 8 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
       onPanResponderMove: (_, gestureState) => {
@@ -24,8 +24,9 @@ export default function SwipeableMessage({ children, onReply, disabled = false }
       onPanResponderTerminate: () => {
         Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
       },
-    })
-  ).current;
+    }),
+    [disabled, onReply, translateX]
+  );
 
   return (
     <View style={styles.wrapper}>

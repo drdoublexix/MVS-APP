@@ -6,7 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-get-random-values';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
 import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 
@@ -88,11 +88,16 @@ function RootAuthGate() {
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
   const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null } | null>(null);
+  const profileRef = useRef(profile);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const router = useRouter();
   const pathname = usePathname();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
 
   useEffect(() => {
     segmentsRef.current = segments;
@@ -193,7 +198,7 @@ function RootAuthGate() {
       if (mounted) setAuthUser(session?.user || null);
 
       const cachedState = await readCachedAuthState();
-      const cachedProfile = cachedState.profile || profile;
+      const cachedProfile = cachedState.profile || profileRef.current;
 
       const href = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
       const pathname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : '';
@@ -419,20 +424,18 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider style={{ flex: 1, width: '100%', height: '100%', backgroundColor: '#0B132B' }}>
-        <RootAuthGate />
-        <NetworkStatusBanner />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-          }}
-        >
-          <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
-          <Stack.Screen name="auth" options={{ headerShown: false }} />
-          <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-          <Stack.Screen name="(client)" options={{ headerShown: false }} />
-          <Stack.Screen name="(vet)" options={{ headerShown: false }} />
-          <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
-        </Stack>
+        <ContextSafeAreaView style={styles.rootSafeArea} edges={[]}>
+          <RootAuthGate />
+          <NetworkStatusBanner />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
+            <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+            <Stack.Screen name="(client)" options={{ headerShown: false }} />
+            <Stack.Screen name="(vet)" options={{ headerShown: false }} />
+            <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
+          </Stack>
+        </ContextSafeAreaView>
       </SafeAreaProvider>
     </ErrorBoundary>
   );
@@ -457,16 +460,17 @@ function NetworkStatusBanner() {
 
 function NotificationCenter({ notifications, onRead }: { notifications: StoredNotification[]; onRead: (notificationId: string) => Promise<void> }) {
   const [visible, setVisible] = useState(false);
+  const insets = useSafeAreaInsets();
   if (notifications.length === 0) return null;
 
   return (
     <>
-      <TouchableOpacity style={styles.notificationBell} onPress={() => setVisible(true)} accessibilityLabel={`${notifications.length} unread notifications`}>
+      <TouchableOpacity style={[styles.notificationBell, { top: insets.top + 10 }]} onPress={() => setVisible(true)} accessibilityLabel={`${notifications.length} unread notifications`}>
         <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
         <View style={styles.notificationCount}><Text style={styles.notificationCountText}>{notifications.length > 99 ? '99+' : notifications.length}</Text></View>
       </TouchableOpacity>
       <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
-        <Pressable style={styles.notificationBackdrop} onPress={() => setVisible(false)}>
+        <Pressable style={[styles.notificationBackdrop, { paddingTop: insets.top + 58 }]} onPress={() => setVisible(false)}>
           <Pressable style={styles.notificationPanel} onPress={(event) => event.stopPropagation()}>
             <View style={styles.notificationHeader}>
               <Text style={styles.notificationTitle}>Notifications</Text>
@@ -474,13 +478,20 @@ function NotificationCenter({ notifications, onRead }: { notifications: StoredNo
                 <MaterialCommunityIcons name="close" size={22} color="#CBD5E1" />
               </TouchableOpacity>
             </View>
-            {notifications.map((notification) => (
-              <TouchableOpacity key={notification.id} style={styles.notificationItem} onPress={() => void onRead(notification.id)}>
-                <Text style={styles.notificationItemTitle}>{notification.title}</Text>
-                <Text style={styles.notificationItemBody}>{notification.body}</Text>
-                <Text style={styles.notificationItemTime}>{new Date(notification.created_at).toLocaleString()}</Text>
-              </TouchableOpacity>
-            ))}
+            <ScrollView
+              style={styles.notificationList}
+              contentContainerStyle={styles.notificationListContent}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {notifications.map((notification) => (
+                <TouchableOpacity key={notification.id} style={styles.notificationItem} onPress={() => void onRead(notification.id)}>
+                  <Text style={styles.notificationItemTitle}>{notification.title}</Text>
+                  <Text style={styles.notificationItemBody}>{notification.body}</Text>
+                  <Text style={styles.notificationItemTime}>{new Date(notification.created_at).toLocaleString()}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -489,6 +500,10 @@ function NotificationCenter({ notifications, onRead }: { notifications: StoredNo
 }
 
 const styles = StyleSheet.create({
+  rootSafeArea: {
+    flex: 1,
+    backgroundColor: '#0B132B',
+  },
   boundaryContainer: {
     flex: 1,
     backgroundColor: '#0B132B',
@@ -579,8 +594,10 @@ const styles = StyleSheet.create({
   },
   notificationCountText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   notificationBackdrop: { flex: 1, alignItems: 'flex-end', paddingTop: 64, paddingHorizontal: 16, backgroundColor: '#00000066' },
-  notificationPanel: { width: '100%', maxWidth: 380, maxHeight: '75%', backgroundColor: '#1E293B', borderRadius: 12, borderWidth: 1, borderColor: '#475569', padding: 14 },
+  notificationPanel: { width: '100%', maxWidth: 380, height: '75%', minHeight: 180, maxHeight: 560, backgroundColor: '#1E293B', borderRadius: 12, borderWidth: 1, borderColor: '#475569', padding: 14, overflow: 'hidden' },
   notificationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  notificationList: { flex: 1, minHeight: 0 },
+  notificationListContent: { paddingBottom: 4 },
   notificationTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
   notificationItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
   notificationItemTitle: { color: '#6EE7B7', fontSize: 13, fontWeight: '800' },

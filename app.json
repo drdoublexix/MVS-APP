@@ -40,6 +40,7 @@
     },
     "android": {
       "package": "com.mvs.app",
+      "versionCode": 100,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -105,7 +106,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png",
+          "icon": "./assets/images/mvs-notification-icon.png",
           "color": "#10b981"
         }
       ],

@@ -50,14 +50,23 @@ export const useMarketplace = () => {
 };
 
 export const fetchMarketplaceProducts = async () => {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .gt('stock', 0)
-    .order('created_at', { ascending: false });
+  let data: any[] | null = null;
+  let error: any = null;
+  try {
+    const result = await supabase
+      .from('products')
+      .select('*')
+      .gt('stock', 0)
+      .order('created_at', { ascending: false });
+    data = result.data;
+    error = result.error;
+  } catch (fetchError) {
+    console.warn('[Marketplace] Product fetch unavailable:', fetchError);
+    return products;
+  }
 
   if (error) {
-    console.error('[Marketplace] Failed to fetch products:', error);
+    console.warn('[Marketplace] Failed to fetch products:', error.message || error);
     return products;
   }
 

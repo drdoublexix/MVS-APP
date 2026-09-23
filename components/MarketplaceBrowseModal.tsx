@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import type { MarketplaceProduct } from '../lib/marketplace';
 import { PRODUCT_CATEGORIES } from '../lib/productCategories';
 import ProductImageCarousel from './ProductImageCarousel';
@@ -39,7 +39,7 @@ export default function MarketplaceBrowseModal({ visible, products, onClose, onS
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={closeModal}>
       <View style={styles.overlay}>
-        <View style={styles.modal}>
+        <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.header}>
             <Text style={styles.title}>Marketplace</Text>
             <TouchableOpacity onPress={closeModal} accessibilityLabel="Close Marketplace">
@@ -76,7 +76,7 @@ export default function MarketplaceBrowseModal({ visible, products, onClose, onS
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

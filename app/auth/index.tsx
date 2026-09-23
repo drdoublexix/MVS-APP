@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getProfileRole, getRoleNavPath, supabase } from '../../lib/supabase';
 
 type Role = 'client' | 'vet' | 'merchant';
@@ -14,6 +14,13 @@ const getAuthRedirectUrl = () => {
     return `${window.location.origin}/auth?mode=signin`;
   }
   return PRODUCTION_AUTH_URL;
+};
+
+const getWebHashParams = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location?.hash) {
+    return null;
+  }
+  return new URLSearchParams(window.location.hash.replace(/^#/, ''));
 };
 
 const getVerifiedNotice = () => {
@@ -38,9 +45,8 @@ const roles: { value: Role; label: string }[] = [
 export default function AuthScreen() {
   const router = useRouter();
   const { code, mode: modeParam, type: typeParam } = useLocalSearchParams<{ code?: string; mode?: string; type?: string }>();
-  const hasHashSession = typeof window !== 'undefined'
-    && Boolean(new URLSearchParams(window.location.hash.replace(/^#/, '')).get('access_token'))
-    && Boolean(new URLSearchParams(window.location.hash.replace(/^#/, '')).get('refresh_token'));
+  const hashValues = getWebHashParams();
+  const hasHashSession = Boolean(hashValues?.get('access_token') && hashValues.get('refresh_token'));
   const verifiedNotice = getVerifiedNotice();
   const isAuthRedirect = Boolean(code || hasHashSession);
   const isVerificationState = isAuthRedirect || verifiedNotice.exists || typeParam === 'signup' || typeParam === 'email_confirmation';
@@ -60,9 +66,7 @@ export default function AuthScreen() {
   const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
-    const hashValues = typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.hash.replace(/^#/, ''))
-      : null;
+    const hashValues = getWebHashParams();
     const accessToken = hashValues?.get('access_token');
     const refreshToken = hashValues?.get('refresh_token');
     if (!code && !hasHashSession) return;
@@ -162,12 +166,14 @@ export default function AuthScreen() {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.scrollContent}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator
-    >
-      <View style={styles.content}>
+    <KeyboardAvoidingView style={styles.keyboardRoot} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        automaticallyAdjustKeyboardInsets
+      >
+        <View style={styles.content}>
         {message ? <Text style={styles.verificationBanner}>{message}</Text> : null}
         <View style={styles.logoFrame}>
           <Image source={require('../../assets/images/mvsfp.jpeg')} resizeMode="contain" style={styles.logo} />
@@ -232,13 +238,15 @@ export default function AuthScreen() {
         <TouchableOpacity style={styles.primaryButton} onPress={() => void submit()} disabled={loading}>
           <Text style={styles.primaryText}>{mode === 'sign-up' ? 'Create account' : 'Sign in'}</Text>
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { backgroundColor: '#08111F', flexGrow: 1, justifyContent: 'center', padding: 24 },
+  keyboardRoot: { flex: 1, backgroundColor: '#08111F' },
+  scrollContent: { backgroundColor: '#08111F', flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: 40 },
   content: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: 14 },
   logoFrame: { alignSelf: 'center', backgroundColor: '#08111F', borderRadius: 62, height: 124, overflow: 'hidden', width: 124 },
   logo: { borderRadius: 62, height: 124, width: 124 },

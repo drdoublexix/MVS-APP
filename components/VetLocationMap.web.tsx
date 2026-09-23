@@ -3,13 +3,17 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect } from 'react';
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import { Modal, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import './VetLocationMap.web.css';
 
 type MapVet = {
   id: string;
   full_name: string;
   specialty?: string;
+  city?: string | null;
+  state?: string | null;
+  distanceKm: number | null;
   latitude: number;
   longitude: number;
 };
@@ -59,7 +63,7 @@ export default function VetLocationMap({ visible, vets, onClose, onSelectVet }: 
             {vets.map((vet) => <CircleMarker key={`circle-${vet.id}`} center={[vet.latitude, vet.longitude]} radius={5} pathOptions={{ color: '#FFFFFF', fillColor: '#DC2626', fillOpacity: 1, weight: 2 }} />)}
           </MapContainer>
         </View>
-        <View style={styles.locationList}>
+        <ScrollView style={styles.locationList} contentContainerStyle={styles.locationListContent} nestedScrollEnabled showsVerticalScrollIndicator>
           <Text style={styles.listTitle}>Explore Veterinarians</Text>
           {vets.map((vet) => (
             <TouchableOpacity key={vet.id} style={styles.locationRow} onPress={() => onSelectVet(vet.id)}>
@@ -67,15 +71,23 @@ export default function VetLocationMap({ visible, vets, onClose, onSelectVet }: 
               <View style={styles.locationCopy}>
                 <Text style={styles.vetName}>{vet.full_name}</Text>
                 <Text style={styles.specialty}>{vet.specialty || 'Veterinarian'}</Text>
-                <Text style={styles.coordinates}>{vet.latitude.toFixed(6)}, {vet.longitude.toFixed(6)}</Text>
+                <Text style={styles.coordinates}>{formatVetLocation(vet)}</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </Modal>
   );
+}
+
+function formatVetLocation(vet: MapVet) {
+  const location = [vet.city, vet.state].filter(Boolean).join(', ') || 'Location Pending';
+  const distance = vet.distanceKm !== null
+    ? `${vet.distanceKm < 10 ? vet.distanceKm.toFixed(1) : Math.round(vet.distanceKm)} km away`
+    : null;
+  return distance ? `${location} • ${distance}` : location;
 }
 
 function FitVetBounds({ vets }: { vets: MapVet[] }) {
@@ -96,7 +108,8 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
   mapFrame: { height: '48%', backgroundColor: '#CBD5E1' },
   map: { width: '100%', height: '100%' },
-  locationList: { flex: 1, padding: 16 },
+  locationList: { flex: 1 },
+  locationListContent: { padding: 16, paddingBottom: 28 },
   listTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 8 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
   locationCopy: { flex: 1 },

@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
@@ -87,10 +88,6 @@ export default function ClientHome() {
   );
 
   useEffect(() => {
-    void hydrateUser();
-  }, [hydrateUser]);
-
-  useEffect(() => {
     // 1. Fetch marketplace products
     void fetchMarketplaceProducts().catch(() => undefined);
 
@@ -158,8 +155,6 @@ export default function ClientHome() {
   );
 
   useEffect(() => {
-    void loadOrderStatuses();
-
     let mounted = true;
     const channelName = `client-home-orders:${Date.now()}`;
     const ordersChannel = supabase
@@ -241,7 +236,7 @@ export default function ClientHome() {
   return (
     <SafeAreaView style={styles.container}>
       <WelcomeModal />
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.greeting}>
           <Text style={styles.greetingTitle}>Hello, {firstName}! 👋</Text>
           <Text style={styles.greetingSubtitle}>How are your furry buddies doing today?</Text>
@@ -471,11 +466,12 @@ function SupportFab({ role }: { role: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  content: { padding: 16, paddingBottom: 35 },
+  content: { padding: 16 },
+  contentContainer: { paddingBottom: 96 },
   greeting: { marginBottom: 18 },
   greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
   greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
-  aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24, elevation: 4, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6 },
   aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#FFFFFF24', alignItems: 'center', justifyContent: 'center' },
   aiCardCopy: { flex: 1, marginHorizontal: 12 },
   aiTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
@@ -483,14 +479,14 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 13 },
   sectionTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   action: { color: '#3B82F6', fontWeight: '600', fontSize: 13 },
-  banner: { backgroundColor: '#10B981', borderRadius: 15, padding: 18, flexDirection: 'row', alignItems: 'center', marginVertical: 26 },
+  banner: { backgroundColor: '#10B981', borderRadius: 15, padding: 18, flexDirection: 'row', alignItems: 'center', marginVertical: 26, elevation: 4, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6 },
   flex: { flex: 1 },
   bannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   bannerText: { color: '#D1FAE5', marginTop: 4, fontSize: 13 },
   bannerButton: { backgroundColor: '#FFFFFF', borderRadius: 9, padding: 11, alignItems: 'center' },
   bannerButtonText: { color: '#10B981', fontWeight: '700' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  product: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12 },
+  product: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12, elevation: 3, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5 },
   productImage: { height: 96, backgroundColor: '#0F172A', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   productPhoto: {
     width: '100%',

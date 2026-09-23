@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { router, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -11,7 +11,6 @@ import {
     Modal,
     Platform,
     Pressable,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Switch,
@@ -20,6 +19,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
@@ -109,6 +109,30 @@ export function LogoutButton() {
   );
 }
 
+type NotificationPreferences = {
+  orders: boolean;
+  chat: boolean;
+  consultations: boolean;
+  reminders: boolean;
+  payouts: boolean;
+};
+
+const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
+  orders: true,
+  chat: true,
+  consultations: true,
+  reminders: true,
+  payouts: true,
+});
+
+const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
+  orders: typeof prefs?.orders === 'boolean' ? prefs.orders : true,
+  chat: typeof prefs?.chat === 'boolean' ? prefs.chat : true,
+  consultations: typeof prefs?.consultations === 'boolean' ? prefs.consultations : true,
+  reminders: typeof prefs?.reminders === 'boolean' ? prefs.reminders : true,
+  payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
+});
+
 export default function MerchantProfileScreen() {
   const router = useRouter();
   const [modal, setModal] = useState<SettingsModal>(null);
@@ -133,31 +157,7 @@ export default function MerchantProfileScreen() {
     flutterwaveSubaccountId: '',
   });
   const [password, setPassword] = useState({ next: '', confirm: '' });
-  type NotificationPreferences = {
-    orders: boolean;
-    chat: boolean;
-    consultations: boolean;
-    reminders: boolean;
-    payouts: boolean;
-  };
-
-  const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
-    orders: true,
-    chat: true,
-    consultations: true,
-    reminders: true,
-    payouts: true,
-  });
-
-  const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
-    orders: typeof prefs?.orders === 'boolean' ? prefs.orders : true,
-    chat: typeof prefs?.chat === 'boolean' ? prefs.chat : true,
-    consultations: typeof prefs?.consultations === 'boolean' ? prefs.consultations : true,
-    reminders: typeof prefs?.reminders === 'boolean' ? prefs.reminders : true,
-    payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
-  });
-
-  const notificationOptions: Array<{ key: keyof NotificationPreferences; label: string }> = [
+  const notificationOptions: { key: keyof NotificationPreferences; label: string }[] = [
     { key: 'orders', label: 'New Orders / Order Updates' },
     { key: 'chat', label: 'Customer Inquiries / Chat Messages' },
     { key: 'payouts', label: 'Payout Notifications / Payout & Earnings' },
@@ -169,7 +169,7 @@ export default function MerchantProfileScreen() {
     await registerForPushNotifications(userId);
   };
 
-  const loadNotificationPreferences = async (userId: string) => {
+  const loadNotificationPreferences = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
       .select('notification_preferences')
@@ -181,7 +181,7 @@ export default function MerchantProfileScreen() {
     } else {
       setNotifications(buildDefaultNotificationPreferences());
     }
-  };
+  }, []);
 
   const saveNotificationPreferences = async (prefs: NotificationPreferences) => {
     const user = await getCurrentUser();
@@ -279,7 +279,7 @@ export default function MerchantProfileScreen() {
 
       void loadNotificationPreferences(user.id);
     })().catch(() => undefined);
-  }, []);
+  }, [loadNotificationPreferences]);
 
   const saveProfile = async () => {
     const user = await getCurrentUser();
@@ -597,7 +597,7 @@ export default function MerchantProfileScreen() {
       </ScrollView>
 
       {/* Edit Profile Modal */}
-      <Modal visible={modal === 'profile'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
+      <Modal visible={modal === 'profile'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -608,7 +608,8 @@ export default function MerchantProfileScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <KeyboardAvoidingView style={styles.formKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
               <Field label="Full Name" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} placeholder="Your Name" />
               <Field label="Email" value={profile.email} onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))} editable={false} />
               <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
@@ -620,6 +621,7 @@ export default function MerchantProfileScreen() {
                 <Text style={styles.saveText}>Save Changes</Text>
               </TouchableOpacity>
             </ScrollView>
+            </KeyboardAvoidingView>
           </View>
         </View>
       </Modal>
@@ -671,7 +673,7 @@ export default function MerchantProfileScreen() {
       </Modal>
 
       {/* Bank Selection Modal */}
-      <Modal visible={bankPickerVisible} animationType="slide" transparent onRequestClose={() => setBankPickerVisible(false)}>
+      <Modal visible={bankPickerVisible} animationType="fade" transparent onRequestClose={() => setBankPickerVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.pickerContent}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -700,8 +702,8 @@ export default function MerchantProfileScreen() {
       </Modal>
 
       {/* Password Modal */}
-      <Modal visible={modal === 'password'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
-        <View style={styles.modalOverlay}>
+      <Modal visible={modal === 'password'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setModal(null)}>
@@ -711,7 +713,7 @@ export default function MerchantProfileScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
               <Text style={styles.info}>Or use the button below to send yourself a password reset link.</Text>
               <Text style={styles.info}>Password must contain at least 8 characters including a capital letter, small letters, numbers, and symbols.</Text>
               <Field label="New Password" value={password.next} onChangeText={(text) => setPassword((prev) => ({ ...prev, next: text }))} placeholder={PASSWORD_REQUIREMENTS} secureTextEntry />
@@ -726,12 +728,12 @@ export default function MerchantProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Notification Preferences Modal */}
-      <Modal visible={modal === 'notifications'} animationType="slide" transparent onRequestClose={() => setModal(null)}>
-        <View style={styles.modalOverlay}>
+      <Modal visible={modal === 'notifications'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setModal(null)}>
@@ -741,7 +743,7 @@ export default function MerchantProfileScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
               {notificationOptions.map((option) => (
                 <Toggle
                   key={option.key}
@@ -760,7 +762,7 @@ export default function MerchantProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -848,13 +850,15 @@ const styles = StyleSheet.create({
   chevron: { color: '#64748B', fontSize: 22 },
   deleteButton: { borderColor: '#EF4444', borderWidth: 1.5, borderRadius: 10, padding: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 12 },
   deleteText: { color: '#FCA5A5', fontWeight: '700', fontSize: 15 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   bankModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
-  bankModalContent: { backgroundColor: '#0F172A', borderRadius: 20, maxHeight: '85%', width: '90%', maxWidth: 450, overflow: 'hidden' },
-  modalContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' },
+  bankModalContent: { backgroundColor: '#0F172A', borderRadius: 20, height: '88%', maxHeight: '88%', width: '90%', maxWidth: 450, overflow: 'hidden' },
+  modalContent: { backgroundColor: '#0F172A', borderRadius: 20, height: '88%', maxHeight: '88%', width: '100%', maxWidth: 500 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#334155' },
   modalTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  modalBody: { padding: 16 },
+  modalBody: { flex: 1, minHeight: 0, padding: 16 },
+  modalBodyContent: { paddingBottom: 32 },
+  formKeyboard: { flex: 1, minHeight: 0 },
   info: { color: '#94A3B8', fontSize: 13, marginBottom: 16 },
   field: { marginBottom: 16 },
   label: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginBottom: 8 },

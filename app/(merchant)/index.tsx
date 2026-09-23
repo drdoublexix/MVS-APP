@@ -3,10 +3,11 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
     Image,
+    KeyboardAvoidingView,
     Linking,
     Modal,
     PanResponder,
-    SafeAreaView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -14,6 +15,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import KnowledgeHubSection from "../../components/KnowledgeHubSection";
 import MarketplaceBrowseModal from "../../components/MarketplaceBrowseModal";
 import ProductImageCarousel from "../../components/ProductImageCarousel";
@@ -122,7 +124,6 @@ export default function MerchantDashboardScreen() {
   }, []);
 
   useEffect(() => {
-    void loadOrderStatuses();
     let mounted = true;
     const ordersChannel = supabase
       .channel("merchant-dashboard-orders")
@@ -345,8 +346,9 @@ export default function MerchantDashboardScreen() {
       >
         <MaterialCommunityIcons name="whatsapp" size={29} color="#FFFFFF" />
       </View>
-      <Modal visible={visible} animationType="slide">
+      <Modal visible={visible} animationType="fade">
         <SafeAreaView style={styles.modal}>
+          <KeyboardAvoidingView style={styles.modalKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setVisible(false)}>
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
@@ -410,6 +412,7 @@ export default function MerchantDashboardScreen() {
               </Text>
             </TouchableOpacity>
           </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -460,6 +463,7 @@ function Stat({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F172A" },
+  modalKeyboard: { flex: 1 },
   content: { padding: 16, paddingBottom: 36 },
   title: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },
   subtitle: { color: "#94A3B8", marginTop: 4, marginBottom: 24 },
@@ -473,6 +477,11 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
     borderColor: "#334155",
+    elevation: 3,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
   },
   statValue: {
     color: "#FFFFFF",
@@ -517,6 +526,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#334155",
     marginBottom: 0,
+    elevation: 3,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
   },
   productImage: {
     height: 96,

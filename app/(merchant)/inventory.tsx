@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchMarketplaceProducts } from '../../lib/marketplace';
 import { parsePriceInput } from '../../lib/price';
 import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
@@ -188,7 +189,7 @@ export default function MerchantInventoryScreen() {
       </ScrollView>
       <Modal visible={editingItem !== null} animationType="slide" onRequestClose={() => { if (!savingEdit) setEditingItem(null); }}>
         <SafeAreaView style={styles.modal}>
-          <KeyboardAvoidingView style={styles.modalContent} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <KeyboardAvoidingView style={styles.modalContent} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setEditingItem(null)} disabled={savingEdit} accessibilityLabel="Close edit product modal">
                 <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />

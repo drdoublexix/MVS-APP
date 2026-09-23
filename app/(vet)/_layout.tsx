@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnreadMessages } from '../../lib/unreadMessages';
 
 export default function VetLayout() {
   const { totalUnreadCount } = useUnreadMessages();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -18,11 +20,11 @@ export default function VetLayout() {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
-          height: 56,
-          minHeight: 56,
-          maxHeight: 56,
+          height: 56 + insets.bottom,
+          minHeight: 56 + insets.bottom,
+          maxHeight: 56 + insets.bottom,
           paddingTop: 1,
-          paddingBottom: 0,
+          paddingBottom: insets.bottom,
         },
         tabBarLabelStyle: { fontSize: 11, lineHeight: 13, marginBottom: 1 },
       }}

@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
@@ -458,7 +459,7 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' },
   subtitle: { color: '#94A3B8', marginTop: 4, marginBottom: 24 },
   metrics: { flexDirection: 'row', gap: 10, marginBottom: 28 },
-  metric: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
+  metric: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155', elevation: 3, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5 },
   metricIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   muted: { color: '#94A3B8', fontSize: 12 },
   metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 5, textAlign: 'center' },
@@ -466,7 +467,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   browseAction: { color: '#3B82F6', fontWeight: '600', fontSize: 13 },
   marketplace: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  marketProduct: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 12 },
+  marketProduct: { width: '48%', backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 10, padding: 12, elevation: 3, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5 },
   marketProductImage: { width: '100%', height: 96, borderRadius: 8, resizeMode: 'cover' },
   marketProductPlaceholder: { width: '100%', height: 96, borderRadius: 8, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
   marketName: { color: '#FFFFFF', fontWeight: '600', fontSize: 12, marginTop: 8 },

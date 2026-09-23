@@ -16,6 +16,7 @@ export const NIGERIAN_LOCATIONS = [
   { state: 'Rivers', city: 'Port Harcourt', areas: ['Port Harcourt City', 'Obio-Akpor', 'Eleme', 'Oyigbo', 'Ikwerre'] },
   { state: 'Oyo', city: 'Ibadan', areas: ['Ibadan North', 'Ibadan North-East', 'Ibadan South-West', 'Bodija', 'Oluyole', 'Egbeda', 'Ring Road'] },
   { state: 'Enugu', city: 'Enugu', areas: ['Enugu North', 'Enugu South', 'Independence Layout', 'Abakpa', 'Trans-Ekulu'] },
+  { state: 'Plateau', city: 'Jos', areas: ['Jos', 'Jos North', 'Jos South', 'Jos East', 'Barkin Ladi'] },
 ];
 
 export const requestDeviceLocation = async (): Promise<ProfileLocation | null> => {

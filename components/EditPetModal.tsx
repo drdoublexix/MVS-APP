@@ -3,7 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 export type EditablePet = {
@@ -65,7 +65,7 @@ export default function EditPetModal({ isVisible, onClose, pet, userId, onSave }
   return (
     <Modal visible={isVisible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.modal}>
+        <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <TouchableOpacity style={styles.close} onPress={onClose} accessibilityLabel="Close pet editor"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity>
           <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator>
             <Text style={styles.modalTitle}>{draft.name ? 'Edit Pet' : 'Add Pet'}</Text>
@@ -83,7 +83,7 @@ export default function EditPetModal({ isVisible, onClose, pet, userId, onSave }
             <View style={styles.photoRow}>{draft.photos.map((photo) => <Image key={photo} source={{ uri: photo }} style={styles.photoPreview} />)}{draft.photos.length < 3 ? <TouchableOpacity style={styles.addPhoto} onPress={() => { void addPhotos(); }}><Text style={styles.addPhotoText}>Add photo</Text></TouchableOpacity> : null}</View>
             <TouchableOpacity style={styles.save} onPress={() => { void save(); }} disabled={saving}><Text style={styles.saveText}>Save Changes</Text></TouchableOpacity>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

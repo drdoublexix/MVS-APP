@@ -146,12 +146,16 @@ export const getCurrentUser = async () => {
 export const signOutUser = async () => {
   const currentUser = await getCurrentUser().catch(() => null);
 
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem('mvs_logout_requested', '1');
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem('mvs_logout_requested', '1');
+    } catch (storageError) {
+      console.warn('[Auth SignOut] Could not persist logout marker:', storageError);
+    }
   }
 
   const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  if (error) console.warn('[Auth SignOut] Supabase sign-out returned an error:', error);
 
   try {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -173,10 +177,18 @@ export const signOutUser = async () => {
     }
   }
 
-  await AsyncStorage.clear();
+  try {
+    await AsyncStorage.clear();
+  } catch (storageError) {
+    console.warn('[Auth SignOut] Failed to clear native storage:', storageError);
+  }
   await clearCachedAuthState();
-  if (typeof window !== 'undefined') {
-    window.localStorage.clear();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.clear();
+    } catch (storageError) {
+      console.warn('[Auth SignOut] Failed to clear browser storage:', storageError);
+    }
   }
 };
 

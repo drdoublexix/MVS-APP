@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getCurrentUser, supabase } from '../lib/supabase';
 
 export type CommunityCategory = 'distress_sale' | 'pet_sale' | 'pet_food' | 'accessories' | 'general';
@@ -95,7 +95,7 @@ export default function CreateCommunityPostModal({ visible, onClose, onCreated }
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.sheet}>
+        <KeyboardAvoidingView style={styles.sheet} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <View style={styles.header}>
             <Text style={styles.heading}>New community post</Text>
             <TouchableOpacity onPress={onClose} disabled={submitting} accessibilityLabel="Close">
@@ -123,7 +123,7 @@ export default function CreateCommunityPostModal({ visible, onClose, onCreated }
               {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitText}>Publish post</Text>}
             </TouchableOpacity>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

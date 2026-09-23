@@ -1,18 +1,20 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function CommunityLayout() {
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarPosition: 'bottom',
         tabBarStyle: {
-          height: 56,
-          minHeight: 56,
-          maxHeight: 56,
+          height: 56 + insets.bottom,
+          minHeight: 56 + insets.bottom,
+          maxHeight: 56 + insets.bottom,
           paddingTop: 1,
-          paddingBottom: 0,
+          paddingBottom: insets.bottom,
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
           borderTopWidth: 1,

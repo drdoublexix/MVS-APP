@@ -5,13 +5,13 @@ import DateTimePicker, {
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     Alert,
     Image,
+    KeyboardAvoidingView,
     Modal,
     Platform,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Switch,
@@ -20,6 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../../components/AvatarPreviewModal";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
@@ -88,6 +89,29 @@ const farmSpecies = [
   "Bovine",
 ] as const;
 const petAge = calculatePetAgeInWeeks;
+type NotificationPreferences = {
+  orders: boolean;
+  chat: boolean;
+  consultations: boolean;
+  reminders: boolean;
+  payouts: boolean;
+};
+
+const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
+  orders: true,
+  chat: true,
+  consultations: true,
+  reminders: true,
+  payouts: true,
+});
+
+const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
+  orders: typeof prefs?.orders === "boolean" ? prefs.orders : true,
+  chat: typeof prefs?.chat === "boolean" ? prefs.chat : true,
+  consultations: typeof prefs?.consultations === "boolean" ? prefs.consultations : true,
+  reminders: typeof prefs?.reminders === "boolean" ? prefs.reminders : true,
+  payouts: typeof prefs?.payouts === "boolean" ? prefs.payouts : true,
+});
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -143,38 +167,11 @@ export default function ProfileScreen() {
   });
   const [editingPet, setEditingPet] = useState<EditablePet>(emptyPet);
   const [password, setPassword] = useState({ next: "", confirm: "" });
-  type NotificationPreferences = {
-    orders: boolean;
-    chat: boolean;
-    consultations: boolean;
-    reminders: boolean;
-    payouts: boolean;
-  };
-
-  const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
-    orders: true,
-    chat: true,
-    consultations: true,
-    reminders: true,
-    payouts: true,
-  });
-
-  const normalizeNotificationPreferences = (
-    prefs?: Record<string, unknown> | null
-  ): NotificationPreferences => ({
-    orders: typeof prefs?.orders === "boolean" ? prefs.orders : true,
-    chat: typeof prefs?.chat === "boolean" ? prefs.chat : true,
-    consultations:
-      typeof prefs?.consultations === "boolean" ? prefs.consultations : true,
-    reminders: typeof prefs?.reminders === "boolean" ? prefs.reminders : true,
-    payouts: typeof prefs?.payouts === "boolean" ? prefs.payouts : true,
-  });
-
   const role = "client";
-  const notificationOptions: Array<{
+  const notificationOptions: {
     key: keyof NotificationPreferences;
     label: string;
-  }> = [
+  }[] = [
     ...(role === "client"
       ? [
           { key: "orders" as const, label: "New Orders / Order Updates" },
@@ -212,7 +209,7 @@ export default function ProfileScreen() {
     setFarmRecords((data || []) as FarmRecord[]);
   };
 
-  const loadNotificationPreferences = async (userId: string) => {
+  const loadNotificationPreferences = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from("profiles")
       .select("avatar_url, notification_preferences, phone_number")
@@ -247,7 +244,7 @@ export default function ProfileScreen() {
         ...(current || {}),
         phone: data.phone_number,
       }));
-  };
+  }, []);
 
   const saveNotificationPreferences = async (
     prefs: NotificationPreferences
@@ -395,7 +392,7 @@ export default function ProfileScreen() {
     })().catch((error) => {
       console.error("[Client Profile] Initial data load failed:", error);
     });
-  }, []);
+  }, [loadNotificationPreferences]);
 
   const openPet = (pet?: Pet) => {
     setEditingPet(
@@ -727,14 +724,19 @@ export default function ProfileScreen() {
     );
   };
   const handleLogout = async () => {
-    await signOutUser();
-    setUser(null);
-    setProfile(null);
-    setAvatarUrl(null);
-    setCurrentUserId("");
-    setPets([]);
-    setFarmRecords([]);
-    router.replace('/auth?mode=signin');
+    try {
+      await signOutUser();
+    } catch (error) {
+      console.warn('[Client Profile] Logout cleanup failed; continuing to auth screen:', error);
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setAvatarUrl(null);
+      setCurrentUserId("");
+      setPets([]);
+      setFarmRecords([]);
+      router.replace('/auth?mode=signin');
+    }
   };
   const handleDeleteAccount = () => {
     const confirmDelete = async () => {
@@ -852,9 +854,14 @@ export default function ProfileScreen() {
   const vipExpiry = profileState?.vip_discount_active_until
     ? new Date(profileState.vip_discount_active_until)
     : null;
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
   const vipDaysRemaining =
-    vipExpiry && vipExpiry.getTime() > Date.now()
-      ? Math.ceil((vipExpiry.getTime() - Date.now()) / 86400000)
+    vipExpiry && vipExpiry.getTime() > currentTime
+      ? Math.ceil((vipExpiry.getTime() - currentTime) / 86400000)
       : 0;
 
   return (
@@ -1166,12 +1173,12 @@ export default function ProfileScreen() {
       </ScrollView>
       <Modal
         visible={farmModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={closeFarmModal}
       >
         <View style={styles.overlay}>
-          <View style={styles.modal}>
+          <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}>
             <TouchableOpacity
               style={styles.close}
               onPress={closeFarmModal}
@@ -1179,7 +1186,7 @@ export default function ProfileScreen() {
             >
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator>
+            <ScrollView style={styles.modalBody} contentContainerStyle={[styles.modalContent, { paddingBottom: 120 }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator>
               <Text style={styles.modalTitle}>
                 {editingFarmId ? "Edit Farm Record" : "Add Farm Record"}
               </Text>
@@ -1354,7 +1361,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               ) : null}
             </ScrollView>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
       <EditPetModal
@@ -1366,7 +1373,7 @@ export default function ProfileScreen() {
       />
       <Modal
         visible={modal === "profile" || modal === "notifications"}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setModal(null)}
       >
@@ -1415,7 +1422,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </Form>
             ) : modal === "notifications" ? (
-              <View style={{ flex: 1, maxHeight: "85%" }}>
+              <KeyboardAvoidingView style={styles.settingsModalContent} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}>
                 <View style={styles.notificationHeader}>
                   <Text style={styles.modalTitle}>Notifications</Text>
                 </View>
@@ -1444,7 +1451,7 @@ export default function ProfileScreen() {
                 >
                   <Text style={styles.saveText}>Save Preferences</Text>
                 </TouchableOpacity>
-              </View>
+              </KeyboardAvoidingView>
             ) : null}
           </View>
         </View>
@@ -1452,7 +1459,7 @@ export default function ProfileScreen() {
       <Modal
         visible={locationPickerVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => {
           setLocationPickerVisible(false);
           setLocationStatePicker(null);
@@ -1564,6 +1571,8 @@ export default function ProfileScreen() {
               padding: 22,
             }}
           >
+            <KeyboardAvoidingView style={{ width: "100%", maxHeight: "100%" }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
             <View
               style={{
                 flexDirection: "row",
@@ -1649,6 +1658,8 @@ export default function ProfileScreen() {
                 Send Reset Link via Email
               </Text>
             </TouchableOpacity>
+            </ScrollView>
+            </KeyboardAvoidingView>
           </View>
         </View>
       </Modal>
@@ -1748,13 +1759,15 @@ function Form({
   children: React.ReactNode;
 }) {
   return (
-    <ScrollView>
-      <Text style={styles.modalTitle}>{title}</Text>
-      {children}
-      <TouchableOpacity style={styles.save} onPress={onSave}>
-        <Text style={styles.saveText}>Save Changes</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+        <Text style={styles.modalTitle}>{title}</Text>
+        {children}
+        <TouchableOpacity style={styles.save} onPress={onSave}>
+          <Text style={styles.saveText}>Save Changes</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 const locationStyles = StyleSheet.create({
@@ -1846,6 +1859,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     marginBottom: 9,
+    elevation: 2,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
   },
   petThumb: { width: 48, height: 48, borderRadius: 12 },
   paw: {
@@ -1868,6 +1886,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 8,
+    elevation: 2,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
   },
   chevron: { color: "#64748B", fontSize: 22 },
   logout: {
@@ -1899,11 +1922,12 @@ const styles = StyleSheet.create({
     maxWidth: 500,
     backgroundColor: "#0F172A",
     borderRadius: 14,
-    maxHeight: "88%",
+    height: "88%",
     paddingBottom: 20,
     paddingHorizontal: 16,
   },
   modalBody: { flexGrow: 0, paddingHorizontal: 0 },
+  settingsModalContent: { flex: 1, maxHeight: "85%" },
   modalContent: { paddingBottom: 4 },
   close: { alignSelf: "flex-end", paddingTop: 12 },
   closeText: { color: "#64748B", fontSize: 16, fontWeight: "600" },

@@ -1,4 +1,4 @@
-﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     AudioModule,
@@ -23,18 +23,18 @@ import {
     ActivityIndicator,
     Alert,
     Image,
+    KeyboardAvoidingView,
     Linking,
     Modal,
     Platform,
     Pressable,
-    SafeAreaView,
     ScrollView,
     Text,
     TextInput,
     TouchableOpacity,
     View
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../components/AvatarPreviewModal";
 import FarmMedicalHistory from "../components/FarmMedicalHistory";
 import PetMedicalHistory from "../components/PetMedicalHistory";
@@ -504,6 +504,7 @@ function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose:
 
 const styles = {
   container: { flex: 1, backgroundColor: "#0F172A" },
+  chatKeyboardRoot: { flex: 1 },
   chatRoot: { flex: 1, position: "relative" },
   header: { padding: 18, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   roomHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "column", alignItems: "stretch", gap: 12, position: "relative", zIndex: 10, elevation: 5 },
@@ -544,9 +545,9 @@ const styles = {
   paidBadgeText: { color: "#047857" },
   payButton: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   payButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  invoiceOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
+  invoiceOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "center", alignItems: "center", padding: 16 },
   invoiceModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  prescriptionOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
+  prescriptionOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "center", alignItems: "center", padding: 16 },
   prescriptionModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "90%" },
   prescriptionForm: { paddingBottom: 12, gap: 8 },
   prescriptionLabel: { color: "#94A3B8", fontSize: 12, marginTop: 8, marginBottom: 4 },
@@ -646,9 +647,9 @@ const styles = {
   title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { padding: 16 },
-  messages: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12, flexGrow: 1, flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
+  messages: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, flexGrow: 1, flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
   messageList: { flex: 1 },
-  messageRow: { marginBottom: 10 },
+  messageRow: { marginBottom: 6 },
   thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
   flex: { flex: 1 },
@@ -665,7 +666,7 @@ const styles = {
   muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
-  bubble: { maxWidth: "84%", padding: 13, borderRadius: 12, marginBottom: 10 },
+  bubble: { maxWidth: "84%", padding: 10, borderRadius: 12, marginBottom: 6 },
   reactionBadge: { position: "absolute", right: -8, bottom: -12, minWidth: 28, height: 28, paddingHorizontal: 5, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", zIndex: 2, elevation: 2 },
   reactionBadgeText: { fontSize: 17 },
   reactionBar: { flexDirection: "row", alignSelf: "center", alignItems: "center", backgroundColor: "#1E293B", borderColor: "#475569", borderWidth: 1, borderRadius: 24, paddingHorizontal: 6, paddingVertical: 5, marginBottom: 10, elevation: 6 },
@@ -716,7 +717,7 @@ const styles = {
   locationCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
   composer: {
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 5,
     borderTopWidth: 1,
     borderTopColor: "#334155",
     gap: 8,
@@ -921,12 +922,14 @@ export default function ChatScreen() {
   const [prescriptionSubmitting, setPrescriptionSubmitting] = useState(false);
   const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
   useEffect(() => {
-    setDeleteCandidate(null);
-    setThreadDeleteCandidate(null);
-    setSelectedMessageIds([]);
-    setBatchDeleteCandidate([]);
-    setMultiSelectMode(false);
-    resetThreadSelectionState();
+    queueMicrotask(() => {
+      setDeleteCandidate(null);
+      setThreadDeleteCandidate(null);
+      setSelectedMessageIds([]);
+      setBatchDeleteCandidate([]);
+      setMultiSelectMode(false);
+      resetThreadSelectionState();
+    });
   }, [active?.id, activeOrder?.id, currentUserId, resetThreadSelectionState]);
   const [patientFileVisible, setPatientFileVisible] = useState(false);
   const [patientPets, setPatientPets] = useState<PatientPet[]>([]);
@@ -953,6 +956,7 @@ export default function ChatScreen() {
   const openedRoute = useRef<string | null>(null);
   const chatFocusedRef = useRef(false);
   const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingActionRef = useRef(false);
   const liveLocationSubscription = useRef<Location.LocationSubscription | null>(null);
   const activeLiveMessageIdRef = useRef<string | null>(null);
   const { counts: unreadCounts, refreshUnreadCounts } = useUnreadMessages();
@@ -963,7 +967,8 @@ export default function ChatScreen() {
   };
 
   const startRecording = async () => {
-    if (recording) return;
+    if (recording || recordingActionRef.current) return;
+    recordingActionRef.current = true;
     try {
       const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) {
@@ -981,10 +986,14 @@ export default function ChatScreen() {
     } catch (error) {
       console.error("[Voice Note] Failed to start recording:", error);
       Alert.alert("Recording failed", "Could not access the microphone.");
+    } finally {
+      recordingActionRef.current = false;
     }
   };
 
   const cancelRecording = async () => {
+    if (recordingActionRef.current) return;
+    recordingActionRef.current = true;
     stopRecordingTimer();
     setRecording(false);
     setRecordingSeconds(0);
@@ -995,13 +1004,18 @@ export default function ChatScreen() {
         console.warn("[Voice Note] Failed to discard recording:", error);
       }
     }
-    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: "mixWithOthers", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
+    try {
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: "mixWithOthers", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
+    } finally {
+      recordingActionRef.current = false;
+    }
   };
 
   const sendRecording = async () => {
     const cleanSenderId = normalizeUuid(currentUserId);
     const cleanReceiverId = normalizeUuid(active?.participantId);
-    if (!recording || !active || !cleanSenderId || !cleanReceiverId) return;
+    if (!recording || recordingActionRef.current || !active || !cleanSenderId || !cleanReceiverId) return;
+    recordingActionRef.current = true;
     stopRecordingTimer();
     setRecording(false);
     setRecordingSeconds(0);
@@ -1035,14 +1049,18 @@ export default function ChatScreen() {
       console.error("[Voice Note] Failed to send recording:", error);
       Alert.alert("Voice note failed", "Could not upload the recording.");
     } finally {
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: "mixWithOthers", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
+      try {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: "mixWithOthers", shouldPlayInBackground: false, shouldRouteThroughEarpiece: false });
+      } finally {
+        recordingActionRef.current = false;
+      }
     }
   };
 
   useEffect(() => () => {
     stopRecordingTimer();
-    if (audioRecorder.isRecording) void audioRecorder.stop().catch(() => undefined);
-  }, [audioRecorder]);
+    // useAudioRecorder owns native disposal; stopping here can double-release it.
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -1253,7 +1271,7 @@ export default function ChatScreen() {
       return () => {
         mounted = false;
       };
-    }, [])
+    }, [setThreads, setCurrentUserId, setUserRole])
   );
 
   useEffect(() => {
@@ -1485,7 +1503,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!active?.participantId) {
-      setRecipientProfile(null);
+      queueMicrotask(() => setRecipientProfile(null));
       return;
     }
     let mounted = true;
@@ -1522,21 +1540,23 @@ export default function ChatScreen() {
       !["client", "veterinarian", "vet"].includes(active.participantRole)
     )
       {
-        setConsultationLoading(false);
+        queueMicrotask(() => setConsultationLoading(false));
         return;
       }
     let mounted = true;
     let queryResolved = false;
     const cachedConsultation = consultationMemoryCache.get(active.id);
     if (cachedConsultation) {
-      setConsultation(cachedConsultation);
-      setThreads((current) => current.map((thread) =>
-        thread.id === active.id
-          ? { ...thread, consultation_status: cachedConsultation.status }
-          : thread
-      ));
+      queueMicrotask(() => {
+        setConsultation(cachedConsultation);
+        setThreads((current) => current.map((thread) =>
+          thread.id === active.id
+            ? { ...thread, consultation_status: cachedConsultation.status }
+            : thread
+        ));
+      });
     }
-    setConsultationLoading(!cachedConsultation);
+    queueMicrotask(() => setConsultationLoading(!cachedConsultation));
     void readCachedConsultation(active.id).then((storedConsultation) => {
       if (!mounted || queryResolved || cachedConsultation || !storedConsultation) return;
       setConsultation(storedConsultation);
@@ -1634,7 +1654,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!active) {
-      setActiveOrder(null);
+      queueMicrotask(() => setActiveOrder(null));
       return;
     }
     let mounted = true;
@@ -1722,7 +1742,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!inquiryKeyParam || !starterMessageParam) return;
-    setMessage(starterMessageParam);
+    queueMicrotask(() => setMessage(starterMessageParam));
   }, [inquiryKeyParam, starterMessageParam]);
 
   useEffect(() => {
@@ -1824,7 +1844,7 @@ export default function ChatScreen() {
       mounted = false;
       unsubscribe();
     };
-  }, [active, currentUserId, userRole]);
+  }, [active, currentUserId, refreshUnreadCounts, userRole]);
 
   useEffect(() => {
     if (!active || !currentUserId) return;
@@ -1925,7 +1945,7 @@ export default function ChatScreen() {
     setMessages((current) =>
       current.map((item) => (item.id === messageId ? (data as RealtimeMessage) : item))
     );
-  }, [active, getLocationData]);
+  }, [active, getLocationData, setMessages]);
 
   const watchLiveLocation = useCallback(async () => {
     if (liveLocationSubscription.current) return;
@@ -2761,12 +2781,6 @@ export default function ChatScreen() {
     }, 250);
   };
 
-  const handleLongPressMessage = (message: RealtimeMessage) => {
-    if (multiSelectMode) return;
-    messageLongPressLockRef.current = message.id;
-    handleDeleteMessage(message);
-  };
-
   const handleReactMessage = async (messageToReact: RealtimeMessage, emoji: string) => {
     if (messageToReact.id.startsWith("temp-")) return;
     const nextReactions: MessageReactions = { ...(messageToReact.reactions || {}) };
@@ -2851,13 +2865,13 @@ export default function ChatScreen() {
               .from("messages")
               .select("id, hidden_for_users, conversation_id, order_id")
               .in("conversation_id", resolvedConversationIds)
-          : Promise.resolve({ data: [] as Array<{ id: string; hidden_for_users?: string[] | null; conversation_id: string | null; order_id?: string | null }>, error: null }),
+          : Promise.resolve({ data: [] as { id: string; hidden_for_users?: string[] | null; conversation_id: string | null; order_id?: string | null }[], error: null }),
         resolvedOrderIds.length > 0
           ? supabase
               .from("messages")
               .select("id, hidden_for_users, conversation_id, order_id")
               .in("order_id", resolvedOrderIds)
-          : Promise.resolve({ data: [] as Array<{ id: string; hidden_for_users?: string[] | null; conversation_id: string | null; order_id?: string | null }>, error: null }),
+          : Promise.resolve({ data: [] as { id: string; hidden_for_users?: string[] | null; conversation_id: string | null; order_id?: string | null }[], error: null }),
       ]);
 
       if (conversationMatches.error) throw conversationMatches.error;
@@ -3504,8 +3518,6 @@ function ChatRoom({
   const previousMessageCount = useRef(0);
   const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
-  const safeAreaInsets = useSafeAreaInsets();
-  const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
   const mobileWebRootStyle: ViewStyle = {
     position: "absolute",
     top: 0,
@@ -3560,10 +3572,6 @@ function ChatRoom({
     setSearchQuery("");
     setSearchResultIndex(0);
   };
-  const confirmClearThread = () => {
-    setHeaderMenuVisible(false);
-    setClearThreadConfirmVisible(true);
-  };
   const openClearThreadConfirm = () => {
     setHeaderMenuVisible(false);
     setClearThreadConfirmVisible(true);
@@ -3577,13 +3585,15 @@ function ChatRoom({
     setTimeout(() => setCopyToast(false), 1800);
   };
   useEffect(() => {
-    setHeaderMenuVisible(false);
-    setSearchBarVisible(false);
-    setSearchQuery("");
-    setSearchResultIndex(0);
-    setClearThreadConfirmVisible(false);
-    setSelectedImagePreview(null);
-    setVideoPreviewUrl(null);
+    queueMicrotask(() => {
+      setHeaderMenuVisible(false);
+      setSearchBarVisible(false);
+      setSearchQuery("");
+      setSearchResultIndex(0);
+      setClearThreadConfirmVisible(false);
+      setSelectedImagePreview(null);
+      setVideoPreviewUrl(null);
+    });
   }, [active.id]);
   const trimmedSearchQuery = searchQuery.trim();
   const matchingMessages = trimmedSearchQuery.length > 0
@@ -3596,7 +3606,6 @@ function ChatRoom({
         return haystack.includes(trimmedSearchQuery.toLowerCase());
       })
     : [];
-  const activeSearchMatch = matchingMessages[searchResultIndex] ?? null;
   const focusMessageMatch = (nextIndex: number) => {
     if (!matchingMessages.length) return;
     const boundedIndex = (nextIndex + matchingMessages.length) % matchingMessages.length;
@@ -3610,13 +3619,11 @@ function ChatRoom({
     });
   };
   useEffect(() => {
-    if (!trimmedSearchQuery.length) {
-      setSearchResultIndex(0);
-      return;
-    }
-    if (searchResultIndex >= matchingMessages.length) {
-      setSearchResultIndex(0);
-    }
+    queueMicrotask(() => {
+      if (!trimmedSearchQuery.length || searchResultIndex >= matchingMessages.length) {
+        setSearchResultIndex(0);
+      }
+    });
   }, [matchingMessages.length, searchResultIndex, trimmedSearchQuery.length]);
   const isPetParent = userRole === "client" || consultation?.client_id === currentUserId;
   const isVetClientThread =
@@ -3702,6 +3709,7 @@ function ChatRoom({
 
   return (
     <SafeAreaView style={Platform.OS === "web" ? [styles.container, mobileWebRootStyle] : styles.container}>
+      <KeyboardAvoidingView style={styles.chatKeyboardRoot} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack}>
@@ -4044,7 +4052,6 @@ function ChatRoom({
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         uploading={uploading}
-        bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
       />
       <AttachmentOptions
@@ -4089,6 +4096,7 @@ function ChatRoom({
       {copyToast ? <View style={styles.copyToast}><Text style={styles.copyToastText}>Message copied</Text></View> : null}
       {invoiceVisible ? <InvoiceModal visible={invoiceVisible} onClose={onCloseInvoice} onSubmit={onCreateInvoice} submitting={invoiceSubmitting} /> : null}
       <PrescriptionModal visible={prescriptionVisible} onClose={onClosePrescription} onSubmit={onCreatePrescription} submitting={prescriptionSubmitting} />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -4103,7 +4111,6 @@ function ChatComposer({
   replyTarget,
   onCancelReply,
   uploading,
-  bottomInset,
   voiceNoteControls,
 }: {
   message: string;
@@ -4115,7 +4122,6 @@ function ChatComposer({
   replyTarget: ReplyTarget | null;
   onCancelReply: () => void;
   uploading: boolean;
-  bottomInset: number;
   voiceNoteControls: VoiceNoteControls;
 }) {
   const messageInputRef = useRef<TextInput>(null);
@@ -4130,6 +4136,7 @@ function ChatComposer({
       requestAnimationFrame(() => messageInputRef.current?.focus());
     }
   }, [replyTarget]);
+
 
   const handleInputContentSizeChange = (event: any) => {
     const contentHeight = event.nativeEvent.contentSize.height;
@@ -4167,7 +4174,8 @@ function ChatComposer({
   };
 
   return (
-    <View style={[styles.composer, { marginBottom: bottomInset }]}>
+    <View>
+    <View style={styles.composer}>
       {replyTarget ? (
         <View style={styles.replyPreview}>
           <View style={styles.replyPreviewCopy}>
@@ -4242,6 +4250,7 @@ function ChatComposer({
         )}
       </View>
     </View>
+    </View>
   );
 }
 
@@ -4264,9 +4273,6 @@ function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
   const positionMillis = status.currentTime * 1000;
   const durationMillis = status.duration * 1000;
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
-  useEffect(() => {
-    player.shouldCorrectPitch = true;
-  }, [player]);
   const togglePlayback = () => {
     if (player.playing) player.pause();
     else player.play();
@@ -4275,7 +4281,6 @@ function VoiceNoteMessage({ mediaUrl }: { mediaUrl: string }) {
   const cyclePlaybackSpeed = () => {
     const nextSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1;
     setPlaybackSpeed(nextSpeed);
-    player.shouldCorrectPitch = true;
     player.setPlaybackRate(nextSpeed, "high");
   };
 
@@ -4364,9 +4369,9 @@ function PrescriptionModal({
     void onSubmit(draft);
   };
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.prescriptionOverlay}>
-        <View style={styles.prescriptionModal}>
+        <KeyboardAvoidingView style={styles.prescriptionModal} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}>
           <View style={styles.invoiceModalHeader}>
             <Text style={styles.invoiceModalTitle}>Write Prescription</Text>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close prescription"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity>
@@ -4404,7 +4409,7 @@ function PrescriptionModal({
               <Text style={styles.sendText}>{submitting ? "Saving..." : "Send Prescription"}</Text>
             </TouchableOpacity>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -4632,7 +4637,7 @@ function FarmRecordsModal({ visible, loading, records, selectFarm, userRole, cli
 function FarmSoapModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: FarmSoapDraft) => Promise<void> }) {
   const [draft, setDraft] = useState<FarmSoapDraft>({ subjective: "", objective: "", tentative_diagnosis: "", plan: "" });
   const update = (field: keyof FarmSoapDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={styles.prescriptionModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Farm Consultation Summary</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close farm consultation"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}>{(["subjective", "objective", "tentative_diagnosis", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Farm Findings" : field === "tentative_diagnosis" ? "Tentative Diagnosis" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.modalBackdrop}><View style={styles.prescriptionModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Farm Consultation Summary</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close farm consultation"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.prescriptionForm}>{(["subjective", "objective", "tentative_diagnosis", "plan"] as const).map((field) => <View key={field}><Text style={styles.prescriptionLabel}>{field === "subjective" ? "Symptoms & Owner Complaints" : field === "objective" ? "Farm Findings" : field === "tentative_diagnosis" ? "Tentative Diagnosis" : "Treatment Plan & Follow-up"}</Text><TextInput value={draft[field]} onChangeText={(value) => update(field, value)} multiline placeholder="Enter details" placeholderTextColor="#64748B" style={[styles.input, styles.prescriptionInstructionsInput]} /></View>)}<TouchableOpacity style={styles.prescriptionSubmit} onPress={() => void onSubmit(draft)} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Saving..." : "Save & End Consultation"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
 function SoapConsultationModal({ visible, submitting, onClose, onSubmit }: { visible: boolean; submitting: boolean; onClose: () => void; onSubmit: (draft: SoapDraft) => Promise<void> }) {
@@ -4658,13 +4663,15 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 
   useEffect(() => {
     if (!isPendingInvoice || !item.sender_id) {
-      setSellerSubaccountId(undefined);
-      setSellerProfileLoaded(true);
+      queueMicrotask(() => {
+        setSellerSubaccountId(undefined);
+        setSellerProfileLoaded(true);
+      });
       return;
     }
 
     let mounted = true;
-    setSellerProfileLoaded(false);
+    queueMicrotask(() => setSellerProfileLoaded(false));
     void supabase
       .from("profiles")
       .select("flutterwave_subaccount_id")
@@ -4887,8 +4894,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const previousMessageCount = useRef(0);
   const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
-  const safeAreaInsets = useSafeAreaInsets();
-  const bottomTabOffset = Math.max(64, safeAreaInsets.bottom);
   const mobileWebRootStyle: ViewStyle = {
     position: "absolute",
     top: 0,
@@ -4948,11 +4953,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     setSearchResultIndex(0);
   };
 
-  const confirmClearThread = () => {
-    setHeaderMenuVisible(false);
-    setClearThreadConfirmVisible(true);
-  };
-
   const openClearThreadConfirm = () => {
     setHeaderMenuVisible(false);
     setClearThreadConfirmVisible(true);
@@ -4967,13 +4967,15 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   };
 
   useEffect(() => {
-    setHeaderMenuVisible(false);
-    setSearchBarVisible(false);
-    setSearchQuery("");
-    setSearchResultIndex(0);
-    setClearThreadConfirmVisible(false);
-    setSelectedImagePreview(null);
-    setVideoPreviewUrl(null);
+    queueMicrotask(() => {
+      setHeaderMenuVisible(false);
+      setSearchBarVisible(false);
+      setSearchQuery("");
+      setSearchResultIndex(0);
+      setClearThreadConfirmVisible(false);
+      setSelectedImagePreview(null);
+      setVideoPreviewUrl(null);
+    });
   }, [active.id]);
 
   const selectedCount = selectedMessageIds.length;
@@ -5003,13 +5005,11 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   };
 
   useEffect(() => {
-    if (!trimmedSearchQuery.length) {
-      setSearchResultIndex(0);
-      return;
-    }
-    if (searchResultIndex >= matchingMessages.length) {
-      setSearchResultIndex(0);
-    }
+    queueMicrotask(() => {
+      if (!trimmedSearchQuery.length || searchResultIndex >= matchingMessages.length) {
+        setSearchResultIndex(0);
+      }
+    });
   }, [matchingMessages.length, searchResultIndex, trimmedSearchQuery.length]);
 
   const isConsultActive = consultation.status === "active";
@@ -5022,6 +5022,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
 
   return (
     <SafeAreaView style={Platform.OS === "web" ? { ...styles.container, ...mobileWebRootStyle } : styles.container}>
+      <KeyboardAvoidingView style={styles.chatKeyboardRoot} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack}>
@@ -5379,7 +5380,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         uploading={uploading}
-        bottomInset={bottomTabOffset}
         voiceNoteControls={voiceNoteControls}
       />
 
@@ -5439,6 +5439,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         onSubmit={onCreatePrescription}
         submitting={prescriptionSubmitting}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

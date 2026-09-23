@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addMarketplaceProduct } from '../../lib/marketplace';
 import { parsePriceInput } from '../../lib/price';
 import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
@@ -9,6 +10,7 @@ import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase, uploadProductImage } from '../../lib/supabase';
 
 export default function AddProductScreen() {
+  const insets = useSafeAreaInsets();
   const [productName, setProductName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
@@ -52,7 +54,7 @@ export default function AddProductScreen() {
       }
       const merchantName = user.user_metadata?.full_name || user.user_metadata?.name || 'MVS Merchant Store';
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('products')
         .insert([
           {
@@ -104,7 +106,7 @@ export default function AddProductScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={[styles.scrollView, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.header}>
           <Text style={styles.title}>Add New Product</Text>
           <Text style={styles.subtitle}>List your pet product to the marketplace</Text>

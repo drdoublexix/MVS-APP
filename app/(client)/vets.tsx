@@ -1,7 +1,8 @@
-﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import VetLocationMap from '../../components/VetLocationMap';
 import { requestDeviceLocation } from '../../lib/location';
@@ -375,6 +376,9 @@ export default function VetsScreen() {
           id: vet.id,
           full_name: vet.full_name,
           specialty: vet.specialty || 'Veterinarian',
+          city: vet.city,
+          state: vet.state,
+          distanceKm: vet.distanceKm,
           latitude: vet.latitude!,
           longitude: vet.longitude!,
         }))}
@@ -382,7 +386,7 @@ export default function VetsScreen() {
         onSelectVet={openVetFromMap}
       />
 
-      <Modal visible={Boolean(selectedVet)} animationType="slide" transparent onRequestClose={() => { setSelectedVet(null); setSelectedVetProfile(null); }} onShow={() => { if (selectedVet) void fetchVetRating(selectedVet); }}>
+      <Modal visible={Boolean(selectedVet)} animationType="fade" transparent onRequestClose={() => { setSelectedVet(null); setSelectedVetProfile(null); }} onShow={() => { if (selectedVet) void fetchVetRating(selectedVet); }}>
         <View style={styles.overlay}>
           <View style={styles.modal}>
             {selectedVet && (
@@ -454,7 +458,7 @@ export default function VetsScreen() {
         onClose={() => setSelectedAvatarUrl(null)}
       />
 
-      <Modal visible={Boolean(intakeVet)} animationType="slide" transparent onRequestClose={() => setIntakeVet(null)}>
+      <Modal visible={Boolean(intakeVet)} animationType="fade" transparent onRequestClose={() => setIntakeVet(null)}>
         <View style={styles.overlay}>
           <View style={styles.intake}>
             <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator>
