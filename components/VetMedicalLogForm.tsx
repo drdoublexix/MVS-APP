@@ -1,6 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { formatDateInput, parseDateInput } from '../lib/dateFormat';
 import { sanitizeInput } from '../lib/sanitize';
 import { getCurrentUser, supabase } from '../lib/supabase';
 
@@ -89,8 +90,6 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
     }
   };
 
-  const displayDate = (date: Date) => date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>Log Treatment & Schedule Next Due Date</Text>
@@ -106,9 +105,9 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
       <Field label="Title" value={title} onChangeText={setTitle} />
       <View style={styles.inline}><View style={styles.half}><Field label="Dose number" value={doseSeriesNumber} onChangeText={setDoseSeriesNumber} keyboardType="number-pad" /></View><View style={styles.half}><Field label="Total doses" value={totalSeriesDoses} onChangeText={setTotalSeriesDoses} keyboardType="number-pad" /></View></View>
       <Text style={styles.label}>Administered date</Text>
-      {Platform.OS === 'web' ? <input type="date" value={administeredDate.toISOString().slice(0, 10)} onChange={(event) => updateAdministeredDate(new Date(`${event.target.value}T00:00:00`))} style={styles.webDate as any} /> : <><TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}><Text style={styles.dateText}>{displayDate(administeredDate)}</Text></TouchableOpacity><DateTimePickerModal visible={showDatePicker} value={administeredDate} onChange={(date) => { setShowDatePicker(false); if (date) updateAdministeredDate(date); }} /></>}
+      {Platform.OS === 'web' ? <input type="text" value={formatDateInput(administeredDate)} placeholder="DD-MM-YYYY" onChange={(event) => { const isoDate = parseDateInput(event.target.value); if (isoDate) updateAdministeredDate(new Date(`${isoDate}T00:00:00`)); }} style={styles.webDate as any} /> : <><TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}><Text style={styles.dateText}>{formatDateInput(administeredDate)}</Text></TouchableOpacity><DateTimePickerModal visible={showDatePicker} value={administeredDate} onChange={(date) => { setShowDatePicker(false); if (date) updateAdministeredDate(date); }} /></>}
       <Text style={styles.label}>Next due date</Text>
-      {preset === 'custom' && Platform.OS !== 'web' ? <><TouchableOpacity style={styles.dateButton} onPress={() => setShowDuePicker(true)}><Text style={styles.dateText}>{displayDate(nextDueDate)}</Text></TouchableOpacity><DateTimePickerModal visible={showDuePicker} value={nextDueDate} onChange={(date) => { setShowDuePicker(false); if (date) setNextDueDate(date); }} /></> : Platform.OS === 'web' ? <input type="date" value={nextDueDate.toISOString().slice(0, 10)} onChange={(event) => setNextDueDate(new Date(`${event.target.value}T00:00:00`))} style={styles.webDate as any} /> : <Text style={styles.calculatedDate}>{displayDate(nextDueDate)}</Text>}
+      {preset === 'custom' && Platform.OS !== 'web' ? <><TouchableOpacity style={styles.dateButton} onPress={() => setShowDuePicker(true)}><Text style={styles.dateText}>{formatDateInput(nextDueDate)}</Text></TouchableOpacity><DateTimePickerModal visible={showDuePicker} value={nextDueDate} onChange={(date) => { setShowDuePicker(false); if (date) setNextDueDate(date); }} /></> : Platform.OS === 'web' ? <input type="text" value={formatDateInput(nextDueDate)} placeholder="DD-MM-YYYY" onChange={(event) => { const isoDate = parseDateInput(event.target.value); if (isoDate) setNextDueDate(new Date(`${isoDate}T00:00:00`)); }} style={styles.webDate as any} /> : <Text style={styles.calculatedDate}>{formatDateInput(nextDueDate)}</Text>}
       <Field label="Notes" value={notes} onChangeText={setNotes} multiline />
       <TouchableOpacity style={styles.save} onPress={() => { void save(); }} disabled={saving}><Text style={styles.saveText}>{saving ? 'Saving...' : 'Save Medical Record'}</Text></TouchableOpacity>
     </View>

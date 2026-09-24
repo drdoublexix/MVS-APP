@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
-import * as Notifications from 'expo-notifications';
 import { router, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -26,15 +26,32 @@ import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+let Notifications: typeof import('expo-notifications') | null = null;
+const isExpoGo =
+  Constants.appOwnership === 'expo' ||
+  (Constants.executionEnvironment as string) === 'storeClient' ||
+  (Constants.executionEnvironment as string) === 'expo';
+
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (error) {
+    console.warn('[Profile Notifications] expo-notifications was not available:', error);
+    Notifications = null;
+  }
+}
+
+if (Notifications) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
 

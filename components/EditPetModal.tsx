@@ -4,6 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { formatDateInput, parseDateInput } from '../lib/dateFormat';
 import { supabase } from '../lib/supabase';
 
 export type EditablePet = {
@@ -73,8 +74,8 @@ export default function EditPetModal({ isVisible, onClose, pet, userId, onSave }
             <Field label="Pet Type (Animal)" value={draft.type} onChangeText={(value) => update('type', value)} placeholder="Dog, cat, bird..." />
             <Field label="Breed" value={draft.breed || ''} onChangeText={(value) => update('breed', value)} />
             <Text style={styles.label}>Date of Birth</Text>
-              {Platform.OS === 'web' ? <input type="date" value={draft.dob || ''} onChange={(event) => update('dob', event.target.value)} style={{ backgroundColor: '#0F172A', border: '1px solid #334155', borderRadius: 8, color: '#FFFFFF', padding: 11, width: '100%' } as any} /> : <>
-              <TouchableOpacity onPress={() => setShowDatePicker(true)}><TextInput value={draft.dob || 'Select date'} editable={false} pointerEvents="none" style={styles.input} /></TouchableOpacity>
+              {Platform.OS === 'web' ? <input type="text" value={formatDateInput(draft.dob)} onChange={(event) => { const isoDate = parseDateInput(event.target.value); if (isoDate) update('dob', isoDate); }} placeholder="DD-MM-YYYY" style={{ backgroundColor: '#0F172A', border: '1px solid #334155', borderRadius: 8, color: '#FFFFFF', padding: 11, width: '100%' } as any} /> : <>
+              <TouchableOpacity onPress={() => setShowDatePicker(true)}><TextInput value={draft.dob ? formatDateInput(draft.dob) : 'DD-MM-YYYY'} editable={false} pointerEvents="none" style={styles.input} /></TouchableOpacity>
               <Modal visible={showDatePicker} transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}><View style={styles.overlay}><View style={styles.pickerModal}><DateTimePicker value={pickerDate} mode="date" maximumDate={new Date()} onChange={(_, date) => { if (date) { update('dob', date.toISOString().slice(0, 10)); setShowDatePicker(false); } }} /><TouchableOpacity style={styles.close} onPress={() => setShowDatePicker(false)} accessibilityLabel="Close date picker"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View></View></Modal>
             </>}
             <Field label="Vaccination Status" value={draft.vaccination_status} onChangeText={(value) => update('vaccination_status', value)} />

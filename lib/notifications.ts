@@ -1,7 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Alert, Platform } from 'react-native';
 import { supabase } from './supabase';
+
+let Notifications: typeof import('expo-notifications') | null = null;
+const isExpoGo =
+  Constants.appOwnership === 'expo' ||
+  (Constants.executionEnvironment as string) === 'storeClient' ||
+  (Constants.executionEnvironment as string) === 'expo';
+
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (error) {
+    console.warn('[Notifications] expo-notifications could not be loaded in this runtime:', error);
+    Notifications = null;
+  }
+}
 
 export type StoredNotification = {
   id: string;
@@ -14,18 +29,22 @@ export type StoredNotification = {
 
 const locallyNotifiedKey = (userId: string) => `mvs_notified_notifications:${userId}`;
 
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
-} catch (error) {
-  console.warn('[Notifications] Native notification handler setup failed:', error);
+if (isExpoGo) {
+  console.log('[Notifications] Expo Go detected; skipping native notification setup.');
+} else if (Notifications) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (error) {
+    console.warn('[Notifications] Native notification handler setup failed:', error);
+  }
 }
 
 const ANDROID_CHANNEL_ID = 'default';
@@ -72,6 +91,11 @@ const saveWebPushSubscription = async (userId: string): Promise<string | null> =
 };
 
 export const registerForPushNotifications = async (userId: string): Promise<string | null> => {
+  if (isExpoGo || !Notifications) {
+    console.log('[Notifications] Skipping push registration in Expo Go.');
+    return null;
+  }
+
   // --- 1. WEB / PWA HANDLER ---
   if (Platform.OS === 'web') {
     if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -199,7 +223,7 @@ export const sendPushNotification = async (
 };
 
 const showPendingNotificationLocally = async (notification: StoredNotification) => {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || isExpoGo || !Notifications) return;
 
   await Notifications.scheduleNotificationAsync({
     content: {

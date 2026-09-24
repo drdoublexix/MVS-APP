@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import {
   AudioModule,
   RecordingPresets,
@@ -43,6 +44,7 @@ import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
 import { sendPushNotification } from "../lib/notifications";
+import { createOfflineMessageId, enqueueOfflineMessage, readOfflineMessages, removeOfflineMessage, type OfflineOneToOneMessage } from "../lib/offlineMessageQueue";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
@@ -111,7 +113,7 @@ const MessageReceipt = ({ message }: { message: RealtimeMessage }) => {
     <MaterialCommunityIcons
       name="check-all"
       size={14}
-      color={message.is_read ? "#34D399" : "#CBD5E1"}
+      color={message.is_read ? "#38BDF8" : "#CBD5E1"}
     />
   );
 };
@@ -664,6 +666,7 @@ const styles = {
   quotedMessageText: { color: "#CBD5E1", fontSize: 12, marginTop: 2 },
   messageTimestamp: { color: "#A7F3D0", fontSize: 10, alignSelf: "flex-end", marginTop: 5 },
   messageTimestampRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 5 },
+  pendingBubble: { opacity: 0.65, borderColor: "#64748B", borderWidth: 1 },
   muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
@@ -965,6 +968,37 @@ export default function ChatScreen() {
   const activeLiveMessageIdRef = useRef<string | null>(null);
   const { counts: unreadCounts, refreshUnreadCounts } = useUnreadMessages();
 
+  const pendingToRealtimeMessage = (item: OfflineOneToOneMessage): RealtimeMessage => ({
+    id: item.id,
+    offline_id: item.id,
+    is_pending: true,
+    conversation_id: item.conversationId,
+    sender_id: item.senderId,
+    receiver_id: item.receiverId,
+    content: item.content,
+    message_type: "text",
+    reply_to: item.replyTo || null,
+    media_url: item.assets[0]?.uri || null,
+    media_type: item.assets[0]?.type || null,
+    is_delivered: false,
+    is_read: false,
+    created_at: item.createdAt,
+  });
+
+  const loadOfflineMessages = useCallback(async () => {
+    if (!currentUserId) return;
+    const queued = await readOfflineMessages();
+    const mine = queued.filter((item): item is OfflineOneToOneMessage => item.kind === "one_to_one" && item.senderId === currentUserId && (!active || item.conversationId === active.id));
+    setMessages((current) => {
+      const withoutPending = current.filter((message) => !message.is_pending);
+      return [...withoutPending, ...mine.filter((item) => !withoutPending.some((message) => message.id === item.id)).map(pendingToRealtimeMessage)];
+    });
+  }, [active, currentUserId]);
+
+  useEffect(() => {
+    queueMicrotask(() => { void loadOfflineMessages(); });
+  }, [loadOfflineMessages]);
+
   const stopRecordingTimer = () => {
     if (recordingTimer.current) clearInterval(recordingTimer.current);
     recordingTimer.current = null;
@@ -1092,34 +1126,6 @@ export default function ChatScreen() {
             clearedThreadIdsRaw ? (JSON.parse(clearedThreadIdsRaw) as string[]) : []
           );
           clearedThreadsRef.current = new Set(clearedThreadIds);
-
-          const cachedThreads = inboxMemoryCache.get(cleanUserId);
-          if (cachedThreads) {
-            const filteredCachedThreads = cachedThreads.filter((thread) => {
-              if (clearedThreadIds.has(thread.id)) return false;
-              if (thread.messages.length === 0) return false;
-              const hasVisibleMessage = thread.messages.some((message) => {
-                if (message.is_deleted) return false;
-                return !isMessageHiddenForUser(message, cleanUserId);
-              });
-              return hasVisibleMessage;
-            });
-            setThreads(filteredCachedThreads);
-          } else {
-            void readCachedInboxThreads(cleanUserId).then((storedThreads) => {
-              if (!mounted || freshInboxLoaded || !storedThreads) return;
-              const filteredStoredThreads = storedThreads.filter((thread) => {
-                if (clearedThreadIds.has(thread.id)) return false;
-                if (thread.messages.length === 0) return false;
-                const hasVisibleMessage = thread.messages.some((message) => {
-                  if (message.is_deleted) return false;
-                  return !isMessageHiddenForUser(message, cleanUserId);
-                });
-                return hasVisibleMessage;
-              });
-              setThreads(filteredStoredThreads);
-            });
-          }
 
           const [roleData, rows] = await Promise.all([
             safeSupabaseCall<{ role: string | null } | null>(() => supabase
@@ -1279,18 +1285,26 @@ export default function ChatScreen() {
   );
 
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || !active?.id) {
+      setConsultation(null);
+      return;
+    }
+    setConsultation((current) => (
+      current && current.conversation_id && current.conversation_id !== active.id
+        ? null
+        : current
+    ));
 
     const consultationChannel = supabase
-      .channel('public:consultations')
+      .channel(`consultations:active:${active.id}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'consultations' },
+        { event: '*', schema: 'public', table: 'consultations', filter: `conversation_id=eq.${active.id}` },
         (payload) => {
           const consultation = payload.eventType === 'DELETE'
             ? (payload.old as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus })
             : (payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus });
-          if (!consultation?.conversation_id) return;
+          if (!consultation?.conversation_id || consultation.conversation_id !== active.id) return;
           if (payload.eventType !== 'DELETE' && consultation.status) {
             rememberConsultation(consultation as ConsultationRecord);
           }
@@ -1308,17 +1322,20 @@ export default function ChatScreen() {
           );
 
           if (payload.eventType === 'DELETE') {
+            setConsultation((current) => (current?.conversation_id === active.id ? null : current));
             return;
           }
 
           setConsultation((current) => {
-            if (current?.conversation_id !== consultation.conversation_id) {
+            if (current?.conversation_id && current.conversation_id !== active.id) {
               return current;
             }
             return {
-              ...current,
-              status: consultation.status ?? current.status,
-            };
+              ...(current ?? {}),
+              ...consultation,
+              conversation_id: active.id,
+              status: consultation.status ?? current?.status ?? 'active',
+            } as ConsultationRecord;
           });
         }
       )
@@ -1327,7 +1344,7 @@ export default function ChatScreen() {
     return () => {
       void supabase.removeChannel(consultationChannel);
     };
-  }, [currentUserId]);
+  }, [currentUserId, active?.id]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -1455,7 +1472,7 @@ export default function ChatScreen() {
   }, [currentUserId]);
 
   useEffect(() => {
-    const routeRecipient = normalizeUuid(
+      const routeRecipient = normalizeUuid(
       recipientIdParam || merchantIdParam || vetIdParam || receiverIdParam
     );
     const routeKey = `${conversationIdParam || ""}:${inquiryKeyParam || ""}`;
@@ -1471,16 +1488,22 @@ export default function ChatScreen() {
     let cancelled = false;
     const participantName = merchantNameParam || vetParam || "Merchant";
     const resolvedConversationId = conversationIdParam || conversationIdFor(currentUserId, routeRecipient);
+    const existingThread = threads.find((thread) => thread.id === resolvedConversationId);
     const nextActive: Thread = {
       id: resolvedConversationId,
       participantId: routeRecipient,
       participantName,
       participantRole: vetParam ? "veterinarian" : "merchant",
       productName: productNameParam,
-      messages: [],
+      messages: existingThread?.messages ?? [],
+      recipientProfile: existingThread?.recipientProfile,
     };
     queueMicrotask(() => {
       if (cancelled) return;
+      setConsultation(null);
+      setConsultationLoading(true);
+      setRecipientProfile(null);
+      setMessages(filterVisibleMessages(nextActive.messages, currentUserId));
       setActive(nextActive);
       setMessage(isCategory(categoryParam) ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian") : initialMessageParam || starterMessageParam || "");
     });
@@ -1549,28 +1572,8 @@ export default function ChatScreen() {
       }
     let mounted = true;
     let queryResolved = false;
-    const cachedConsultation = consultationMemoryCache.get(active.id);
-    if (cachedConsultation) {
-      queueMicrotask(() => {
-        setConsultation(cachedConsultation);
-        setThreads((current) => current.map((thread) =>
-          thread.id === active.id
-            ? { ...thread, consultation_status: cachedConsultation.status }
-            : thread
-        ));
-      });
-    }
-    queueMicrotask(() => setConsultationLoading(!cachedConsultation));
-    void readCachedConsultation(active.id).then((storedConsultation) => {
-      if (!mounted || queryResolved || cachedConsultation || !storedConsultation) return;
-      setConsultation(storedConsultation);
-      setConsultationLoading(false);
-      setThreads((current) => current.map((thread) =>
-        thread.id === active.id
-          ? { ...thread, consultation_status: storedConsultation.status }
-          : thread
-      ));
-    });
+    setConsultation(null);
+    setConsultationLoading(true);
     const loadConsultation = async () => {
       try {
         const { data: activeConsultations, error: lookupError } = await supabase
@@ -1753,6 +1756,7 @@ export default function ChatScreen() {
     if (!active || !isUuid(currentUserId) || !isUuid(active.participantId))
       return;
     let mounted = true;
+    const currentConversationId = active.id;
     const loadMessages = async () => {
       const { data, error } = await supabase
         .from("messages")
@@ -1762,7 +1766,7 @@ export default function ChatScreen() {
           `and(sender_id.eq.${currentUserId},receiver_id.eq.${active.participantId}),and(sender_id.eq.${active.participantId},receiver_id.eq.${currentUserId})`
         )
         .order("created_at", { ascending: true });
-      if (error || !mounted) return;
+      if (error || !mounted || !active || active.id !== currentConversationId) return;
       const loadedMessages = filterVisibleMessages((data || []) as RealtimeMessage[], currentUserId);
       const invoiceIds = loadedMessages
         .filter((item) => item.message_type === "invoice")
@@ -1793,7 +1797,7 @@ export default function ChatScreen() {
     const unsubscribe = subscribeToMessages(
       active.id,
       (incoming) => {
-        if (!mounted) return;
+        if (!mounted || !active || active.id !== currentConversationId) return;
         if (!incoming || incoming.conversation_id !== active.id) return;
         if (incoming.conversation_id && clearedThreadsRef.current.has(incoming.conversation_id)) {
           clearedThreadsRef.current.delete(incoming.conversation_id);
@@ -2058,9 +2062,12 @@ export default function ChatScreen() {
   };
 
   const openThread = (thread: Thread) => {
-    const visibleMessages = filterVisibleMessages(Array.isArray(thread.messages) ? thread.messages : [], currentUserId);
-    setActive(thread);
+    const visibleMessages = filterVisibleMessages(thread.messages, currentUserId);
+    setConsultation(null);
+    setConsultationLoading(true);
+    setRecipientProfile(null);
     setMessages(visibleMessages);
+    setActive(thread);
     setMessage("");
   };
 
@@ -2770,6 +2777,11 @@ export default function ChatScreen() {
   };
 
   const handleDeleteMessage = (messageToDelete: RealtimeMessage) => {
+    if (messageToDelete.is_pending && messageToDelete.offline_id) {
+      void removeOfflineMessage(messageToDelete.offline_id);
+      setMessages((current) => current.filter((message) => message.id !== messageToDelete.id));
+      return;
+    }
     if (messageToDelete.id.startsWith("temp-")) {
       setMessages((current) =>
         current.filter((message) => message.id !== messageToDelete.id)
@@ -3013,6 +3025,26 @@ export default function ChatScreen() {
       console.error("[Chat Error]: Authenticated user email is missing");
       return;
     }
+    const network = await NetInfo.fetch();
+    if (network.isConnected !== true || network.isInternetReachable === false) {
+      const offlineMessage: OfflineOneToOneMessage = {
+        id: createOfflineMessageId(),
+        kind: "one_to_one",
+        conversationId: conversationIdFor(cleanSenderId, cleanReceiverId),
+        senderId: cleanSenderId,
+        receiverId: cleanReceiverId,
+        content: text,
+        assets: selectedImages.map((asset) => ({ uri: asset.uri, type: asset.type === "video" ? "video" : "image", fileName: asset.fileName, mimeType: asset.mimeType, fileSize: asset.fileSize })),
+        replyTo: toReplySnippet(replyTarget),
+        createdAt: new Date().toISOString(),
+      };
+      await enqueueOfflineMessage(offlineMessage);
+      setMessages((current) => appendUniqueMessage(current, pendingToRealtimeMessage(offlineMessage)));
+      setMessage("");
+      setSelectedImages([]);
+      Alert.alert("Saved offline", "Your message will send automatically when connection is restored.");
+      return;
+    }
     setUploading(selectedImages.length > 0);
     const uploadedAttachments: Awaited<ReturnType<typeof uploadChatAttachment>>[] = [];
     try {
@@ -3134,6 +3166,49 @@ export default function ChatScreen() {
       );
     }
   };
+
+  const flushOfflineMessages = useCallback(async () => {
+    const network = await NetInfo.fetch();
+    if (network.isConnected !== true || network.isInternetReachable === false) return;
+    const queued = (await readOfflineMessages()).filter((item): item is OfflineOneToOneMessage => item.kind === "one_to_one" && item.senderId === currentUserId);
+    if (!queued.length) return;
+    const user = await getCurrentUser();
+    const senderEmail = sanitizeInput(user?.email);
+    if (!senderEmail) return;
+    for (const item of queued) {
+      try {
+        const uploads = await Promise.all(item.assets.map((asset) => uploadChatAttachment(item.conversationId, asset as ImagePicker.ImagePickerAsset)));
+        const attachments = uploads.length ? uploads : [null];
+        for (const [index, upload] of attachments.entries()) {
+          const sent = await sendRealtimeMessage({
+            conversation_id: item.conversationId,
+            sender_id: item.senderId,
+            receiver_id: item.receiverId,
+            content: index === 0 ? item.content : "",
+            message_type: upload?.mediaType === "video" ? "video" : "text",
+            metadata: { sender_name: senderEmail, sender_email: senderEmail },
+            media_url: upload?.publicUrl,
+            media_type: upload?.mediaType,
+            reply_to: index === 0 ? item.replyTo || null : null,
+          });
+          setMessages((current) => appendUniqueMessage(current, sent));
+        }
+        await removeOfflineMessage(item.id);
+        setMessages((current) => current.filter((message) => message.offline_id !== item.id));
+      } catch (error) {
+        console.warn("[Offline Chat] Flush paused:", error);
+        break;
+      }
+    }
+  }, [currentUserId, setMessages]);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      if (state.isConnected === true && state.isInternetReachable !== false) void flushOfflineMessages();
+    });
+    queueMicrotask(() => { void flushOfflineMessages(); });
+    return unsubscribe;
+  }, [flushOfflineMessages]);
 
   if (active)
     return (
@@ -3636,81 +3711,11 @@ function ChatRoom({
     (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
   const consultationStatus = consultation?.status || null;
   const consultationPending = consultationLoading || (
-    isVetClientThread && consultation?.conversation_id !== active.id
+    isVetClientThread && !!consultation && consultation.conversation_id !== active.id
   );
   const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
   const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
-  const roomConsultation = consultation;
-
-  if (roomConsultation)
-    return (
-      <ConsultationChatRoom
-        active={active}
-        currentUserId={currentUserId}
-        userRole={userRole}
-        messages={messages}
-        message={message}
-        setMessage={setMessage}
-        selectedImageUris={selectedImageUris}
-        onRemoveImage={onRemoveImage}
-        onBack={onBack}
-        onSend={onSend}
-        onAttach={onAttach}
-        onSendPhoto={onSendPhoto}
-        attachmentVisible={attachmentVisible}
-        locationVisible={locationVisible}
-        onCloseAttachment={onCloseAttachment}
-        onOpenLocation={onOpenLocation}
-        onCloseLocation={onCloseLocation}
-        onSendCurrentLocation={onSendCurrentLocation}
-        onStartLiveLocation={onStartLiveLocation}
-        liveLocationActive={liveLocationActive}
-        onStopLiveLocation={onStopLiveLocation}
-        onDeleteMessage={onDeleteMessage}
-        onReactMessage={onReactMessage}
-        deleteCandidate={deleteCandidate}
-        onConfirmDelete={onConfirmDelete}
-        onCancelDelete={onCancelDelete}
-        multiSelectMode={multiSelectMode}
-        selectedMessageIds={selectedMessageIds}
-        onToggleMessageSelection={onToggleMessageSelection}
-        onToggleMultiSelectMode={onToggleMultiSelectMode}
-        onClearSelection={onClearSelection}
-        onDeleteSelected={onDeleteSelected}
-        onClearThread={onClearThread}
-        consultation={roomConsultation}
-        onToggleConsultation={onToggleConsultation}
-        onStartConsultation={onStartConsultation}
-        onEndConsultationByVet={onEndConsultationByVet}
-        onOpenFarmRecords={onOpenFarmRecords}
-        onChoosePetConsultation={onChoosePetConsultation}
-        onChooseFarmConsultation={onChooseFarmConsultation}
-        activeOrder={activeOrder}
-        onUpdateOrderStatus={onUpdateOrderStatus}
-        onCreateOrder={onCreateOrder}
-        recipientProfile={recipientProfile}
-        onOpenPatientFile={onOpenPatientFile}
-        patientFileVisible={patientFileVisible}
-        patientPets={patientPets}
-        patientFileLoading={patientFileLoading}
-        onClosePatientFile={onClosePatientFile}
-        canCreateInvoice={canCreateInvoice}
-        invoiceVisible={invoiceVisible}
-        invoiceSubmitting={invoiceSubmitting}
-        onOpenInvoice={onOpenInvoice}
-        invoiceItems={invoiceItems}
-        onCloseInvoice={onCloseInvoice}
-        onCreateInvoice={onCreateInvoice}
-        onPayInvoice={onPayInvoice}
-        prescriptionVisible={prescriptionVisible}
-        prescriptionSubmitting={prescriptionSubmitting}
-        onOpenPrescription={onOpenPrescription}
-        onClosePrescription={onClosePrescription}
-        onCreatePrescription={onCreatePrescription}
-        voiceNoteControls={voiceNoteControls}
-        uploading={uploading}
-      />
-    );
+  const roomConsultation = consultation?.conversation_id === active.id ? consultation : null;
 
   return (
     <SafeAreaView style={Platform.OS === "web" ? [styles.container, mobileWebRootStyle] : styles.container}>
@@ -3975,6 +3980,7 @@ function ChatRoom({
                   }}
                   style={[
                     styles.bubble,
+                    item.is_pending ? styles.pendingBubble : null,
                     multiSelectMode && isSelected ? styles.messageSelected : null,
                     item.media_type === "video" && item.media_url ? styles.videoBubble : null,
                     item.sender_id === currentUserId
@@ -4012,7 +4018,8 @@ function ChatRoom({
                     <Text style={styles.primary}>{item.content}</Text>
                   ) : null}
                   <View style={styles.messageTimestampRow}>
-                    <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                    <Text style={styles.messageTimestamp}>{item.is_pending ? "Pending" : formatMessageTime(item.created_at)}</Text>
+                    {item.is_pending ? <MaterialCommunityIcons name="clock-outline" size={13} color="#94A3B8" /> : null}
                     {item.sender_id === currentUserId ? <MessageReceipt message={item} /> : null}
                   </View>
                   {Object.values(item.reactions || {}).length > 0 ? (
@@ -5318,6 +5325,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                   }}
                   style={[
                     styles.bubble,
+                    item.is_pending ? styles.pendingBubble : null,
                     multiSelectMode && isSelected ? styles.messageSelected : null,
                     item.media_type === "video" && item.media_url ? styles.videoBubble : null,
                     item.sender_id === currentUserId ? styles.outgoing : styles.incoming,
@@ -5350,7 +5358,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                     <Text style={styles.primary}>{item.content}</Text>
                   ) : null}
                   <View style={styles.messageTimestampRow}>
-                    <Text style={styles.messageTimestamp}>{formatMessageTime(item.created_at)}</Text>
+                    <Text style={styles.messageTimestamp}>{item.is_pending ? "Pending" : formatMessageTime(item.created_at)}</Text>
+                    {item.is_pending ? <MaterialCommunityIcons name="clock-outline" size={13} color="#94A3B8" /> : null}
                     {item.sender_id === currentUserId ? <MessageReceipt message={item} /> : null}
                   </View>
                   {Object.values(item.reactions || {}).length > 0 ? (

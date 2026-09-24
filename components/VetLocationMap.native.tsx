@@ -1,9 +1,28 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { AppleMaps, GoogleMaps } from 'expo-maps';
 import { Component, useState, type ErrorInfo, type ReactNode } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const isExpoGo =
+  Constants.appOwnership === 'expo' ||
+  (Constants.executionEnvironment as string) === 'storeClient' ||
+  (Constants.executionEnvironment as string) === 'expo';
+
+let AppleMaps: any = null;
+let GoogleMaps: any = null;
+
+if (!isExpoGo) {
+  try {
+    const expoMaps = require('expo-maps');
+    AppleMaps = expoMaps.AppleMaps || null;
+    GoogleMaps = expoMaps.GoogleMaps || null;
+  } catch (error) {
+    console.warn('[VetLocationMap] expo-maps is unavailable in this runtime:', error);
+    AppleMaps = null;
+    GoogleMaps = null;
+  }
+}
 
 type MapVet = {
   id: string;
@@ -37,6 +56,7 @@ export default function VetLocationMap({ visible, vets, onClose, onSelectVet }: 
     latitude: safeVets.length ? latitudeValues.reduce((sum, value) => sum + value, 0) / safeVets.length : 0,
     longitude: safeVets.length ? longitudeValues.reduce((sum, value) => sum + value, 0) / safeVets.length : 0,
   };
+  const canRenderNativeMap = Boolean(AppleMaps?.View || GoogleMaps?.View);
   const mapZoom = Math.max(3, Math.min(14, 12 - Math.log2(Math.max(latitudeSpan, longitudeSpan, 0.02) / 0.02)));
   const appleMarkers = safeVets.map((vet) => ({
     id: vet.id,
@@ -87,7 +107,7 @@ export default function VetLocationMap({ visible, vets, onClose, onSelectVet }: 
           </TouchableOpacity>
         </View>
         <View style={styles.mapContainer} onLayout={(event) => setMapSize({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height })}>
-          {safeVets.length === 0 ? (
+          {safeVets.length === 0 || !canRenderNativeMap ? (
             <MapUnavailable />
           ) : Platform.OS === 'ios' ? (
             <MapErrorBoundary fallback={<MapUnavailable />}>
@@ -96,7 +116,7 @@ export default function VetLocationMap({ visible, vets, onClose, onSelectVet }: 
                 cameraPosition={{ coordinates: mapCenter, zoom: mapZoom }}
                 markers={appleMarkers}
                 uiSettings={{ compassEnabled: true, scaleBarEnabled: true }}
-                onMarkerClick={(marker) => handleMarkerPress(marker.id)}
+                onMarkerClick={(marker: { id?: string }) => handleMarkerPress(marker.id)}
                 onMapClick={() => setPreviewVetId(null)}
               />
             </MapErrorBoundary>
@@ -114,12 +134,12 @@ export default function VetLocationMap({ visible, vets, onClose, onSelectVet }: 
                   zoomControlsEnabled: true,
                   zoomGesturesEnabled: true,
                 }}
-                onMarkerClick={(marker) => handleMarkerPress(marker.id)}
+                onMarkerClick={(marker: { id?: string }) => handleMarkerPress(marker.id)}
                 onMapClick={() => setPreviewVetId(null)}
               />
             </MapErrorBoundary>
-            ) : (
-              <MapUnavailable />
+          ) : (
+            <MapUnavailable />
           )}
           {previewVet ? (
             <View style={[styles.previewCard, previewCardPosition || styles.previewCardFallback]}>

@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
 import * as Clipboard from 'expo-clipboard';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -6,11 +7,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SwipeableMessage from '../../components/SwipeableMessage';
+import { createOfflineMessageId, enqueueOfflineMessage, readOfflineMessages, removeOfflineMessage, type OfflineCommunityMessage } from '../../lib/offlineMessageQueue';
 import { getCurrentUser, readCachedAuthState, supabase, type MessageReactions } from '../../lib/supabase';
 
 type Profile = { full_name: string | null; avatar_url: string | null; role: string | null };
 type ReplySnippet = { id: string; sender_name: string; content: string };
-type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null; reply_to?: ReplySnippet | null; hidden_for_users?: string[] | null; reactions?: MessageReactions | null };
+type CommunityMessage = { id: string; user_id: string; content: string; media_urls: string[] | null; created_at: string; profiles: Profile | Profile[] | null; reply_to?: ReplySnippet | null; hidden_for_users?: string[] | null; reactions?: MessageReactions | null; is_pending?: boolean };
 type PendingImage = ImagePickerAsset;
 type ReplyTarget = { id: string; senderName: string; content: string };
 
@@ -43,6 +45,26 @@ export default function CommunityScreen() {
   const listRef = useRef<FlatList<CommunityMessage>>(null);
   const composerInputRef = useRef<TextInput>(null);
 
+  const pendingToCommunityMessage = (item: OfflineCommunityMessage): CommunityMessage => ({
+    id: item.id,
+    user_id: item.userId,
+    content: item.content,
+    media_urls: item.assets.map((asset) => asset.uri),
+    created_at: item.createdAt,
+    profiles: emptyProfile,
+    reply_to: item.replyTo ? { id: item.replyTo.id, sender_name: item.replyTo.sender_name, content: item.replyTo.content } : null,
+    is_pending: true,
+  });
+
+  const loadOfflineMessages = useCallback(async () => {
+    if (!currentUserId) return;
+    const queued = await readOfflineMessages();
+    const mine = queued.filter((item): item is OfflineCommunityMessage => item.kind === 'community' && item.userId === currentUserId);
+    setMessages((current) => [...current.filter((message) => !message.id.startsWith('offline-')), ...mine.map(pendingToCommunityMessage)]);
+  }, [currentUserId]);
+
+  useEffect(() => { queueMicrotask(() => { void loadOfflineMessages(); }); }, [loadOfflineMessages]);
+
   const pickImages = async () => {
     if (sending || pendingImages.length >= 5) return;
     try {
@@ -72,6 +94,18 @@ export default function CommunityScreen() {
       sender_name: replyTarget.senderName,
       content: replyTarget.content,
     } : null;
+    const network = await NetInfo.fetch();
+    if (network.isConnected !== true || network.isInternetReachable === false) {
+      const offlineMessage: OfflineCommunityMessage = {
+        id: createOfflineMessageId(), kind: 'community', userId: currentUserId, content: trimmedContent,
+        assets: pendingImages.map((image) => ({ uri: image.uri, type: 'image', fileName: image.fileName, mimeType: image.mimeType, fileSize: image.fileSize })),
+        replyTo: reply, createdAt: new Date().toISOString(),
+      };
+      await enqueueOfflineMessage(offlineMessage);
+      setMessages((current) => [...current, pendingToCommunityMessage(offlineMessage)]);
+      setContent(''); setPendingImages([]); setReplyTarget(null); setSending(false);
+      return;
+    }
     let mediaUrls: string[] = [];
     try {
       mediaUrls = await Promise.all(pendingImages.map(async (image, index) => {
@@ -107,6 +141,36 @@ export default function CommunityScreen() {
     }
     setSending(false);
   };
+
+  const flushOfflineMessages = useCallback(async () => {
+    const network = await NetInfo.fetch();
+    if (network.isConnected !== true || network.isInternetReachable === false || !currentUserId) return;
+    const queued = (await readOfflineMessages()).filter((item): item is OfflineCommunityMessage => item.kind === 'community' && item.userId === currentUserId);
+    for (const item of queued) {
+      try {
+        const mediaUrls = await Promise.all(item.assets.map(async (asset, index) => {
+          const blob = await (await fetch(asset.uri)).blob();
+          const path = `${currentUserId}/${Date.now()}-${index}.jpg`;
+          const upload = await supabase.storage.from('community-uploads').upload(path, blob, { contentType: asset.mimeType || 'image/jpeg', upsert: false });
+          if (upload.error) throw upload.error;
+          return supabase.storage.from('community-uploads').getPublicUrl(path).data.publicUrl;
+        }));
+        const { error } = await supabase.from('community_messages').insert({ user_id: currentUserId, content: item.content, media_urls: mediaUrls, reply_to: item.replyTo || null });
+        if (error) throw error;
+        await removeOfflineMessage(item.id);
+        setMessages((current) => current.filter((message) => message.id !== item.id));
+      } catch (error) {
+        console.warn('[Offline Community] Flush paused:', error);
+        break;
+      }
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => { if (state.isConnected === true && state.isInternetReachable !== false) void flushOfflineMessages(); });
+    queueMicrotask(() => { void flushOfflineMessages(); });
+    return unsubscribe;
+  }, [flushOfflineMessages]);
 
   const handleInputContentSizeChange = (event: any) => {
     const nextHeight = Math.min(Math.max(event.nativeEvent.contentSize.height + 4, 42), 132);
@@ -272,12 +336,19 @@ export default function CommunityScreen() {
           >
           <TouchableOpacity
             activeOpacity={0.85}
-            onLongPress={() => setActionMessageId(item.id)}
+            onLongPress={() => {
+              if (item.is_pending) {
+                void removeOfflineMessage(item.id);
+                setMessages((current) => current.filter((message) => message.id !== item.id));
+                return;
+              }
+              setActionMessageId(item.id);
+            }}
             onPress={() => {
               if (previewImageUrl) setSelectedImagePreview(previewImageUrl);
             }}
             disabled={!isOwnMessage && !hasImage}
-            style={[styles.bubble, isOwnMessage ? styles.bubbleOwn : styles.bubbleOther]}
+            style={[styles.bubble, isOwnMessage ? styles.bubbleOwn : styles.bubbleOther, item.is_pending && styles.bubblePending]}
           >
             {item.reply_to ? <View style={styles.quotedMessage}><Text style={styles.quotedMessageSender} numberOfLines={1}>{item.reply_to.sender_name}</Text><Text style={styles.quotedMessageText} numberOfLines={2}>{item.reply_to.content}</Text></View> : null}
             {hasImage ? (
@@ -299,7 +370,7 @@ export default function CommunityScreen() {
               </View>
             ) : null}
             {item.content ? <Text style={[styles.messageText, isOwnMessage && styles.messageTextOwn]}>{item.content}</Text> : null}
-            <View style={styles.messageFooter}><Text style={[styles.time, isOwnMessage && styles.timeOwn]}>{formatMessageTime(item.created_at)}</Text></View>
+            <View style={styles.messageFooter}><Text style={[styles.time, isOwnMessage && styles.timeOwn]}>{item.is_pending ? 'Pending' : formatMessageTime(item.created_at)}</Text>{item.is_pending ? <MaterialCommunityIcons name="clock-outline" size={13} color="#94A3B8" /> : null}</View>
             {Object.values(item.reactions || {}).length > 0 ? <TouchableOpacity style={styles.reactionBadge} onPress={() => { if (item.reactions?.[currentUserId || '']) void reactToMessage(item.id, ''); }} disabled={!item.reactions?.[currentUserId || '']} accessibilityLabel={item.reactions?.[currentUserId || ''] ? 'Remove your reaction' : 'Message reactions'}><Text style={styles.reactionBadgeText}>{Array.from(new Set(Object.values(item.reactions || {}))).join(' ')}</Text></TouchableOpacity> : null}
           </TouchableOpacity>
           </SwipeableMessage>
@@ -391,6 +462,7 @@ const styles = StyleSheet.create({
   reactionBadgeText: { fontSize: 17 },
   bubbleOther: { backgroundColor: '#1E293B', borderBottomLeftRadius: 4, borderLeftWidth: 2, borderLeftColor: '#10B981' },
   bubbleOwn: { backgroundColor: '#0E7490', borderBottomRightRadius: 4, borderRightWidth: 2, borderRightColor: '#10B981' },
+  bubblePending: { opacity: 0.7, borderColor: '#64748B', borderWidth: 1 },
   messageText: { color: '#FFFFFF', fontSize: 15, lineHeight: 21 },
   messageTextOwn: { color: '#FFFFFF' },
   quotedMessage: { borderLeftWidth: 3, borderLeftColor: '#6EE7B7', backgroundColor: '#0F172A66', borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 8 },

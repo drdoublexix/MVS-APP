@@ -2,8 +2,8 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import DateTimePicker, {
     type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import Constants from 'expo-constants';
 import * as ImagePicker from "expo-image-picker";
-import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -25,6 +25,7 @@ import AvatarPreviewModal from "../../components/AvatarPreviewModal";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
+import { formatDateInput, parseDateInput } from "../../lib/dateFormat";
 import { requestDeviceLocation } from "../../lib/location";
 import { registerForPushNotifications } from "../../lib/notifications";
 import { isValidPassword, PASSWORD_REQUIREMENTS } from "../../lib/password";
@@ -39,15 +40,32 @@ import {
     updatePassword,
 } from "../../lib/supabase";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+let Notifications: typeof import('expo-notifications') | null = null;
+const isExpoGo =
+  Constants.appOwnership === 'expo' ||
+  (Constants.executionEnvironment as string) === 'storeClient' ||
+  (Constants.executionEnvironment as string) === 'expo';
+
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (error) {
+    console.warn('[Profile Notifications] expo-notifications was not available:', error);
+    Notifications = null;
+  }
+}
+
+if (Notifications) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 type Pet = EditablePet & { owner_id: string };
 type FarmRecord = {
@@ -150,6 +168,7 @@ export default function ProfileScreen() {
   const [farmRecords, setFarmRecords] = useState<FarmRecord[]>([]);
   const [farmModalVisible, setFarmModalVisible] = useState(false);
   const [farmDatePickerVisible, setFarmDatePickerVisible] = useState(false);
+  const [restockDateInput, setRestockDateInput] = useState("");
   const [farmSaving, setFarmSaving] = useState(false);
   const [editingFarmId, setEditingFarmId] = useState<string | null>(null);
   const [farmDraft, setFarmDraft] = useState<FarmDraft>({
@@ -263,6 +282,8 @@ export default function ProfileScreen() {
   };
 
   useEffect(() => {
+    if (!Notifications) return undefined;
+
     if (Platform.OS === "android") {
       void Notifications.setNotificationChannelAsync("default", {
         name: "default",
@@ -455,6 +476,7 @@ export default function ProfileScreen() {
       medicalLog: "",
       productionSummary: "",
     });
+    setRestockDateInput("");
   };
 
   const openAddFarmModal = () => {
@@ -477,6 +499,7 @@ export default function ProfileScreen() {
       medicalLog: farm.medical_log || "",
       productionSummary: farm.production_summary || "",
     });
+    setRestockDateInput(formatDateInput(farm.restock_date));
     setFarmModalVisible(true);
   };
 
@@ -1261,11 +1284,13 @@ export default function ProfileScreen() {
               <Text style={styles.label}>Estimated Restock Date</Text>
               {Platform.OS === "web" ? (
                 <TextInput
-                  value={farmDraft.restockDate}
-                  onChangeText={(restockDate) =>
-                    setFarmDraft((current) => ({ ...current, restockDate }))
-                  }
-                  placeholder="YYYY-MM-DD"
+                  value={restockDateInput}
+                  onChangeText={(value) => {
+                    setRestockDateInput(value);
+                    const restockDate = parseDateInput(value);
+                    if (restockDate) setFarmDraft((current) => ({ ...current, restockDate }));
+                  }}
+                  placeholder="DD-MM-YYYY"
                   placeholderTextColor="#64748B"
                   style={styles.input}
                 />
@@ -1279,17 +1304,13 @@ export default function ProfileScreen() {
                       farmDraft.restockDate ? styles.primary : styles.muted
                     }
                   >
-                    {farmDraft.restockDate || "Select date"}
+                    {farmDraft.restockDate ? formatDateInput(farmDraft.restockDate) : "DD-MM-YYYY"}
                   </Text>
                 </TouchableOpacity>
               )}
               {farmDatePickerVisible ? (
                 <DateTimePicker
-                  value={
-                    farmDraft.restockDate
-                      ? new Date(`${farmDraft.restockDate}T00:00:00`)
-                      : new Date()
-                  }
+                  value={farmDraft.restockDate ? new Date(`${farmDraft.restockDate}T00:00:00`) : new Date()}
                   mode="date"
                   onChange={(_event: DateTimePickerEvent, date?: Date) => {
                     setFarmDatePickerVisible(false);
@@ -1298,6 +1319,7 @@ export default function ProfileScreen() {
                         ...current,
                         restockDate: date.toISOString().slice(0, 10),
                       }));
+                    if (date) setRestockDateInput(formatDateInput(date));
                   }}
                 />
               ) : null}

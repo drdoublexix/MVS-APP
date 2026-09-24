@@ -311,6 +311,8 @@ export type RealtimeMessage = {
   is_delivered?: boolean | null;
   is_read?: boolean | null;
   created_at: string;
+  is_pending?: boolean;
+  offline_id?: string;
 };
 
 export const isUuid = (value: string | undefined | null): value is string =>
