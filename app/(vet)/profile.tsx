@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
-import { NIGERIAN_LOCATIONS, requestDeviceLocation } from '../../lib/location';
+import { requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -75,7 +75,6 @@ export default function VetProfileScreen() {
   const [modal, setModal] = useState<SettingsModal>(null);
   const [bankPickerVisible, setBankPickerVisible] = useState(false);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
-  const [locationStatePicker, setLocationStatePicker] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [bankSaving, setBankSaving] = useState(false);
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -270,7 +269,6 @@ export default function VetProfileScreen() {
         if (error) throw error;
       }
       setLocationPickerVisible(false);
-      setLocationStatePicker(null);
       Alert.alert('Location updated', `${location.city || 'Nearby area'}, ${location.state || 'Nigeria'}`);
     } catch (error) {
       Alert.alert('Location unavailable', error instanceof Error ? error.message : 'Enable location access or choose manually.');
@@ -279,19 +277,6 @@ export default function VetProfileScreen() {
     }
   };
 
-  const selectManualLocation = async (city: string, state: string) => {
-    setProfile((current) => ({ ...current, city, state, latitude: null, longitude: null }));
-    const user = await getCurrentUser();
-    if (user) {
-      const { error } = await supabase.from('profiles').update({ city, state, latitude: null, longitude: null }).eq('id', user.id);
-      if (error) {
-        Alert.alert('Could not save location', error.message);
-        return;
-      }
-    }
-    setLocationPickerVisible(false);
-    setLocationStatePicker(null);
-  };
 
   const handleSaveBankDetails = async () => {
     if (bankSaving) return;
@@ -673,12 +658,12 @@ export default function VetProfileScreen() {
       </Modal>
 
       {/* Location Picker Modal */}
-      <Modal visible={locationPickerVisible} transparent animationType="fade" onRequestClose={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}>
+      <Modal visible={locationPickerVisible} transparent animationType="fade" onRequestClose={() => setLocationPickerVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.locationPickerContent}>
             <View style={styles.locationHeader}>
               <Text style={styles.modalTitle}>Choose location</Text>
-              <TouchableOpacity onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}>
+              <TouchableOpacity onPress={() => setLocationPickerVisible(false)}>
                 <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
@@ -686,29 +671,7 @@ export default function VetProfileScreen() {
               <Text style={styles.saveText}>{locationLoading ? 'Detecting location...' : 'Use My Location'}</Text>
             </TouchableOpacity>
 
-            {locationStatePicker ? (
-              <TouchableOpacity style={styles.locationBack} onPress={() => setLocationStatePicker(null)}>
-                <Text style={styles.secondaryText}>‹ Choose another state</Text>
-              </TouchableOpacity>
-            ) : null}
-
-            <ScrollView style={styles.locationList} contentContainerStyle={styles.locationListContent} showsVerticalScrollIndicator>
-              {locationStatePicker
-                ? NIGERIAN_LOCATIONS.find((location) => location.state === locationStatePicker)?.areas.map((area) => (
-                    <TouchableOpacity key={area} style={styles.locationOption} onPress={() => { void selectManualLocation(area, locationStatePicker); }}>
-                      <Text style={styles.primary}>{area}</Text>
-                      <Text style={styles.muted}>{locationStatePicker}</Text>
-                    </TouchableOpacity>
-                  ))
-                : NIGERIAN_LOCATIONS.map((location) => (
-                    <TouchableOpacity key={location.state} style={styles.locationOption} onPress={() => setLocationStatePicker(location.state)}>
-                      <Text style={styles.primary}>{location.state}</Text>
-                      <Text style={styles.muted}>{location.city}</Text>
-                    </TouchableOpacity>
-                  ))}
-            </ScrollView>
-
-            <TouchableOpacity style={styles.locationCancel} onPress={() => { setLocationPickerVisible(false); setLocationStatePicker(null); }}>
+            <TouchableOpacity style={styles.locationCancel} onPress={() => setLocationPickerVisible(false)}>
               <Text style={styles.secondaryText}>Cancel</Text>
             </TouchableOpacity>
           </View>

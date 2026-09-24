@@ -1,12 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    AudioModule,
-    RecordingPresets,
-    setAudioModeAsync,
-    useAudioPlayer,
-    useAudioPlayerStatus,
-    useAudioRecorder,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
 } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
@@ -20,19 +20,19 @@ import { ShieldCheck as LucideShieldCheck, X as LucideX } from "lucide-react-nat
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { ViewStyle } from "react-native";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../components/AvatarPreviewModal";
@@ -46,21 +46,21 @@ import { sendPushNotification } from "../lib/notifications";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
 import {
-    deleteMessageForEveryone,
-    ensureConsultationRecord,
-    getCurrentUser,
-    hideMessageForCurrentUser,
-    isUuid,
-    normalizeUuid,
-    safeSupabaseCall,
-    sendRealtimeMessage,
-    subscribeToMessages,
-    supabase,
-    uploadChatAttachment,
-    type ConsultationStatus,
-    type MessageReactions,
-    type RealtimeMessage,
-    type ReplySnippet
+  deleteMessageForEveryone,
+  ensureConsultationRecord,
+  getCurrentUser,
+  hideMessageForCurrentUser,
+  isUuid,
+  normalizeUuid,
+  safeSupabaseCall,
+  sendRealtimeMessage,
+  subscribeToMessages,
+  supabase,
+  uploadChatAttachment,
+  type ConsultationStatus,
+  type MessageReactions,
+  type RealtimeMessage,
+  type ReplySnippet
 } from "../lib/supabase";
 import { markConversationRead, useUnreadMessages } from "../lib/unreadMessages";
 import { useVisualViewport } from "../lib/useVisualViewport";
@@ -504,7 +504,8 @@ function BuyerProtectionModal({ visible, onClose }: { visible: boolean; onClose:
 
 const styles = {
   container: { flex: 1, backgroundColor: "#0F172A" },
-  chatKeyboardRoot: { flex: 1 },
+  chatKeyboardRoot: { flex: 1, minHeight: 0 },
+  chatContent: { flex: 1, minHeight: 0, overflow: "hidden" },
   chatRoot: { flex: 1, position: "relative" },
   header: { padding: 18, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   roomHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#334155", flexDirection: "column", alignItems: "stretch", gap: 12, position: "relative", zIndex: 10, elevation: 5 },
@@ -546,7 +547,7 @@ const styles = {
   payButton: { backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   payButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   invoiceOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "center", alignItems: "center", padding: 16 },
-  invoiceModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  invoiceModal: { width: "100%", maxWidth: 520, maxHeight: "90%", flexShrink: 1, backgroundColor: "#1E293B", padding: 22, borderRadius: 16 },
   prescriptionOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "center", alignItems: "center", padding: 16 },
   prescriptionModal: { backgroundColor: "#1E293B", padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "90%" },
   prescriptionForm: { paddingBottom: 12, gap: 8 },
@@ -557,7 +558,7 @@ const styles = {
   invoiceModalTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   closeText: { color: "#94A3B8", fontSize: 13 },
   invoiceLabel: { color: "#94A3B8", fontSize: 12, marginBottom: 6, marginTop: 10 },
-  invoiceForm: { paddingBottom: 10 },
+  invoiceForm: { paddingBottom: 10, flexGrow: 1 },
   invoiceItemRow: { flexDirection: "row", alignItems: "center", gap: 7, width: "100%", marginBottom: 8 },
   invoiceDescriptionInput: { flex: 2, minWidth: 0 },
   invoiceAmountInput: { flex: 1, minWidth: 0 },
@@ -648,7 +649,7 @@ const styles = {
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { padding: 16 },
   messages: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, flexGrow: 1, flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
-  messageList: { flex: 1 },
+  messageList: { flex: 1, minHeight: 0 },
   messageRow: { marginBottom: 6 },
   thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
@@ -724,6 +725,7 @@ const styles = {
     flexShrink: 0,
     backgroundColor: "#0F172A",
   },
+  composerWrapper: { flexShrink: 0, paddingBottom: Platform.OS === "web" ? 58 : 4 },
   replyPreview: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, borderLeftWidth: 3, borderLeftColor: "#10B981", backgroundColor: "#1E293B", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
   replyPreviewCopy: { flex: 1, minWidth: 0 },
   replyPreviewName: { color: "#6EE7B7", fontSize: 11, fontWeight: "700" },
@@ -745,6 +747,8 @@ const styles = {
   },
   selectedAttachment: { flexDirection: "row", alignItems: "center", gap: 8 },
   selectedAttachmentImage: { width: 56, height: 56, borderRadius: 8 },
+  selectedAttachments: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
+  removeAttachmentButton: { marginLeft: -30, alignSelf: "flex-start", backgroundColor: "#0F172A", borderRadius: 11 },
   recordingAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   recordingStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   recordingDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444" },
@@ -850,7 +854,7 @@ export default function ChatScreen() {
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    height: visualViewportHeight ?? 0,
+    height: visualViewportHeight ?? "100%",
   };
   const conversationIdParam = firstParam(params.conversationId);
   const recipientIdParam = firstParam(params.recipientId);
@@ -878,7 +882,7 @@ export default function ChatScreen() {
       ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian")
       : initialMessageParam || starterMessageParam || ""
   );
-  const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [selectedImages, setSelectedImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachmentVisible, setAttachmentVisible] = useState(false);
@@ -2998,7 +3002,7 @@ export default function ChatScreen() {
     const cleanSenderId = normalizeUuid(currentUserId);
     const cleanReceiverId = normalizeUuid(active?.participantId);
     const text = sanitizeInput(message);
-    if (!active || (!text && !selectedImage) || !cleanSenderId || !cleanReceiverId) {
+    if (!active || (!text && selectedImages.length === 0) || !cleanSenderId || !cleanReceiverId) {
       console.error("[Chat Error]: Missing sender or receiver ID");
       return;
     }
@@ -3009,10 +3013,12 @@ export default function ChatScreen() {
       console.error("[Chat Error]: Authenticated user email is missing");
       return;
     }
-    setUploading(Boolean(selectedImage));
-    let uploaded: Awaited<ReturnType<typeof uploadChatAttachment>> | null = null;
+    setUploading(selectedImages.length > 0);
+    const uploadedAttachments: Awaited<ReturnType<typeof uploadChatAttachment>>[] = [];
     try {
-      if (selectedImage) uploaded = await uploadChatAttachment(conversationId, selectedImage);
+      for (const image of selectedImages) {
+        uploadedAttachments.push(await uploadChatAttachment(conversationId, image));
+      }
     } catch (error) {
       setUploading(false);
       Alert.alert(
@@ -3053,56 +3059,51 @@ export default function ChatScreen() {
         );
       }
     }
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const optimistic: RealtimeMessage = {
-      id: tempId,
-      temp_id: tempId,
-      conversation_id: conversationId,
-      sender_id: cleanSenderId,
-      receiver_id: cleanReceiverId,
-      content: text,
-      message_type: uploaded?.mediaType === "video" ? "video" : "text",
-      metadata: {
-        sender_name: senderEmail,
-        sender_email: senderEmail,
-        client_generated_id: tempId,
-      },
-        is_delivered: false,
-        is_read: false,
-      reply_to: toReplySnippet(replyTarget),
-      media_url: uploaded?.publicUrl,
-      media_type: uploaded?.mediaType,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((current) => appendUniqueMessage(current, optimistic));
+    const optimisticIds: string[] = [];
     try {
-      const confirmed = await sendRealtimeMessage({
-        conversation_id: conversationId,
-        sender_id: cleanSenderId,
-        receiver_id: cleanReceiverId,
-        content: text,
-        message_type: uploaded?.mediaType === "video" ? "video" : "text",
-        metadata: optimistic.metadata,
-        media_url: uploaded?.publicUrl,
-        media_type: uploaded?.mediaType,
-        reply_to: toReplySnippet(replyTarget),
-      });
-      setMessages((current) =>
-        appendUniqueMessage(current, { ...confirmed, temp_id: tempId })
-      );
-      void sendPushNotification(cleanReceiverId, 'New message', text, {
-        preferenceKey: 'chat',
-        type: 'chat_message',
-        conversation_id: conversationId,
-        sender_id: cleanSenderId,
-      });
+      const attachments = uploadedAttachments.length > 0 ? uploadedAttachments : [null];
+      for (const [index, uploaded] of attachments.entries()) {
+        const tempId = `temp-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
+        optimisticIds.push(tempId);
+        const metadata = { sender_name: senderEmail, sender_email: senderEmail, client_generated_id: tempId };
+        const optimistic: RealtimeMessage = {
+          id: tempId,
+          temp_id: tempId,
+          conversation_id: conversationId,
+          sender_id: cleanSenderId,
+          receiver_id: cleanReceiverId,
+          content: index === 0 ? text : "",
+          message_type: uploaded?.mediaType === "video" ? "video" : "text",
+          metadata,
+          is_delivered: false,
+          is_read: false,
+          reply_to: index === 0 ? toReplySnippet(replyTarget) : null,
+          media_url: uploaded?.publicUrl,
+          media_type: uploaded?.mediaType,
+          created_at: new Date().toISOString(),
+        };
+        setMessages((current) => appendUniqueMessage(current, optimistic));
+        const confirmed = await sendRealtimeMessage({
+          conversation_id: conversationId,
+          sender_id: cleanSenderId,
+          receiver_id: cleanReceiverId,
+          content: optimistic.content,
+          message_type: optimistic.message_type,
+          metadata,
+          media_url: uploaded?.publicUrl,
+          media_type: uploaded?.mediaType,
+          reply_to: optimistic.reply_to,
+        });
+        setMessages((current) => appendUniqueMessage(current, { ...confirmed, temp_id: tempId }));
+        if (index === 0) void sendPushNotification(cleanReceiverId, 'New message', text || 'Image', {
+          preferenceKey: 'chat', type: 'chat_message', conversation_id: conversationId, sender_id: cleanSenderId,
+        });
+      }
       setMessage("");
-      setSelectedImage(null);
+      setSelectedImages([]);
       router.setParams({ initialMessage: undefined });
     } catch (error) {
-      setMessages((current) =>
-        current.filter((item) => item.id !== optimistic.id)
-      );
+      setMessages((current) => current.filter((item) => !optimisticIds.includes(item.id)));
       console.error("[Supabase Chat Insert Error]:", error);
       Alert.alert(
         "Message failed",
@@ -3118,10 +3119,14 @@ export default function ChatScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images", "videos"],
-        selectionLimit: 1,
+        allowsMultipleSelection: true,
+        selectionLimit: 5,
       });
-      if (result.canceled || !result.assets[0]) return;
-      setSelectedImage(result.assets[0]);
+      if (result.canceled || result.assets.length === 0) return;
+      setSelectedImages((current) => {
+        const combined = [...current, ...result.assets];
+        return combined.filter((item, index, items) => items.findIndex((candidate) => candidate.uri === item.uri) === index).slice(0, 5);
+      });
     } catch (error) {
       Alert.alert(
         "Attachment failed",
@@ -3140,8 +3145,8 @@ export default function ChatScreen() {
         messages={messages}
         message={message}
         setMessage={setMessage}
-        selectedImageUri={selectedImage?.uri || null}
-        onRemoveImage={() => setSelectedImage(null)}
+        selectedImageUris={selectedImages.map((image) => image.uri)}
+        onRemoveImage={(index) => setSelectedImages((current) => current.filter((_, imageIndex) => imageIndex !== index))}
         recipientProfile={recipientProfile || active.recipientProfile || null}
         onBack={handleBack}
         onSend={sendMessage}
@@ -3387,7 +3392,7 @@ function ChatRoom({
   messages,
   message,
   setMessage,
-  selectedImageUri,
+  selectedImageUris,
   onRemoveImage,
   onBack,
   onSend,
@@ -3453,8 +3458,8 @@ function ChatRoom({
   messages: RealtimeMessage[];
   message: string;
   setMessage: (value: string) => void;
-  selectedImageUri: string | null;
-  onRemoveImage: () => void;
+  selectedImageUris: string[];
+  onRemoveImage: (index: number) => void;
   onBack: () => void;
   onSend: (replyTarget?: ReplyTarget | null) => void | Promise<void>;
   onAttach: () => void;
@@ -3527,7 +3532,7 @@ function ChatRoom({
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    height: visualViewportHeight ?? 0,
+    height: visualViewportHeight ?? "100%",
   };
   const scrollToLatest = (animated = false) => {
     requestAnimationFrame(() => {
@@ -3646,7 +3651,7 @@ function ChatRoom({
         messages={messages}
         message={message}
         setMessage={setMessage}
-        selectedImageUri={selectedImageUri}
+        selectedImageUris={selectedImageUris}
         onRemoveImage={onRemoveImage}
         onBack={onBack}
         onSend={onSend}
@@ -3709,7 +3714,11 @@ function ChatRoom({
 
   return (
     <SafeAreaView style={Platform.OS === "web" ? [styles.container, mobileWebRootStyle] : styles.container}>
-      <KeyboardAvoidingView style={styles.chatKeyboardRoot} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView
+        style={styles.chatKeyboardRoot}
+        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack}>
@@ -3909,6 +3918,7 @@ function ChatRoom({
           </TouchableOpacity>
         </View>
       ) : null}
+      <View style={styles.chatContent}>
       <ScrollView
         ref={messagesScrollRef}
         style={styles.messageList}
@@ -3945,7 +3955,7 @@ function ChatRoom({
                     messageLongPressLockRef.current = item.id;
                     onDeleteMessage(item);
                   }}
-                  delayLongPress={2000}
+                  delayLongPress={1500}
                   onPress={() => {
                     if (multiSelectMode) {
                       onToggleMessageSelection(item.id);
@@ -4042,10 +4052,11 @@ function ChatRoom({
           </View>
         </View>
       ) : null}
+      <View style={styles.composerWrapper}>
       <ChatComposer
         message={message}
         setMessage={setMessage}
-        selectedImageUri={selectedImageUri}
+        selectedImageUris={selectedImageUris}
         onRemoveImage={onRemoveImage}
         onAttach={onAttach}
         onSend={async () => { await onSend(replyTarget); setReplyTarget(null); }}
@@ -4054,6 +4065,8 @@ function ChatRoom({
         uploading={uploading}
         voiceNoteControls={voiceNoteControls}
       />
+      </View>
+      </View>
       <AttachmentOptions
         attachmentVisible={attachmentVisible}
         locationVisible={locationVisible}
@@ -4104,7 +4117,7 @@ function ChatRoom({
 function ChatComposer({
   message,
   setMessage,
-  selectedImageUri,
+  selectedImageUris,
   onRemoveImage,
   onAttach,
   onSend,
@@ -4115,8 +4128,8 @@ function ChatComposer({
 }: {
   message: string;
   setMessage: (value: string) => void;
-  selectedImageUri: string | null;
-  onRemoveImage: () => void;
+  selectedImageUris: string[];
+  onRemoveImage: (index: number) => void;
   onAttach: () => void;
   onSend: (replyTarget?: ReplyTarget | null) => void | Promise<void>;
   replyTarget: ReplyTarget | null;
@@ -4151,7 +4164,7 @@ function ChatComposer({
   const handleSend = async () => {
     const trimmedText = message.trim();
 
-    if (isSending || (!trimmedText && !selectedImageUri)) {
+    if (isSending || (!trimmedText && selectedImageUris.length === 0)) {
       return;
     }
 
@@ -4187,13 +4200,17 @@ function ChatComposer({
           </TouchableOpacity>
         </View>
       ) : null}
-      {selectedImageUri ? (
-        <View style={styles.selectedAttachment}>
-          <Image source={{ uri: selectedImageUri }} style={styles.selectedAttachmentImage} />
-          <TouchableOpacity onPress={onRemoveImage} accessibilityLabel="Remove selected image">
-            <MaterialCommunityIcons name="close-circle" size={24} color="#F87171" />
-          </TouchableOpacity>
-        </View>
+      {selectedImageUris.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectedAttachments}>
+          {selectedImageUris.map((uri, index) => (
+            <View key={`${uri}-${index}`} style={styles.selectedAttachment}>
+              <Image source={{ uri }} style={styles.selectedAttachmentImage} />
+              <TouchableOpacity style={styles.removeAttachmentButton} onPress={() => onRemoveImage(index)} accessibilityLabel={`Remove selected image ${index + 1}`}>
+                <MaterialCommunityIcons name="close-circle" size={22} color="#F87171" />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
       ) : null}
       <View style={[styles.composerRow, { minHeight: compactInputHeight }]}>
         {voiceNoteControls.recording ? (
@@ -4229,11 +4246,11 @@ function ChatComposer({
                 onContentSizeChange={handleInputContentSizeChange}
               />
             </View>
-            {message.trim() || selectedImageUri ? (
+            {message.trim() || selectedImageUris.length > 0 ? (
               <TouchableOpacity
                 style={styles.send}
                 onPress={() => void handleSend()}
-                disabled={isSending || (!message.trim() && !selectedImageUri)}
+                disabled={isSending || (!message.trim() && selectedImageUris.length === 0)}
               >
                 {isSending ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
@@ -4765,7 +4782,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   messages,
   message,
   setMessage,
-  selectedImageUri,
+  selectedImageUris,
   onRemoveImage,
   onBack,
   onSend,
@@ -4830,8 +4847,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   messages: RealtimeMessage[];
   message: string;
   setMessage: (value: string) => void;
-  selectedImageUri: string | null;
-  onRemoveImage: () => void;
+  selectedImageUris: string[];
+  onRemoveImage: (index: number) => void;
   onBack: () => void;
   onSend: (replyTarget?: ReplyTarget | null) => void | Promise<void>;
   onAttach: () => void;
@@ -4903,7 +4920,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    height: visualViewportHeight ?? 0,
+    height: visualViewportHeight ?? "100%",
   };
 
   const scrollToLatest = (animated = false) => {
@@ -5022,7 +5039,11 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
 
   return (
     <SafeAreaView style={Platform.OS === "web" ? { ...styles.container, ...mobileWebRootStyle } : styles.container}>
-      <KeyboardAvoidingView style={styles.chatKeyboardRoot} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView
+        style={styles.chatKeyboardRoot}
+        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
       <View style={styles.roomHeader}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack}>
@@ -5244,6 +5265,7 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         </View>
       ) : null}
 
+      <View style={styles.chatContent}>
       <ScrollView ref={messagesScrollRef} style={styles.messageList} contentContainerStyle={styles.messages}>
         {messages.length === 0 ? (
           <Text style={styles.empty}>No messages yet. Start the conversation.</Text>
@@ -5370,10 +5392,11 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         </View>
       ) : null}
 
+      <View style={styles.composerWrapper}>
       <ChatComposer
         message={message}
         setMessage={setMessage}
-        selectedImageUri={selectedImageUri}
+        selectedImageUris={selectedImageUris}
         onRemoveImage={onRemoveImage}
         onAttach={onAttach}
         onSend={async () => { await onSend(replyTarget); setReplyTarget(null); }}
@@ -5382,6 +5405,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
         uploading={uploading}
         voiceNoteControls={voiceNoteControls}
       />
+      </View>
+      </View>
 
       <AttachmentOptions
         attachmentVisible={attachmentVisible}

@@ -25,7 +25,7 @@ import AvatarPreviewModal from "../../components/AvatarPreviewModal";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
-import { NIGERIAN_LOCATIONS, requestDeviceLocation } from "../../lib/location";
+import { requestDeviceLocation } from "../../lib/location";
 import { registerForPushNotifications } from "../../lib/notifications";
 import { isValidPassword, PASSWORD_REQUIREMENTS } from "../../lib/password";
 import { calculatePetAgeInWeeks } from "../../lib/petAge";
@@ -117,9 +117,6 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [modal, setModal] = useState<SettingsModal>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
-  const [locationStatePicker, setLocationStatePicker] = useState<string | null>(
-    null
-  );
   const [locationLoading, setLocationLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [petEditorVisible, setPetEditorVisible] = useState(false);
@@ -638,7 +635,7 @@ export default function ProfileScreen() {
       state: cleanState,
     }));
     setModal(null);
-    setSuccessMessage("Phone number updated successfully.");
+    setSuccessMessage("Profile has been updated successfully.");
     setTimeout(() => setSuccessMessage(null), 3000);
   };
   const detectAndSaveLocation = async () => {
@@ -658,7 +655,6 @@ export default function ProfileScreen() {
       }
       console.log("[Client Profile] Location saved:", location);
       setLocationPickerVisible(false);
-      setLocationStatePicker(null);
       Alert.alert(
         "Location updated",
         `${location.city || "Nearby area"}, ${location.state || "Nigeria"}`
@@ -674,29 +670,6 @@ export default function ProfileScreen() {
     } finally {
       setLocationLoading(false);
     }
-  };
-  const selectManualLocation = async (city: string, state: string) => {
-    console.log("[Client Profile] Saving manual location:", city, state);
-    setProfile((current) => ({
-      ...current,
-      city,
-      state,
-      latitude: null,
-      longitude: null,
-    }));
-    const user = await getCurrentUser();
-    if (user) {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ city, state, latitude: null, longitude: null })
-        .eq("id", user.id);
-      if (error) {
-        Alert.alert("Could not save location", error.message);
-        return;
-      }
-    }
-    setLocationPickerVisible(false);
-    setLocationStatePicker(null);
   };
   const changePassword = async () => {
     if (!isValidPassword(password.next)) {
@@ -1460,20 +1433,14 @@ export default function ProfileScreen() {
         visible={locationPickerVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          setLocationPickerVisible(false);
-          setLocationStatePicker(null);
-        }}
+        onRequestClose={() => setLocationPickerVisible(false)}
       >
         <View style={styles.overlay}>
           <View style={styles.locationModal}>
             <View style={locationStyles.locationHeader}>
               <Text style={styles.modalTitle}>Choose location</Text>
               <TouchableOpacity
-                onPress={() => {
-                  setLocationPickerVisible(false);
-                  setLocationStatePicker(null);
-                }}
+                onPress={() => setLocationPickerVisible(false)}
                 accessibilityLabel="Close location picker"
               >
                 <MaterialCommunityIcons
@@ -1494,51 +1461,9 @@ export default function ProfileScreen() {
                 {locationLoading ? "Detecting location..." : "Use My Location"}
               </Text>
             </TouchableOpacity>
-            {locationStatePicker ? (
-              <TouchableOpacity
-                style={locationStyles.locationBack}
-                onPress={() => setLocationStatePicker(null)}
-              >
-                <Text style={styles.resetText}>‹ Choose another state</Text>
-              </TouchableOpacity>
-            ) : null}
-            <ScrollView
-              style={locationStyles.locationList}
-              contentContainerStyle={locationStyles.locationListContent}
-              showsVerticalScrollIndicator
-            >
-              {locationStatePicker
-                ? NIGERIAN_LOCATIONS.find(
-                    (location) => location.state === locationStatePicker
-                  )?.areas.map((area) => (
-                    <TouchableOpacity
-                      key={area}
-                      style={styles.locationOption}
-                      onPress={() => {
-                        void selectManualLocation(area, locationStatePicker);
-                      }}
-                    >
-                      <Text style={styles.primary}>{area}</Text>
-                      <Text style={styles.muted}>{locationStatePicker}</Text>
-                    </TouchableOpacity>
-                  ))
-                : NIGERIAN_LOCATIONS.map((location) => (
-                    <TouchableOpacity
-                      key={location.state}
-                      style={styles.locationOption}
-                      onPress={() => setLocationStatePicker(location.state)}
-                    >
-                      <Text style={styles.primary}>{location.state}</Text>
-                      <Text style={styles.muted}>{location.city}</Text>
-                    </TouchableOpacity>
-                  ))}
-            </ScrollView>
             <TouchableOpacity
               style={locationStyles.locationCancel}
-              onPress={() => {
-                setLocationPickerVisible(false);
-                setLocationStatePicker(null);
-              }}
+              onPress={() => setLocationPickerVisible(false)}
             >
               <Text style={styles.closeText}>Cancel</Text>
             </TouchableOpacity>

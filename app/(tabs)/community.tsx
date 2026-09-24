@@ -1,8 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SwipeableMessage from '../../components/SwipeableMessage';
 import { getCurrentUser, readCachedAuthState, supabase, type MessageReactions } from '../../lib/supabase';
@@ -42,19 +43,58 @@ export default function CommunityScreen() {
   const listRef = useRef<FlatList<CommunityMessage>>(null);
   const composerInputRef = useRef<TextInput>(null);
 
+  const pickImages = async () => {
+    if (sending || pendingImages.length >= 5) return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: 5 - pendingImages.length,
+        quality: 0.8,
+      });
+      if (!result.canceled) {
+        setPendingImages((current) => {
+          const combined = [...current, ...result.assets];
+          return combined.filter((item, index, items) => items.findIndex((candidate) => candidate.uri === item.uri) === index).slice(0, 5);
+        });
+      }
+    } catch (error) {
+      Alert.alert('Attachment failed', error instanceof Error ? error.message : 'Could not select images.');
+    }
+  };
+
   const sendMessage = async () => {
     const trimmedContent = content.trim();
-    if (!trimmedContent || sending || !currentUserId) return;
+    if ((!trimmedContent && pendingImages.length === 0) || sending || !currentUserId) return;
     setSending(true);
     const reply = replyTarget ? {
       id: replyTarget.id,
       sender_name: replyTarget.senderName,
       content: replyTarget.content,
     } : null;
+    let mediaUrls: string[] = [];
+    try {
+      mediaUrls = await Promise.all(pendingImages.map(async (image, index) => {
+        const blob = await (await fetch(image.uri)).blob();
+        const fileName = image.fileName || `community-chat-${Date.now()}-${index}.jpg`;
+        const extension = fileName.split('.').pop() || 'jpg';
+        const filePath = `${currentUserId}/${Date.now()}-${index}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from('community-uploads').upload(filePath, blob, {
+          contentType: image.mimeType || blob.type || 'image/jpeg',
+          upsert: false,
+        });
+        if (uploadError) throw uploadError;
+        return supabase.storage.from('community-uploads').getPublicUrl(filePath).data.publicUrl;
+      }));
+    } catch (error) {
+      Alert.alert('Attachment failed', error instanceof Error ? error.message : 'Could not upload images.');
+      setSending(false);
+      return;
+    }
     const { error } = await supabase.from('community_messages').insert({
       user_id: currentUserId,
       content: trimmedContent,
-      media_urls: [],
+      media_urls: mediaUrls,
       reply_to: reply,
     });
     if (error) {
@@ -62,6 +102,7 @@ export default function CommunityScreen() {
     } else {
       setContent('');
       setInputHeight(42);
+      setPendingImages([]);
       setReplyTarget(null);
     }
     setSending(false);
@@ -239,7 +280,6 @@ export default function CommunityScreen() {
             style={[styles.bubble, isOwnMessage ? styles.bubbleOwn : styles.bubbleOther]}
           >
             {item.reply_to ? <View style={styles.quotedMessage}><Text style={styles.quotedMessageSender} numberOfLines={1}>{item.reply_to.sender_name}</Text><Text style={styles.quotedMessageText} numberOfLines={2}>{item.reply_to.content}</Text></View> : null}
-            {item.content ? <Text style={[styles.messageText, isOwnMessage && styles.messageTextOwn]}>{item.content}</Text> : null}
             {hasImage ? (
               <View style={styles.mediaGrid}>
                 {item.media_urls!.map((url, index) => (
@@ -258,6 +298,7 @@ export default function CommunityScreen() {
                 ))}
               </View>
             ) : null}
+            {item.content ? <Text style={[styles.messageText, isOwnMessage && styles.messageTextOwn]}>{item.content}</Text> : null}
             <View style={styles.messageFooter}><Text style={[styles.time, isOwnMessage && styles.timeOwn]}>{formatMessageTime(item.created_at)}</Text></View>
             {Object.values(item.reactions || {}).length > 0 ? <TouchableOpacity style={styles.reactionBadge} onPress={() => { if (item.reactions?.[currentUserId || '']) void reactToMessage(item.id, ''); }} disabled={!item.reactions?.[currentUserId || '']} accessibilityLabel={item.reactions?.[currentUserId || ''] ? 'Remove your reaction' : 'Message reactions'}><Text style={styles.reactionBadgeText}>{Array.from(new Set(Object.values(item.reactions || {}))).join(' ')}</Text></TouchableOpacity> : null}
           </TouchableOpacity>
@@ -274,15 +315,15 @@ export default function CommunityScreen() {
         <View style={styles.banner}><Text style={styles.heroTitle}>MVS Hub</Text><Text style={styles.kicker}>Community + Marketplace</Text><Text style={styles.heading}>A trusted place to share, sell, and support.</Text></View>
         <FlatList ref={listRef} data={messages.filter((item) => !(item.hidden_for_users || []).includes(currentUserId || ''))} renderItem={renderMessage} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} onLayout={() => scrollToLatest()} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadMessages(true); }} tintColor="#10B981" />} onContentSizeChange={() => scrollToLatest()} ListEmptyComponent={loading ? <ActivityIndicator color="#10B981" style={styles.loader} /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}><Text style={{ fontSize: 28, fontWeight: '700', color: '#10B981', textAlign: 'center', letterSpacing: 0.5 }}>Coming soon.</Text><Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>The community and marketplace experience is on its way.</Text></View>} />
         {replyTarget ? <View style={styles.replyPreview}><View style={styles.replyPreviewCopy}><Text style={styles.replyPreviewName}>{replyTarget.senderName}</Text><Text style={styles.replyPreviewText} numberOfLines={1}>{replyTarget.content}</Text></View><TouchableOpacity onPress={() => setReplyTarget(null)} accessibilityLabel="Cancel reply"><MaterialCommunityIcons name="close" size={20} color="#CBD5E1" /></TouchableOpacity></View> : null}
-        {pendingImages.length > 0 ? <View style={styles.pendingRow}>{pendingImages.map((image) => <Image key={image.assetId || image.uri} source={{ uri: image.uri }} style={styles.pendingImage} />)}<TouchableOpacity onPress={() => setPendingImages([])} accessibilityLabel="Remove selected images"><MaterialCommunityIcons name="close-circle" size={24} color="#64748B" /></TouchableOpacity></View> : null}
+        {pendingImages.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pendingRow}>{pendingImages.map((image, index) => <View key={image.assetId || image.uri} style={styles.pendingItem}><Image source={{ uri: image.uri }} style={styles.pendingImage} /><TouchableOpacity style={styles.pendingRemove} onPress={() => setPendingImages((current) => current.filter((_, imageIndex) => imageIndex !== index))} accessibilityLabel={`Remove selected image ${index + 1}`}><MaterialCommunityIcons name="close-circle" size={20} color="#F87171" /></TouchableOpacity></View>)}</ScrollView> : null}
         {/* <View style={styles.composer}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => composerInputRef.current?.focus()} disabled={sending} accessibilityLabel="Focus community message input">
-            <MaterialCommunityIcons name="message-plus-outline" size={24} color="#10B981" />
+          <TouchableOpacity style={styles.iconButton} onPress={() => { void pickImages(); }} disabled={sending || pendingImages.length >= 5} accessibilityLabel="Attach images">
+            <MaterialCommunityIcons name="paperclip" size={24} color="#10B981" />
           </TouchableOpacity>
           <View style={[styles.inputShell, { height: inputHeight, maxHeight: 132 }]}>
             <TextInput ref={composerInputRef} value={content} onChangeText={setContent} placeholder="Message the MVS community" placeholderTextColor="#64748B" style={[styles.input, { height: inputHeight, lineHeight: 22 }]} editable={!sending} multiline maxLength={2000} scrollEnabled={inputHeight >= 132} onContentSizeChange={handleInputContentSizeChange} />
           </View>
-          <TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || !content.trim()} accessibilityLabel="Send community message">
+          <TouchableOpacity style={styles.sendButton} onPress={() => { void sendMessage(); }} disabled={sending || (!content.trim() && pendingImages.length === 0)} accessibilityLabel="Send community message">
             {sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />}
           </TouchableOpacity>
         </View> */}
@@ -369,7 +410,9 @@ const styles = StyleSheet.create({
   loader: { marginTop: 30 },
   empty: { color: '#94A3B8', textAlign: 'center', marginTop: 30 },
   pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
+  pendingItem: { position: 'relative' },
   pendingImage: { width: 52, height: 52, borderRadius: 8 },
+  pendingRemove: { position: 'absolute', top: -4, right: -4, backgroundColor: '#0F172A', borderRadius: 10 },
   composer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: '#334155' },
   replyPreview: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderLeftWidth: 3, borderLeftColor: '#10B981', backgroundColor: '#1E293B', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
   replyPreviewCopy: { flex: 1, minWidth: 0 },
