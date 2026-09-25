@@ -1,5 +1,4 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import {
   AudioModule,
@@ -211,55 +210,6 @@ type ConsultationRecord = {
   merchant_id?: string | null;
   status: ConsultationStatus;
   service_type?: string | null;
-};
-
-const consultationCachePrefix = "mvs_consultation_cache:";
-const consultationMemoryCache = new Map<string, ConsultationRecord>();
-
-const rememberConsultation = (consultation: ConsultationRecord) => {
-  consultationMemoryCache.set(consultation.conversation_id, consultation);
-  void AsyncStorage.setItem(
-    `${consultationCachePrefix}${consultation.conversation_id}`,
-    JSON.stringify(consultation)
-  ).catch(() => undefined);
-};
-
-const readCachedConsultation = async (conversationId: string): Promise<ConsultationRecord | null> => {
-  const memoryValue = consultationMemoryCache.get(conversationId);
-  if (memoryValue) return memoryValue;
-  try {
-    const storedValue = await AsyncStorage.getItem(`${consultationCachePrefix}${conversationId}`);
-    if (!storedValue) return null;
-    const parsedValue = JSON.parse(storedValue) as ConsultationRecord;
-    if (parsedValue?.conversation_id !== conversationId || !parsedValue?.status) return null;
-    consultationMemoryCache.set(conversationId, parsedValue);
-    return parsedValue;
-  } catch {
-    return null;
-  }
-};
-
-const inboxCachePrefix = "mvs_inbox_cache:";
-const inboxMemoryCache = new Map<string, Thread[]>();
-
-const rememberInboxThreads = (userId: string, threads: Thread[]) => {
-  inboxMemoryCache.set(userId, threads);
-  void AsyncStorage.setItem(`${inboxCachePrefix}${userId}`, JSON.stringify(threads)).catch(() => undefined);
-};
-
-const readCachedInboxThreads = async (userId: string): Promise<Thread[] | null> => {
-  const memoryValue = inboxMemoryCache.get(userId);
-  if (memoryValue) return memoryValue;
-  try {
-    const storedValue = await AsyncStorage.getItem(`${inboxCachePrefix}${userId}`);
-    if (!storedValue) return null;
-    const parsedValue = JSON.parse(storedValue) as Thread[];
-    if (!Array.isArray(parsedValue)) return null;
-    inboxMemoryCache.set(userId, parsedValue);
-    return parsedValue;
-  } catch {
-    return null;
-  }
 };
 
 type InvoiceMetadata = {
@@ -649,7 +599,7 @@ const styles = {
   patientDetail: { color: "#CBD5E1", fontSize: 13, lineHeight: 20 },
   title: { color: "#FFFFFF", fontSize: 21, fontWeight: "700", flexShrink: 1 },
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
-  list: { padding: 16 },
+  list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 96 },
   messages: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, flexGrow: 1, flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
   messageList: { flex: 1, minHeight: 0 },
   messageRow: { marginBottom: 6 },
@@ -794,16 +744,6 @@ const filterVisibleMessages = (items: RealtimeMessage[], currentUserId: string) 
     if (isMessageHiddenForUser(message, currentUserId)) return false;
     return true;
   });
-
-const syncClearedThreadStorage = async (userId: string, threadIds: Set<string>) => {
-  const storageKey = `mvs_cleared_threads_${userId}`;
-  const nextIds = [...threadIds];
-  if (nextIds.length === 0) {
-    await AsyncStorage.removeItem(storageKey);
-    return;
-  }
-  await AsyncStorage.setItem(storageKey, JSON.stringify(nextIds));
-};
 
 const appendUniqueMessage = (
   messages: RealtimeMessage[],
@@ -1120,11 +1060,7 @@ export default function ChatScreen() {
           const cleanUserId = normalizeUuid(user?.id);
           if (!cleanUserId) return;
 
-          const clearedThreadStorageKey = `mvs_cleared_threads_${cleanUserId}`;
-          const clearedThreadIdsRaw = await AsyncStorage.getItem(clearedThreadStorageKey);
-          const clearedThreadIds = new Set<string>(
-            clearedThreadIdsRaw ? (JSON.parse(clearedThreadIdsRaw) as string[]) : []
-          );
+          const clearedThreadIds = new Set<string>();
           clearedThreadsRef.current = new Set(clearedThreadIds);
 
           const [roleData, rows] = await Promise.all([
@@ -1266,8 +1202,6 @@ export default function ChatScreen() {
               return !thread.messages.length || !thread.messages.every((message) => isMessageHiddenForUser(message, cleanUserId));
             })
             .sort((first, second) => getLatestThreadTime(second) - getLatestThreadTime(first));
-          await syncClearedThreadStorage(cleanUserId, clearedThreadIds);
-          rememberInboxThreads(cleanUserId, activeThreads);
           freshInboxLoaded = true;
           setThreads(activeThreads);
         } catch (error) {
@@ -1305,10 +1239,6 @@ export default function ChatScreen() {
             ? (payload.old as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus })
             : (payload.new as ConsultationRecord & { conversation_id?: string; status?: ConsultationStatus });
           if (!consultation?.conversation_id || consultation.conversation_id !== active.id) return;
-          if (payload.eventType !== 'DELETE' && consultation.status) {
-            rememberConsultation(consultation as ConsultationRecord);
-          }
-
           setThreads((current) =>
             current.map((thread) =>
               thread.id === consultation.conversation_id
@@ -1353,14 +1283,7 @@ export default function ChatScreen() {
     }
 
     let isMounted = true;
-    void AsyncStorage.getItem(`mvs_cleared_threads_${currentUserId}`).then((value) => {
-      if (!isMounted) return;
-      try {
-        clearedThreadsRef.current = new Set(value ? (JSON.parse(value) as string[]) : []);
-      } catch {
-        clearedThreadsRef.current = new Set();
-      }
-    });
+    clearedThreadsRef.current = new Set();
 
     const inboxChannel = supabase
       .channel(`messages:inbox:${currentUserId}`)
@@ -1396,7 +1319,6 @@ export default function ChatScreen() {
 
           if (incoming.conversation_id && clearedThreadsRef.current.has(incoming.conversation_id)) {
             clearedThreadsRef.current.delete(incoming.conversation_id);
-            void syncClearedThreadStorage(currentUserId, clearedThreadsRef.current);
           }
           if (isMessageHiddenForUser(incoming, currentUserId)) return;
 
@@ -1431,7 +1353,6 @@ export default function ChatScreen() {
                   setThreads((latest) => {
                     if (latest.some((thread) => thread.id === nextThread.id)) return latest;
                     const nextThreads = [nextThread, ...latest];
-                    rememberInboxThreads(currentUserId, nextThreads);
                     return nextThreads;
                   });
                 } catch (error) {
@@ -1459,7 +1380,6 @@ export default function ChatScreen() {
               updatedThread,
               ...current.filter((_, index) => index !== threadIndex),
             ];
-            rememberInboxThreads(currentUserId, nextThreads);
             return nextThreads;
           });
         }
@@ -1476,12 +1396,19 @@ export default function ChatScreen() {
       recipientIdParam || merchantIdParam || vetIdParam || receiverIdParam
     );
     const routeKey = `${conversationIdParam || ""}:${inquiryKeyParam || ""}`;
-    if (
-      !currentUserId ||
-      !routeRecipient ||
-      !conversationIdParam ||
-      openedRoute.current === routeKey
-    ) {
+    if (!currentUserId) {
+      openedRoute.current = null;
+      setActive(null);
+      setMessages([]);
+      return;
+    }
+    if (!routeRecipient || !conversationIdParam) {
+      openedRoute.current = null;
+      setActive(null);
+      setMessages([]);
+      return;
+    }
+    if (openedRoute.current === routeKey) {
       return;
     }
     openedRoute.current = routeKey;
@@ -1602,7 +1529,6 @@ export default function ChatScreen() {
         }
         if (existingConsultation) {
           const resolvedConsultation = existingConsultation as ConsultationRecord;
-          rememberConsultation(resolvedConsultation);
           if (mounted) {
             setConsultation(resolvedConsultation);
             setThreads((current) =>
@@ -1633,7 +1559,6 @@ export default function ChatScreen() {
         { event: "INSERT", schema: "public", table: "consultations", filter: `conversation_id=eq.${active.id}` },
         (payload) => {
           const nextConsultation = payload.new as ConsultationRecord;
-          rememberConsultation(nextConsultation);
           if (mounted) {
             setConsultation(nextConsultation);
             setThreads((current) => current.map((thread) => thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread));
@@ -1645,7 +1570,6 @@ export default function ChatScreen() {
         { event: "UPDATE", schema: "public", table: "consultations", filter: `conversation_id=eq.${active.id}` },
         (payload) => {
           const nextConsultation = payload.new as ConsultationRecord;
-          rememberConsultation(nextConsultation);
           if (mounted) {
             setConsultation(nextConsultation);
             setThreads((current) => current.map((thread) => thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread));
@@ -1801,7 +1725,6 @@ export default function ChatScreen() {
         if (!incoming || incoming.conversation_id !== active.id) return;
         if (incoming.conversation_id && clearedThreadsRef.current.has(incoming.conversation_id)) {
           clearedThreadsRef.current.delete(incoming.conversation_id);
-          void syncClearedThreadStorage(currentUserId, clearedThreadsRef.current);
         }
         if (isMessageHiddenForUser(incoming, currentUserId)) return;
 
@@ -2178,23 +2101,28 @@ export default function ChatScreen() {
     }
   };
 
-  const handleBack = () => {
+  const resetRouteState = useCallback(() => {
+    openedRoute.current = null;
     setActive(null);
     setMessages([]);
     setMessage("");
     setConsultation(null);
+    setRecipientProfile(null);
     setPatientFileVisible(false);
     setPatientPets([]);
     setActivePetId(null);
     setMedicalRecords([]);
     setSoapVisible(false);
-    setPatientFileVisible(false);
     setPetSelectionVisible(false);
     setFarmSelectionVisible(false);
     setFarmRecordsVisible(false);
     setFarmRecords([]);
     setSelectedFarmId(null);
     setFarmSoapVisible(false);
+  }, []);
+
+  const handleBack = () => {
+    resetRouteState();
     router.setParams({
       conversationId: undefined,
       recipientId: undefined,
@@ -2214,22 +2142,7 @@ export default function ChatScreen() {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setActive(null);
-      setMessages([]);
-      setMessage("");
-      setConsultation(null);
-      setPatientFileVisible(false);
-      setPatientPets([]);
-      setActivePetId(null);
-      setMedicalRecords([]);
-      setSoapVisible(false);
-      setPatientFileVisible(false);
-      setPetSelectionVisible(false);
-      setFarmSelectionVisible(false);
-      setFarmRecordsVisible(false);
-      setFarmRecords([]);
-      setSelectedFarmId(null);
-      setFarmSoapVisible(false);
+      resetRouteState();
       router.setParams({
         resetThread: undefined,
         conversationId: undefined,
@@ -2246,7 +2159,11 @@ export default function ChatScreen() {
     return () => {
       cancelled = true;
     };
-  }, [resetThreadParam, router]);
+  }, [currentUserId, resetThreadParam, resetRouteState, router]);
+
+  useEffect(() => () => {
+    openedRoute.current = null;
+  }, [currentUserId]);
 
   const openPatientFile = async (showModal = true): Promise<PatientPet[]> => {
     setPatientFileVisible(showModal);
@@ -2388,7 +2305,6 @@ export default function ChatScreen() {
         .single();
       if (error) throw error;
       const updatedConsultation = data as ConsultationRecord;
-      rememberConsultation(updatedConsultation);
       setConsultation(updatedConsultation);
       setThreads((current) => current.map((thread) =>
         thread.id === currentConsultation.conversation_id ? { ...thread, consultation_status: status } : thread
@@ -2445,7 +2361,6 @@ export default function ChatScreen() {
       return;
     }
 
-    rememberConsultation(nextConsultation);
     setConsultation(nextConsultation);
     setThreads((current) => current.map((thread) =>
       thread.id === active.id ? { ...thread, consultation_status: nextConsultation.status } : thread
@@ -2959,9 +2874,7 @@ export default function ChatScreen() {
       console.error("[Chat Clear Thread] Failed to hide messages for current user:", updateError);
     }
 
-    const storageKey = `mvs_cleared_threads_${currentUserId}`;
-    const existing = await AsyncStorage.getItem(storageKey);
-    const clearedThreads = new Set(existing ? JSON.parse(existing) as string[] : []);
+    const clearedThreads = new Set(clearedThreadsRef.current);
     for (const targetConversationId of resolvedConversationIds) {
       clearedThreads.add(targetConversationId);
     }
@@ -2969,7 +2882,6 @@ export default function ChatScreen() {
       clearedThreads.add(targetOrderId);
     }
     clearedThreadsRef.current = new Set(clearedThreads);
-    await AsyncStorage.setItem(storageKey, JSON.stringify([...clearedThreads]));
 
     setMessages((current) => current.filter((message) => !matchesThreadTarget(message)));
     setThreads((current) => current.filter((thread) => {
@@ -3081,7 +2993,6 @@ export default function ChatScreen() {
             vet_id: userRole === "client" ? cleanReceiverId : cleanSenderId,
             status: consultation.status,
           };
-          rememberConsultation(resolvedConsultation);
           setConsultation(resolvedConsultation);
         }
       } catch (error) {

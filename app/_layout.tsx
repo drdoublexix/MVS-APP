@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
@@ -18,6 +19,33 @@ const registerForPushNotifications = async (userId: string) => {
 void SplashScreen.preventAutoHideAsync().catch((error) => {
   console.warn('[Splash Screen] preventAutoHideAsync failed gracefully:', error);
 });
+
+const LEGACY_CHAT_CACHE_KEYS = [
+  'mvs_inbox_cache',
+  'mvs_consultation_cache',
+  'mvs_cleared_threads',
+  'mvs_cleared_threads_',
+  'mvs_inbox_cache:',
+  'mvs_consultation_cache:',
+  'mvs_cleared_threads_'
+];
+
+const purgeLegacyChatCaches = async () => {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const removals = keys.filter((key) =>
+      key.startsWith('mvs_inbox_cache') ||
+      key.startsWith('mvs_consultation_cache') ||
+      key.startsWith('mvs_cleared_threads') ||
+      LEGACY_CHAT_CACHE_KEYS.some((legacyKey) => key === legacyKey || key.startsWith(legacyKey))
+    );
+    if (removals.length > 0) {
+      await AsyncStorage.multiRemove(removals);
+    }
+  } catch (error) {
+    console.warn('[App Init] Legacy chat cache purge failed:', error);
+  }
+};
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null }> {
   state: { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null } = {
@@ -94,6 +122,10 @@ function RootAuthGate() {
   const pathname = usePathname();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
+
+  useEffect(() => {
+    void purgeLegacyChatCaches();
+  }, []);
 
   useEffect(() => {
     profileRef.current = profile;

@@ -72,7 +72,7 @@ export default function VetDashboardScreen() {
 
         // Load existing messages for this session
         const { data, error } = await supabase
-          .from('chat_messages')
+          .from('mvsai_chat_messages')
           .select('id, role, content, created_at')
           .eq('user_id', userId)
           .eq('session_id', sessionId)
@@ -217,8 +217,8 @@ export default function VetDashboardScreen() {
       setMessages((prev) => [...prev, assistantMsg]);
 
       void Promise.all([
-        supabase.from('chat_messages').insert({ user_id: aiSession.userId, session_id: aiSession.sessionId, role: 'user', content: userMsg.content }),
-        supabase.from('chat_messages').insert({ user_id: aiSession.userId, session_id: aiSession.sessionId, role: 'assistant', content: assistantMsg.content }),
+        supabase.from('mvsai_chat_messages').insert({ user_id: aiSession.userId, session_id: aiSession.sessionId, role: 'user', content: userMsg.content }),
+        supabase.from('mvsai_chat_messages').insert({ user_id: aiSession.userId, session_id: aiSession.sessionId, role: 'assistant', content: assistantMsg.content }),
       ]).then(([userResult, assistantResult]) => {
         if (userResult.error) console.error('Error saving user message:', userResult.error);
         if (assistantResult.error) console.error('Error saving assistant message:', assistantResult.error);

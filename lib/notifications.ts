@@ -195,7 +195,7 @@ export const sendPushNotification = async (
 
     const preferenceKey = String(data?.preferenceKey || data?.category || data?.type || 'chat');
     const preferenceAliases: Record<string, string[]> = {
-      chat: ['chat', 'chat_messages', 'messages'],
+      chat: ['chat', 'mvsai_chat_messages', 'messages'],
       consults: ['consults', 'consultations', 'consultation_updates'],
       orders: ['orders', 'order_updates', 'new_orders'],
     };
