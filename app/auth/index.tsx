@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getProfileRole, getRoleNavPath, supabase } from '../../lib/supabase';
 
 type Role = 'client' | 'vet' | 'merchant';
@@ -59,11 +59,15 @@ export default function AuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(Boolean(code || hasHashSession));
-  const [message, setMessage] = useState(verifiedNotice.exists || typeParam === 'signup' || typeParam === 'email_confirmation'
-    ? 'Email successfully verified! Please sign in to your account.'
-    : '');
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; title: string; message: string } | null>(
+    verifiedNotice.exists || typeParam === 'signup' || typeParam === 'email_confirmation'
+      ? { kind: 'success', title: 'Email verified', message: 'Email successfully verified! Please sign in to your account.' }
+      : null,
+  );
   const [error, setError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  const fullNamePlaceholder = role === 'vet' ? 'Dr. Ibrahim Paul' : 'Ibrahim Paul';
 
   useEffect(() => {
     const hashValues = getWebHashParams();
@@ -93,7 +97,7 @@ export default function AuthScreen() {
         await supabase.auth.signOut();
         setMode('sign-in');
         router.replace({ pathname: '/auth', params: { mode: 'signin' } });
-        setMessage('Email successfully verified! Please sign in to your account.');
+        setNotice({ kind: 'success', title: 'Email verified', message: 'Email successfully verified! Please sign in to your account.' });
       }
     };
 
@@ -111,7 +115,7 @@ export default function AuthScreen() {
   const submit = async () => {
     setLoading(true);
     setError('');
-    setMessage('');
+    setNotice(null);
     setPasswordError('');
 
     try {
@@ -137,7 +141,13 @@ export default function AuthScreen() {
           },
         });
         if (signUpError) throw signUpError;
-        setMessage(data.session ? 'Account created. Loading your workspace...' : 'Check your email to confirm your account.');
+        setNotice({
+          kind: 'success',
+          title: 'Account created successfully',
+          message: data.session
+            ? 'Your account is ready. You are now being redirected to your workspace.'
+            : 'A confirmation link has been sent to your email. Please open your email and click the confirmation link to confirm your account before signing in.',
+        });
       } else {
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
@@ -150,7 +160,13 @@ export default function AuthScreen() {
         router.replace(getRoleNavPath(profileRole));
       }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Authentication failed. Please try again.');
+      const nextError = submitError instanceof Error ? submitError.message : 'Authentication failed. Please try again.';
+      setError(nextError);
+      setNotice({
+        kind: 'error',
+        title: mode === 'sign-up' ? 'Account creation failed' : 'Sign-in failed',
+        message: nextError,
+      });
     } finally {
       setLoading(false);
     }
@@ -174,7 +190,6 @@ export default function AuthScreen() {
         automaticallyAdjustKeyboardInsets
       >
         <View style={styles.content}>
-        {message ? <Text style={styles.verificationBanner}>{message}</Text> : null}
         <View style={styles.logoFrame}>
           <Image source={require('../../assets/images/mvsfp.jpeg')} resizeMode="contain" style={styles.logo} />
         </View>
@@ -202,7 +217,15 @@ export default function AuthScreen() {
           </View>
         ) : null}
 
-        {mode === 'sign-up' ? <TextInput style={styles.input} placeholder="Full name" placeholderTextColor="#718096" value={fullName} onChangeText={setFullName} /> : null}
+        {mode === 'sign-up' ? (
+          <TextInput
+            style={styles.input}
+            placeholder={fullNamePlaceholder}
+            placeholderTextColor="#718096"
+            value={fullName}
+            onChangeText={setFullName}
+          />
+        ) : null}
         <TextInput style={styles.input} placeholder="Email address" placeholderTextColor="#718096" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
         {mode === 'sign-up' ? <TextInput style={styles.input} placeholder="e.g. +2349012345678" placeholderTextColor="#718096" keyboardType="phone-pad" value={phoneNumber} onChangeText={setPhoneNumber} /> : null}
         <View style={styles.passwordInputContainer}>
@@ -240,6 +263,18 @@ export default function AuthScreen() {
         </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal visible={Boolean(notice)} transparent animationType="fade" onRequestClose={() => setNotice(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.noticeModal, notice?.kind === 'error' ? styles.noticeModalError : styles.noticeModalSuccess]}>
+            <Text style={[styles.noticeTitle, notice?.kind === 'error' ? styles.noticeTitleError : styles.noticeTitleSuccess]}>{notice?.title ?? 'Notice'}</Text>
+            <Text style={styles.noticeMessage}>{notice?.message ?? ''}</Text>
+            <TouchableOpacity style={[styles.noticeButton, notice?.kind === 'error' ? styles.noticeButtonError : styles.noticeButtonSuccess]} onPress={() => setNotice(null)}>
+              <Text style={styles.noticeButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -250,7 +285,18 @@ const styles = StyleSheet.create({
   content: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: 14 },
   logoFrame: { alignSelf: 'center', backgroundColor: '#08111F', borderRadius: 62, height: 124, overflow: 'hidden', width: 124 },
   logo: { borderRadius: 62, height: 124, width: 124 },
-  verificationBanner: { backgroundColor: '#12352F', borderColor: '#34D399', borderRadius: 8, borderWidth: 1, color: '#A7F3D0', fontSize: 15, fontWeight: '700', lineHeight: 22, padding: 14, textAlign: 'center' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(2, 6, 23, 0.72)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  noticeModal: { width: '100%', maxWidth: 420, borderRadius: 18, padding: 22, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 18, shadowOffset: { width: 0, height: 12 }, elevation: 12 },
+  noticeModalSuccess: { backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#86EFAC' },
+  noticeModalError: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' },
+  noticeTitle: { fontSize: 22, fontWeight: '800', marginBottom: 8 },
+  noticeTitleSuccess: { color: '#166534' },
+  noticeTitleError: { color: '#991B1B' },
+  noticeMessage: { color: '#0F172A', fontSize: 16, lineHeight: 24, marginBottom: 20 },
+  noticeButton: { alignItems: 'center', borderRadius: 10, paddingVertical: 12 },
+  noticeButtonSuccess: { backgroundColor: '#16A34A' },
+  noticeButtonError: { backgroundColor: '#DC2626' },
+  noticeButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   eyebrow: { color: '#34D399', fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textAlign: 'center' },
   title: { color: '#F8FAFC', fontSize: 34, fontWeight: '800', lineHeight: 40, textAlign: 'center' },
   subtitle: { color: '#F8FAFC', fontSize: 16, lineHeight: 24, marginBottom: 4, textAlign: 'center' },
