@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export type AiMessage = {
   role: 'user' | 'assistant' | 'model';
   content: string;
@@ -7,14 +9,19 @@ const aiAssistantUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/ai-
 
 export const requestAiAssistant = async (messages: AiMessage[], role: 'client' | 'vet') => {
   const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session?.access_token) {
+    throw new Error('Sign in to use the MVS Assistant.');
+  }
+
   const response = await fetch(aiAssistantUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${anonKey}`,
+      Authorization: `Bearer ${session.access_token}`,
       apikey: anonKey,
     },
-    body: JSON.stringify({ messages, role }),
+    body: JSON.stringify({ messages: messages.slice(-20), role }),
   });
   const data = await response.json();
 

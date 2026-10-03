@@ -21,6 +21,7 @@ alter table public.pets enable row level security;
 
 -- 4. RLS Policies
 drop policy if exists "Pet owners can manage their pets" on public.pets;
+drop policy if exists "Vets can view client pets" on public.pets;
 drop policy if exists "Vets can view pets of active consultation clients" on public.pets;
 
 -- Allow pet parents full control over their own pet records
@@ -32,7 +33,21 @@ create policy "Pet owners can manage their pets" on public.pets
 -- Allow veterinarians and authenticated users involved in consultations to view pets
 create policy "Vets can view pets of active consultation clients" on public.pets
   for select to authenticated
-  using (true);
+  using (
+    exists (
+      select 1
+      from public.consultations
+      where consultations.client_id = pets.owner_id
+        and consultations.vet_id = auth.uid()
+        and auth.uid()::text <> all(coalesce(consultations.deleted_by_user_ids, '{}'::text[]))
+    )
+    and exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and profiles.role::text in ('vet', 'veterinarian')
+    )
+  );
 
 insert into storage.buckets (id, name, public)
 values ('pet-images', 'pet-images', true)

@@ -329,10 +329,16 @@ const sendWebNotification = async (subscriptionString: string, title: string, bo
   }));
 };
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceRoleKey || req.headers.get('authorization') !== `Bearer ${serviceRoleKey}`) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    serviceRoleKey
   );
 
   const { data: profiles, error } = await supabase

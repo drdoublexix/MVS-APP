@@ -16,6 +16,18 @@ const LAGOS_TOWNS: Record<string, { latitude: number; longitude: number }> = {
 
 serve(async (req: Request) => {
   try {
+    if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    const expectedSecret = Deno.env.get("TERMII_WEBHOOK_SECRET") || "";
+    const suppliedSecret = req.headers.get("x-termii-webhook-secret") || new URL(req.url).searchParams.get("secret") || "";
+    if (!expectedSecret || suppliedSecret.length !== expectedSecret.length) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    let secretDifference = 0;
+    for (let index = 0; index < expectedSecret.length; index += 1) {
+      secretDifference |= expectedSecret.charCodeAt(index) ^ suppliedSecret.charCodeAt(index);
+    }
+    if (secretDifference !== 0) return new Response("Unauthorized", { status: 401 });
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -23,10 +35,14 @@ serve(async (req: Request) => {
 
     const body = await req.json();
     const sender = body.from || body.phone;
-    const rawMessage = (body.text || body.message || "").trim();
+    const rawMessage = typeof (body.text || body.message) === "string" ? (body.text || body.message).trim() : "";
+    if (typeof sender !== "string" || !/^\+?[0-9]{8,15}$/.test(sender) || !rawMessage || rawMessage.length > 1_000) {
+      return new Response(JSON.stringify({ error: "Invalid SMS webhook payload." }), { status: 400 });
+    }
 
     // Syntax check: "BOOK VET [Town Name] [Issue]"
     const match = rawMessage.match(/^BOOK\s+VET\s+([A-Za-z\s]+)\s+(.+)$/i);
+    if (!match) return new Response(JSON.stringify({ error: "Unsupported SMS command." }), { status: 400 });
 
     let lat = 6.4531; // Default fallback coordinates
     let lng = 3.3958;

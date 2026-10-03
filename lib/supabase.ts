@@ -326,11 +326,14 @@ export const normalizeUuid = (value: string | undefined | null): string | null =
 export const MAX_CHAT_ATTACHMENT_SIZE = 104857600;
 
 export const uploadProductImage = async (asset: ImagePickerAsset) => {
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error('Sign in before uploading product images.');
+
   const response = await fetch(asset.uri);
   const file = await response.blob();
   const fileName = asset.fileName || asset.uri.split('/').pop() || `product-${Date.now()}.jpg`;
   const fileExt = fileName.split('.').pop() || 'jpg';
-  const filePath = `products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+  const filePath = `${user.id}/products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
   const { error } = await supabase.storage
     .from('product-images')
     .upload(filePath, file, { cacheControl: '3600', upsert: false, contentType: asset.mimeType || file.type });

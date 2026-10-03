@@ -31,6 +31,15 @@ const jsonResponse = (payload: unknown, status = 200) => new Response(JSON.strin
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
+const constantTimeEqual = (actual: string, expected: string) => {
+  if (actual.length !== expected.length) return false;
+  let difference = 0;
+  for (let index = 0; index < actual.length; index += 1) {
+    difference |= actual.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  return difference === 0;
+};
+
 const escapeHtml = (value: string) => value
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -92,10 +101,19 @@ serve(async (req: Request) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
   try {
+    const expectedSecret = Deno.env.get("BROADCAST_ADMIN_SECRET");
+    const suppliedSecret = req.headers.get("x-broadcast-secret") || "";
+    if (!expectedSecret || !constantTimeEqual(suppliedSecret, expectedSecret)) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    const contentLength = Number(req.headers.get("content-length") || 0);
+    if (contentLength > 16_384) return jsonResponse({ error: "Request body is too large." }, 413);
+
     const payload = await req.json() as AnnouncementPayload;
     const targetAudience = payload.targetAudience || "all";
-    const title = payload.title?.trim();
-    const body = payload.body?.trim();
+    const title = typeof payload.title === "string" ? payload.title.trim() : "";
+    const body = typeof payload.body === "string" ? payload.body.trim() : "";
     const sendEmailRequested = payload.sendEmail === true;
 
     if (!allowedAudiences.has(targetAudience)) {
@@ -103,6 +121,9 @@ serve(async (req: Request) => {
     }
     if (!title || !body) {
       return jsonResponse({ error: "title and body are required." }, 400);
+    }
+    if (title.length > 160 || body.length > 8_000) {
+      return jsonResponse({ error: "title or body exceeds the allowed length." }, 400);
     }
     if (payload.sendEmail !== undefined && typeof payload.sendEmail !== "boolean") {
       return jsonResponse({ error: "sendEmail must be a boolean." }, 400);
@@ -175,6 +196,6 @@ serve(async (req: Request) => {
     });
   } catch (error) {
     console.error("Broadcast announcement function error:", error);
-    return jsonResponse({ error: error instanceof Error ? error.message : "Unexpected error" }, 500);
+    return jsonResponse({ error: "Unable to send announcement." }, 500);
   }
 });

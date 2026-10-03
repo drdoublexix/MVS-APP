@@ -1,29 +1,71 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+const jsonResponse = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), {
+  status,
+  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+});
 
 serve(async (req: Request) => {
-  // Always handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
 
   try {
+    const authorization = req.headers.get('authorization') || '';
+    const accessToken = authorization.replace(/^Bearer\s+/i, '').trim();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!accessToken) return jsonResponse({ error: 'Sign in to use the MVS Assistant.' }, 401);
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('Supabase auth configuration is missing.');
+      return jsonResponse({ error: 'The MVS Assistant is temporarily unavailable.' }, 503);
+    }
+
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: { user }, error: authError } = await authClient.auth.getUser(accessToken);
+    if (authError || !user) return jsonResponse({ error: 'Sign in to use the MVS Assistant.' }, 401);
+
+    const requestBody = await req.text();
+    if (new TextEncoder().encode(requestBody).byteLength > 262_144) {
+      return jsonResponse({ error: 'Conversation is too large.' }, 413);
+    }
+
+    let payload: { messages?: unknown };
+    try {
+      payload = JSON.parse(requestBody);
+    } catch {
+      return jsonResponse({ error: 'Invalid request body.' }, 400);
+    }
+    if (!Array.isArray(payload.messages) || payload.messages.length === 0 || payload.messages.length > 20) {
+      return jsonResponse({ error: 'Conversation must contain between 1 and 20 messages.' }, 400);
+    }
+    const messages = payload.messages as { role?: unknown; content?: unknown; text?: unknown }[];
+    let totalLength = 0;
+    for (const message of messages) {
+      const content = message?.content ?? message?.text;
+      if (typeof content !== 'string' || content.length > 4_000) {
+        return jsonResponse({ error: 'Each message must be text under 4,000 characters.' }, 400);
+      }
+      totalLength += content.length;
+      if (totalLength > 30_000) return jsonResponse({ error: 'Conversation is too large.' }, 413);
+    }
+
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
       console.error("GEMINI_API_KEY missing in secrets");
-      return new Response(
-        JSON.stringify({ reply: "API Key Configuration Error: GEMINI_API_KEY secret is not accessible." }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({ error: 'The MVS Assistant is temporarily unavailable.' }, 503);
     }
 
-    const { messages } = await req.json();
     const formattedContents = (messages || []).map((msg: any) => ({
       role: (msg.role === 'assistant' || msg.role === 'model') ? 'model' : 'user',
       parts: [{ text: msg.content || msg.text || '' }]
@@ -47,24 +89,15 @@ serve(async (req: Request) => {
 
     if (!geminiRes.ok) {
       console.error("Gemini API Error:", geminiData);
-      return new Response(
-        JSON.stringify({ reply: `Gemini API Error: ${geminiData.error?.message || 'Failed to fetch response'}` }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({ error: 'The MVS Assistant could not complete the request.' }, 502);
     }
 
     const replyText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 
-    return new Response(
-      JSON.stringify({ reply: replyText }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse({ reply: replyText });
 
   } catch (err: any) {
     console.error("Edge Function Unhandled Error:", err);
-    return new Response(
-      JSON.stringify({ reply: `Server Error: ${err.message || 'Unknown runtime error'}` }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse({ error: 'The MVS Assistant could not complete the request.' }, 500);
   }
 });
