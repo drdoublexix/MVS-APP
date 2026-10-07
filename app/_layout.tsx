@@ -128,6 +128,29 @@ function RootAuthGate() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    const updateAuthRefresh = (state: AppState['currentState']) => {
+      const refreshOperation = state === 'active'
+        ? supabase.auth.startAutoRefresh()
+        : supabase.auth.stopAutoRefresh();
+      void refreshOperation.catch((error) => {
+        console.error('[Auth] Failed to update session auto-refresh for app state:', error);
+      });
+    };
+
+    updateAuthRefresh(AppState.currentState);
+    const subscription = AppState.addEventListener('change', updateAuthRefresh);
+
+    return () => {
+      subscription.remove();
+      void supabase.auth.stopAutoRefresh().catch((error) => {
+        console.error('[Auth] Failed to stop session auto-refresh:', error);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
 
