@@ -146,7 +146,7 @@ export default function AuthScreen() {
           title: 'Account created successfully',
           message: data.session
             ? 'Your account is ready. You are now being redirected to your workspace.'
-            : 'A confirmation link has been sent to your email. Please open your email and click the confirmation link to confirm your account before signing in.',
+            : 'Check your email for a confirmation link to verify your account before signing in. Don’t forget to check your spam folder if it doesn’t show up in your inbox!',
         });
       } else {
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({

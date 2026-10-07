@@ -41,7 +41,7 @@ import PetMedicalHistory from "../components/PetMedicalHistory";
 import SwipeableMessage from "../components/SwipeableMessage";
 import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
-import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment } from "../lib/flutterwave";
+import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment, isFlutterwaveCheckoutReady } from "../lib/flutterwave";
 import { sendPushNotification } from "../lib/notifications";
 import { createOfflineMessageId, enqueueOfflineMessage, readOfflineMessages, removeOfflineMessage, type OfflineOneToOneMessage } from "../lib/offlineMessageQueue";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
@@ -4155,7 +4155,6 @@ function ChatComposer({
                 ref={messageInputRef}
                 value={message}
                 onChangeText={setMessage}
-                selection={message ? { start: message.length, end: message.length } : undefined}
                 placeholder="Write a message..."
                 placeholderTextColor="#64748B"
                 style={[styles.input, { height: inputHeight, lineHeight: inputLineHeight }]}
@@ -4586,6 +4585,7 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
   const [customer, setCustomer] = useState<{ email: string; name: string } | null>(null);
   const [sellerSubaccountId, setSellerSubaccountId] = useState<string | undefined>();
   const [sellerProfileLoaded, setSellerProfileLoaded] = useState(false);
+  const [paymentConfirmationVisible, setPaymentConfirmationVisible] = useState(false);
   const isBuyer = item.receiver_id === currentUserId && item.sender_id !== currentUserId;
   const isPendingInvoice = metadata.status === "pending" && Boolean(metadata.invoice_id) && isBuyer;
 
@@ -4638,6 +4638,15 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 
   const handleWebPayment = () => {
     if (!customer || !metadata.invoice_id) return;
+    if (!isFlutterwaveCheckoutReady()) {
+      setPaymentConfirmationVisible(true);
+      return;
+    }
+    proceedWithWebPayment();
+  };
+
+  const proceedWithWebPayment = () => {
+    if (!customer || !metadata.invoice_id) return;
     handleFlutterwaveWebPayment({
       public_key: FLUTTERWAVE_CONFIG.PUBLIC_KEY,
       tx_ref: metadata.invoice_id,
@@ -4652,7 +4661,29 @@ function InvoiceMessage({ item, currentUserId, onPayInvoice }: { item: RealtimeM
 
   const payButton = isPendingInvoice && customer && sellerProfileLoaded ? Platform.OS === "web" ? <TouchableOpacity style={styles.payButton} onPress={handleWebPayment}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity> : <PayWithFlutterwave style={styles.payButton} options={{ authorization: FLUTTERWAVE_CONFIG.PUBLIC_KEY, tx_ref: metadata.invoice_id || "", amount: Number(metadata.amount), currency: "NGN", payment_options: "card,ussd,account_transfer", customer, subaccounts: sellerSubaccountId ? [{ id: sellerSubaccountId, transaction_split_ratio: 90 }] : undefined, customizations: { title: "Mobile Vet Invoice Payment", description: metadata.note || "Service / Product Payment" } }} onRedirect={handlePaymentSuccess} onAbort={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} onInitializeError={() => Alert.alert("Payment not completed", "Payment was not completed. Please try again.")} customButton={({ disabled, onPress }) => <TouchableOpacity style={styles.payButton} onPress={onPress} disabled={disabled}><Text style={styles.payButtonText}>Pay Now</Text></TouchableOpacity>} /> : null;
 
-  return <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>NGN {Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>;
+  return <>
+    <View style={styles.invoiceCard}><Text style={styles.invoiceTitle}>Invoice</Text><Text style={styles.invoiceSeller}>Seller: {metadata.seller_name || "Seller"}</Text><Text style={styles.invoiceAmount}>NGN {Number(metadata.amount || 0).toLocaleString("en-NG")}</Text>{metadata.items?.map((invoiceItem, index) => <View key={`${invoiceItem.description}-${index}`} style={styles.invoiceBreakdownRow}><Text style={styles.invoiceBreakdownName}>{invoiceItem.description}</Text><Text style={styles.invoiceBreakdownAmount}>NGN {Number(invoiceItem.amount).toLocaleString("en-NG")}</Text></View>)}{metadata.note ? <Text style={styles.invoiceNote}>{metadata.note}</Text> : null}<View style={styles.invoiceFooter}><View style={[styles.pendingBadge, metadata.status === "paid" && styles.paidBadge]}><Text style={[styles.pendingBadgeText, metadata.status === "paid" && styles.paidBadgeText]}>{metadata.status === "paid" ? "Paid" : "Pending"}</Text></View>{payButton}</View></View>
+    <Modal visible={paymentConfirmationVisible} transparent animationType="fade" onRequestClose={() => setPaymentConfirmationVisible(false)}>
+      <View style={styles.profileModalBackdrop}>
+        <View style={styles.deleteModalCard}>
+          <Text style={styles.deleteModalTitle}>Initializing payment gateway</Text>
+          <Text style={styles.protectionText}>Please confirm to proceed.</Text>
+          <TouchableOpacity
+            style={[styles.deleteModalAction, { backgroundColor: "#10B981" }]}
+            onPress={() => {
+              setPaymentConfirmationVisible(false);
+              proceedWithWebPayment();
+            }}
+          >
+            <Text style={styles.deleteModalActionText}>Proceed</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteModalCancel} onPress={() => setPaymentConfirmationVisible(false)}>
+            <Text style={styles.deleteModalCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  </>;
 }
 
 const defaultInvoiceItems: InvoiceItem[] = [
@@ -5388,7 +5419,5 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     </SafeAreaView>
   );
 }
-
-
 
 

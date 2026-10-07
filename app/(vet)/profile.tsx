@@ -450,13 +450,13 @@ export default function VetProfileScreen() {
     };
 
     if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+      if (window.confirm('This will deactivate your account and sign you out.')) {
         void confirmDelete();
       }
       return;
     }
 
-    Alert.alert('Delete Account', 'Are you sure you want to delete your account? This action cannot be undone.', [
+    Alert.alert('Deactivate Account', 'This will deactivate your account and sign you out.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => { void confirmDelete(); } },
     ]);

@@ -756,12 +756,12 @@ export default function ProfileScreen() {
     };
     if (
       Platform.OS === "web" &&
-      window.confirm("Are you sure you want to delete your account?")
+      window.confirm("This will deactivate your account and sign you out.")
     ) {
       void confirmDelete();
       return;
     }
-    Alert.alert("Delete Account", "This action cannot be undone.", [
+    Alert.alert("Deactivate Account", "This will deactivate your account and sign you out.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",

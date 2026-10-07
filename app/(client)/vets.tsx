@@ -100,6 +100,7 @@ export default function VetsScreen() {
           .from('profiles')
           .select(vetDirectoryFields)
           .eq('role', 'vet')
+          .is('deleted_at', null)
           .order('full_name', { ascending: true });
 
         let data = detailedQuery.data as VetProfile[] | null;
@@ -109,8 +110,9 @@ export default function VetsScreen() {
           console.warn('Retrying vet directory query without optional profile columns:', error.message);
           const fallbackQuery = await supabase
             .from('profiles')
-            .select('id, full_name, role, avatar_url, specialty, clinic, bio, latitude, longitude, city, state, phone_number')
+            .select('id, full_name, role, avatar_url, specialty, clinic, bio, latitude, longitude, city, state, phone_number, deleted_at')
             .eq('role', 'vet')
+            .is('deleted_at', null)
             .order('full_name', { ascending: true });
           data = fallbackQuery.data as VetProfile[] | null;
           error = fallbackQuery.error;

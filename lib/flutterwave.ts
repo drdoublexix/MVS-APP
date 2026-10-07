@@ -37,6 +37,9 @@ let flutterwaveScriptPromise: Promise<void> | null = null;
 const getFlutterwaveCheckout = () =>
   (window as Window & { FlutterwaveCheckout?: FlutterwaveCheckout }).FlutterwaveCheckout;
 
+export const isFlutterwaveCheckoutReady = () =>
+  typeof window !== 'undefined' && Boolean(getFlutterwaveCheckout());
+
 const loadFlutterwaveScript = (): Promise<void> => {
   if (getFlutterwaveCheckout()) {
     return Promise.resolve();
@@ -103,10 +106,6 @@ export const handleFlutterwaveWebPayment = (config: FlutterwaveWebPaymentConfig)
   if (typeof document === 'undefined') {
     config.onClose();
     return;
-  }
-
-  if (!getFlutterwaveCheckout()) {
-    window.alert('Initializing payment gateway, please confirm to proceed...');
   }
 
   loadFlutterwaveScript()

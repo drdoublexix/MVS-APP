@@ -9,7 +9,7 @@ import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, St
 import 'react-native-get-random-values';
 import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
-import { readCachedAuthState, safeSupabaseCall, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
+import { readCachedAuthState, safeSupabaseCall, signOutUser, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 
 const registerForPushNotifications = async (userId: string) => {
   const { registerForPushNotifications: register } = await import('../lib/notifications');
@@ -115,7 +115,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 function RootAuthGate() {
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
-  const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null } | null>(null);
+  const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null; deleted_at?: string | null } | null>(null);
   const profileRef = useRef(profile);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const router = useRouter();
@@ -246,7 +246,7 @@ function RootAuthGate() {
         if (cachedState.user) {
           if (mounted) {
             setAuthUser(cachedState.user as Session['user']);
-            if (cachedState.profile) setProfile(cachedState.profile as { role?: string | null; full_name?: string | null; avatar_url?: string | null; email?: string | null });
+            if (cachedState.profile) setProfile(cachedState.profile as { role?: string | null; full_name?: string | null; avatar_url?: string | null; email?: string | null; deleted_at?: string | null });
           }
           return;
         }
@@ -258,15 +258,25 @@ function RootAuthGate() {
       }
 
       try {
-        let profileData: { role?: string | null; full_name?: string | null; email?: string | null; avatar_url?: string | null } | null = null;
+        let profileData: { role?: string | null; full_name?: string | null; email?: string | null; avatar_url?: string | null; deleted_at?: string | null } | null = null;
         try {
           profileData = await safeSupabaseCall(() => supabase
             .from('profiles')
-            .select('role, full_name, email, avatar_url, has_seen_welcome')
+            .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at')
             .eq('id', session.user.id)
             .maybeSingle());
         } catch (profileError) {
           console.warn('[Auth Layout] Profile unavailable; using cached profile:', profileError);
+        }
+
+        if (profileData?.deleted_at) {
+          await signOutUser();
+          if (mounted) {
+            setAuthUser(null);
+            setProfile(null);
+            router.replace('/auth?mode=signin');
+          }
+          return;
         }
 
         console.log('[AUTH ROUTER] Profile query result:', { profileData });
@@ -366,7 +376,7 @@ function RootAuthGate() {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         void safeSupabaseCall(() => supabase
           .from('profiles')
-          .select('role, full_name, email, avatar_url, has_seen_welcome')
+          .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at')
           .eq('id', session.user.id)
           .maybeSingle())
           .then(async (data) => {

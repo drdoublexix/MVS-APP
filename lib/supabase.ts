@@ -397,8 +397,9 @@ export const upsertProfile = async (userId: string, role: AppRole, fullName?: st
 };
 
 export const getProfileRole = async (userId: string): Promise<AppRole | null> => {
-  const { data, error } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle();
+  const { data, error } = await supabase.from('profiles').select('role, deleted_at').eq('id', userId).maybeSingle();
   if (error) throw error;
+  if (data?.deleted_at) throw new Error('This account has been deactivated. Contact support if you need assistance.');
   if (!data?.role) return null;
   return denormalizeRole(data.role);
 };
