@@ -12,6 +12,7 @@ const corsHeaders = {
 const expoPushUrl = "https://exp.host/--/api/v2/push/send";
 const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY") || Deno.env.get("EXPO_PUBLIC_VAPID_KEY");
 const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY");
+const vaccineReminderCronSecret = Deno.env.get("VACCINE_REMINDER_CRON_SECRET");
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -43,6 +44,120 @@ const sendWebNotification = async (subscriptionString: string, title: string, bo
   await webPush.sendNotification(parsedSubscription, JSON.stringify({ title, body, data }));
 };
 
+const getPushFailureStatus = (error: unknown) =>
+  typeof error === "object" && error !== null && "statusCode" in error
+    ? String(error.statusCode)
+    : "unknown";
+
+const deliverReminderToRecipients = async ({
+  supabase,
+  recipientIds,
+  title,
+  bodyForRecipient,
+  reminderDedupeKey,
+  data,
+  recordId,
+  retryExisting,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  recipientIds: string[];
+  title: string;
+  bodyForRecipient: (recipientId: string) => string;
+  reminderDedupeKey: string;
+  data: Record<string, unknown>;
+  recordId: string;
+  retryExisting: boolean;
+}) => {
+  const outcomes = [];
+
+  for (const recipientId of new Set(recipientIds)) {
+    const body = bodyForRecipient(recipientId);
+    const recipientDedupeKey = `${reminderDedupeKey}:${recipientId}`;
+    const { data: storedNotification, error: notificationError } = await supabase.from("notifications").upsert({
+      user_id: recipientId,
+      title,
+      body,
+      read_status: false,
+      reminder_dedupe_key: recipientDedupeKey,
+    }, { onConflict: "reminder_dedupe_key", ignoreDuplicates: true }).select("id").maybeSingle();
+
+    if (notificationError) {
+      console.error("Failed to persist treatment reminder notification:", notificationError);
+      outcomes.push({ recordId, recipientId, sent: false, reason: "notification persistence failed" });
+      continue;
+    }
+
+    let notification = storedNotification;
+    const duplicate = !notification;
+
+    if (duplicate && retryExisting) {
+      const { data: existingNotification, error: existingNotificationError } = await supabase
+        .from("notifications")
+        .select("id")
+        .eq("user_id", recipientId)
+        .eq("reminder_dedupe_key", recipientDedupeKey)
+        .maybeSingle();
+
+      if (existingNotificationError || !existingNotification) {
+        console.error("Failed to load existing treatment reminder for retry:", existingNotificationError);
+        outcomes.push({ recordId, recipientId, sent: false, duplicate: true, reason: "existing notification lookup failed" });
+        continue;
+      }
+
+      notification = existingNotification;
+    } else if (duplicate) {
+      outcomes.push({ recordId, recipientId, sent: false, duplicate: true });
+      continue;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("expo_push_token, web_push_subscription")
+      .eq("id", recipientId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Failed to load treatment reminder recipient data:", profileError);
+      outcomes.push({ recordId, recipientId, sent: false, reason: "recipient lookup failed" });
+      continue;
+    }
+
+    const notificationData = { ...data, notificationId: notification.id };
+    const outcome = { recordId, recipientId, sent: false, expo: false, web: false, duplicate, expoErrorStatus: null as string | null, webErrorStatus: null as string | null };
+
+    try {
+      if (profile?.expo_push_token) {
+        await sendExpoNotification(profile.expo_push_token, {
+          to: profile.expo_push_token,
+          sound: "default",
+          title,
+          body,
+          data: notificationData,
+        });
+        outcome.expo = true;
+      }
+    } catch (error) {
+      console.error("Expo push request failed for treatment reminder:", error);
+      outcome.expoErrorStatus = getPushFailureStatus(error);
+    }
+
+    try {
+      if (profile?.web_push_subscription) {
+        await sendWebNotification(profile.web_push_subscription, title, body, notificationData);
+        outcome.web = true;
+      }
+    } catch (error) {
+      console.error("Web push request failed for treatment reminder:", error);
+      outcome.webErrorStatus = getPushFailureStatus(error);
+    }
+
+    outcome.sent = outcome.expo || outcome.web;
+    outcomes.push(outcome);
+  }
+
+  return outcomes;
+};
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
@@ -51,9 +166,11 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) throw new Error("Supabase service configuration is missing.");
-    if (req.headers.get("authorization") !== `Bearer ${serviceRoleKey}`) {
+    if (!vaccineReminderCronSecret || req.headers.get("x-cron-secret") !== vaccineReminderCronSecret) {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
+    const requestBody = await req.json();
+    const retryExisting = requestBody?.retry_delivery === true;
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -63,110 +180,46 @@ serve(async (req: Request) => {
 
     const results = [];
     for (const reminder of reminders || []) {
-      const daysRemaining = Number(reminder.days_remaining);
-      const title = "Vaccination Due Reminder 🐾";
-      const body = `${reminder.pet_name}'s ${reminder.treatment_title} (${reminder.dose_info}) is due in ${daysRemaining} day(s)! Tap to view details or book a vet.`;
-
-      const { data: storedNotification, error: notificationError } = await supabase.from("notifications").insert({
-        user_id: reminder.owner_id,
+      const title = "Treatment Due Reminder 🐾";
+      const dueLabel = reminder.reminder_label === "today"
+        ? "due today"
+        : `due in ${reminder.reminder_label}`;
+      const outcomes = await deliverReminderToRecipients({
+        supabase,
+        recipientIds: [reminder.owner_id, reminder.vet_id],
         title,
-        body,
-        read_status: false,
-      }).select("id").single();
-      if (notificationError) {
-        console.error("Failed to persist vaccine reminder notification:", notificationError);
-      }
-
-      const [{ data: profile, error: profileError }, { data: record, error: recordError }] = await Promise.all([
-        supabase.from("profiles").select("expo_push_token, web_push_subscription").eq("id", reminder.owner_id).maybeSingle(),
-        supabase.from("pet_medical_records").select("pet_id").eq("id", reminder.record_id).maybeSingle(),
-      ]);
-
-      if (profileError || recordError) {
-        console.error("Failed to load reminder recipient data:", profileError || recordError);
-        results.push({ recordId: reminder.record_id, sent: false, reason: "recipient lookup failed" });
-        continue;
-      }
-
-      const data = { petId: record?.pet_id || null, recordId: reminder.record_id, notificationId: storedNotification?.id, url: "/" };
-
-      const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
-
-      try {
-        if (profile?.expo_push_token) {
-          await sendExpoNotification(profile.expo_push_token, { to: profile.expo_push_token, sound: "default", title, body, data });
-          outcome.expo = true;
-        }
-      } catch (error) {
-        console.error("Expo push request failed for vaccine reminder:", error);
-      }
-
-      try {
-        if (profile?.web_push_subscription) {
-          await sendWebNotification(profile.web_push_subscription, title, body, data);
-          outcome.web = true;
-        }
-      } catch (error) {
-        console.error("Web push request failed for vaccine reminder:", error);
-      }
-
-      outcome.sent = outcome.expo || outcome.web;
-      results.push(outcome);
+        bodyForRecipient: (recipientId) => recipientId === reminder.vet_id
+          ? `The ${reminder.treatment_title} you logged for ${reminder.pet_name} (${reminder.dose_info}) is ${dueLabel}.`
+          : `${reminder.pet_name}'s ${reminder.treatment_title} (${reminder.dose_info}) is ${dueLabel}. Tap to view details or book a vet.`,
+        reminderDedupeKey: `pet:${reminder.record_id}:${new Date(reminder.due_date).toISOString()}:${reminder.reminder_label}`,
+        data: { petId: reminder.pet_id, recordId: reminder.record_id, url: "/" },
+        recordId: reminder.record_id,
+        retryExisting,
+      });
+      results.push(...outcomes);
     }
 
     const { data: farmReminders, error: farmReminderError } = await supabase.rpc("get_due_farm_treatment_reminders");
     if (farmReminderError) throw farmReminderError;
 
     for (const reminder of farmReminders || []) {
-      const daysRemaining = Number(reminder.days_remaining);
       const title = "Livestock Treatment Due Reminder";
-      const body = `${reminder.species}'s ${reminder.treatment_title} is due in ${daysRemaining} day(s). Tap to view the farm medical timeline.`;
-
-      const { data: storedNotification, error: notificationError } = await supabase.from("notifications").insert({
-        user_id: reminder.owner_id,
+      const dueLabel = reminder.reminder_label === "today"
+        ? "due today"
+        : `due in ${reminder.reminder_label}`;
+      const outcomes = await deliverReminderToRecipients({
+        supabase,
+        recipientIds: [reminder.owner_id, reminder.vet_id],
         title,
-        body,
-        read_status: false,
-      }).select("id").single();
-      if (notificationError) {
-        console.error("Failed to persist farm reminder notification:", notificationError);
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("expo_push_token, web_push_subscription")
-        .eq("id", reminder.owner_id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error("Failed to load farm reminder recipient data:", profileError);
-        results.push({ recordId: reminder.record_id, sent: false, reason: "recipient lookup failed" });
-        continue;
-      }
-
-      const data = { farmId: reminder.farm_id, recordId: reminder.record_id, notificationId: storedNotification?.id, url: "/profile" };
-      const outcome = { recordId: reminder.record_id, sent: false, expo: false, web: false };
-
-      try {
-        if (profile?.expo_push_token) {
-          await sendExpoNotification(profile.expo_push_token, { to: profile.expo_push_token, sound: "default", title, body, data });
-          outcome.expo = true;
-        }
-      } catch (error) {
-        console.error("Expo push request failed for farm treatment reminder:", error);
-      }
-
-      try {
-        if (profile?.web_push_subscription) {
-          await sendWebNotification(profile.web_push_subscription, title, body, data);
-          outcome.web = true;
-        }
-      } catch (error) {
-        console.error("Web push request failed for farm treatment reminder:", error);
-      }
-
-      outcome.sent = outcome.expo || outcome.web;
-      results.push(outcome);
+        bodyForRecipient: (recipientId) => recipientId === reminder.vet_id
+          ? `The ${reminder.treatment_title} you logged for ${reminder.species} is ${dueLabel}.`
+          : `${reminder.species}'s ${reminder.treatment_title} is ${dueLabel}. Tap to view the farm medical timeline.`,
+        reminderDedupeKey: `farm:${reminder.record_id}:${new Date(reminder.next_due_date).toISOString()}:${reminder.reminder_label}`,
+        data: { farmId: reminder.farm_id, recordId: reminder.record_id, url: "/profile" },
+        recordId: reminder.record_id,
+        retryExisting,
+      });
+      results.push(...outcomes);
     }
 
     return jsonResponse({ processed: results.length, results });
