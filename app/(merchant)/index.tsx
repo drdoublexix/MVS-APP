@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
     Image,
@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import KnowledgeHubSection from "../../components/KnowledgeHubSection";
+import HomeAnimalTools from "../../components/HomeAnimalTools";
 import MarketplaceBrowseModal from "../../components/MarketplaceBrowseModal";
 import ProductImageCarousel from "../../components/ProductImageCarousel";
 import WelcomeModal from "../../components/WelcomeModal";
@@ -34,6 +35,7 @@ const naira = (value: number) => `₦${value.toLocaleString("en-NG")}`;
 
 export default function MerchantDashboardScreen() {
   const router = useRouter();
+  const { openMarketplace } = useLocalSearchParams<{ openMarketplace?: string }>();
   const { products } = useMarketplace();
   const [visible, setVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
@@ -53,6 +55,16 @@ export default function MerchantDashboardScreen() {
     Record<string, string>
   >({});
   const [supportOffsetY, setSupportOffsetY] = useState(0);
+
+  useEffect(() => {
+    if (openMarketplace !== "true") return;
+    const frameId = requestAnimationFrame(() => {
+      setMarketplaceBrowseVisible(true);
+      router.setParams({ openMarketplace: undefined });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [openMarketplace, router]);
+
   const openWhatsAppSupport = async () => {
     const message =
       "Hello MVS Support, I need assistance with my account. Role: merchant";
@@ -282,6 +294,7 @@ export default function MerchantDashboardScreen() {
           <MaterialCommunityIcons name="plus" size={21} color="#FFFFFF" />
           <Text style={styles.addText}>Add New Product</Text>
         </TouchableOpacity>
+        <HomeAnimalTools onContactVendor={() => setMarketplaceBrowseVisible(true)} />
         <View style={styles.marketplaceHeader}>
           <Text style={styles.sectionTitle}>Global Marketplace Inventory</Text>
           <TouchableOpacity onPress={() => setMarketplaceBrowseVisible(true)}>

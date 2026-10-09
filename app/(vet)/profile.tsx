@@ -19,6 +19,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
+import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
+import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import { requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
@@ -549,6 +551,8 @@ export default function VetProfileScreen() {
         {/* Account Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
+          <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: '/(vet)', params: { openMarketplace: 'true' } })} />
+          <MVSDiseasePredictor />
           <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
           <Setting label="Change Password" icon="lock" onPress={() => setModal('password')} />
           <Setting label="Notifications" icon="bell" onPress={() => setModal('notifications')} />

@@ -21,6 +21,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
+import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
+import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -597,6 +599,8 @@ export default function MerchantProfileScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
+          <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: '/(merchant)', params: { openMarketplace: 'true' } })} />
+          <MVSDiseasePredictor />
           <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
           <Setting label="My Inventory" icon="archive" onPress={() => router.push('/inventory')} />
           <Setting label="Change Password" icon="lock" onPress={() => setModal('password')} />

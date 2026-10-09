@@ -22,6 +22,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../../components/AvatarPreviewModal";
+import MVSDiseasePredictor from "../../components/MVSDiseasePredictor";
+import MVSFeedCalculator from "../../components/MVSFeedCalculator";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
@@ -1142,6 +1144,8 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
+          <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: "/(client)", params: { openMarketplace: "true" } })} />
+          <MVSDiseasePredictor onContactVet={() => router.push('/(client)/vets')} />
           <Setting label="Edit Profile" onPress={() => setModal("profile")} />
           <Setting
             label="Change Password"

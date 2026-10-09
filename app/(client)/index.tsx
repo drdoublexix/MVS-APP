@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import HomeAnimalTools from '../../components/HomeAnimalTools';
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
@@ -28,6 +29,7 @@ const naira = (price: number) => `₦${price.toLocaleString()}`;
 
 export default function ClientHome() {
   const router = useRouter();
+  const { openMarketplace } = useLocalSearchParams<{ openMarketplace?: string }>();
   const role = 'client';
   const { products } = useMarketplace();
   const [aiVisible, setAiVisible] = useState(false);
@@ -40,6 +42,15 @@ export default function ClientHome() {
   const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
   const [marketplaceBrowseVisible, setMarketplaceBrowseVisible] = useState(false);
   const messagesScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (openMarketplace !== 'true') return;
+    const frameId = requestAnimationFrame(() => {
+      setMarketplaceBrowseVisible(true);
+      router.setParams({ openMarketplace: undefined });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [openMarketplace, router]);
 
   const firstName = user?.user_metadata?.full_name?.split(' ')[0] || user?.user_metadata?.first_name || 'there';
 
@@ -263,6 +274,11 @@ export default function ClientHome() {
             <Text style={styles.bannerButtonText}>Consult</Text>
           </TouchableOpacity>
         </View>
+
+        <HomeAnimalTools
+          onContactVendor={() => setMarketplaceBrowseVisible(true)}
+          onContactVet={() => router.push('/(client)/vets')}
+        />
 
         <SectionHeader title="Marketplace" action="Browse All" onAction={() => setMarketplaceBrowseVisible(true)} />
         <View style={styles.grid}>

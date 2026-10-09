@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
+import HomeAnimalTools from '../../components/HomeAnimalTools';
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
@@ -26,6 +27,7 @@ interface AiSession {
 
 export default function VetDashboardScreen() {
   const router = useRouter();
+  const { openMarketplace } = useLocalSearchParams<{ openMarketplace?: string }>();
   const { products } = useMarketplace();
   const [selectedProduct, setSelectedProduct] = useState<(typeof products)[number] | null>(null);
   const [marketplaceBrowseVisible, setMarketplaceBrowseVisible] = useState(false);
@@ -40,6 +42,15 @@ export default function VetDashboardScreen() {
   const [retryPrompt, setRetryPrompt] = useState('');
   const [aiSession, setAiSession] = useState<AiSession | null>(null);
   const messagesScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (openMarketplace !== 'true') return;
+    const frameId = requestAnimationFrame(() => {
+      setMarketplaceBrowseVisible(true);
+      router.setParams({ openMarketplace: undefined });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [openMarketplace, router]);
 
   useEffect(() => {
     // 1. Fetch marketplace products
@@ -263,6 +274,8 @@ export default function VetDashboardScreen() {
         </View>
 
         <KnowledgeHubSection />
+
+        <HomeAnimalTools onContactVendor={() => setMarketplaceBrowseVisible(true)} />
 
         <View style={styles.marketplaceHeader}>
           <Text style={styles.sectionTitle}>Global Marketplace</Text>

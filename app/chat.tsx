@@ -2195,6 +2195,7 @@ export default function ChatScreen() {
           .from("pet_soap_records")
           .select("id, created_at, pet_id, weight_kg, temperature_c, heart_rate_bpm, subjective, objective, assessment, plan, is_deleted")
           .in("pet_id", pets.map((pet) => pet.id))
+          .eq("vet_id", currentUserId)
           .eq("is_deleted", false)
           .order("created_at", { ascending: false });
         if (recordsError) throw recordsError;
@@ -2244,12 +2245,20 @@ export default function ChatScreen() {
       if (farmError) throw farmError;
       const farmIds = (farms || []).map((farm) => farm.id);
       const { data: soapRecords, error: soapError } = farmIds.length
-        ? await supabase
-            .from("farm_soap_records")
-            .select("id, farm_id, subjective, objective, tentative_diagnosis, plan, created_at, is_deleted")
-            .in("farm_id", farmIds)
-            .eq("is_deleted", false)
-            .order("created_at", { ascending: false })
+        ? await (["vet", "veterinarian"].includes(userRole)
+            ? supabase
+                .from("farm_soap_records")
+                .select("id, farm_id, subjective, objective, tentative_diagnosis, plan, created_at, is_deleted")
+                .in("farm_id", farmIds)
+                .eq("vet_id", currentUserId)
+                .eq("is_deleted", false)
+                .order("created_at", { ascending: false })
+            : supabase
+                .from("farm_soap_records")
+                .select("id, farm_id, subjective, objective, tentative_diagnosis, plan, created_at, is_deleted")
+                .in("farm_id", farmIds)
+                .eq("is_deleted", false)
+                .order("created_at", { ascending: false }))
         : { data: [], error: null };
       if (soapError) throw soapError;
       const recordsWithHistory = (farms || []).map((farm) => ({
@@ -5419,5 +5428,4 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
     </SafeAreaView>
   );
 }
-
 
