@@ -275,7 +275,9 @@ export default function VetDashboardScreen() {
 
         <KnowledgeHubSection />
 
-        <HomeAnimalTools onContactVendor={() => setMarketplaceBrowseVisible(true)} />
+        <View style={styles.animalToolsSection}>
+          <HomeAnimalTools onContactVendor={() => setMarketplaceBrowseVisible(true)} />
+        </View>
 
         <View style={styles.marketplaceHeader}>
           <Text style={styles.sectionTitle}>Global Marketplace</Text>
@@ -472,6 +474,7 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' },
   subtitle: { color: '#94A3B8', marginTop: 4, marginBottom: 24 },
   metrics: { flexDirection: 'row', gap: 10, marginBottom: 28 },
+  animalToolsSection: { marginTop: 12 },
   metric: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#334155', elevation: 3, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5 },
   metricIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   muted: { color: '#94A3B8', fontSize: 12 },

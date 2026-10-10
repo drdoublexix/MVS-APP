@@ -511,6 +511,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
+    marginTop: 12,
     marginBottom: 28,
   },
   addText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
