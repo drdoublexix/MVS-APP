@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
+import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
 import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
 import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import { registerForPushNotifications } from '../../lib/notifications';
@@ -77,6 +78,7 @@ const NIGERIAN_BANKS = [
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
+  const [confirmationVisible, setConfirmationVisible] = useState(false);
 
   const onLogout = async () => {
     setLoading(true);
@@ -103,28 +105,39 @@ export function LogoutButton() {
   };
 
   return (
-    <Pressable
-      onPress={onLogout}
-      style={({ pressed }) => ({
-        backgroundColor: '#EF4444',
-        paddingVertical: 14,
-        paddingHorizontal: 20,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pressed || loading ? 0.7 : 1,
-        marginTop: 16,
-        zIndex: 999,
-      })}
-    >
-      {loading ? (
-        <ActivityIndicator color="#FFFFFF" />
-      ) : (
-        <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>
-          Log out
-        </Text>
-      )}
-    </Pressable>
+    <>
+      <Pressable
+        onPress={() => setConfirmationVisible(true)}
+        disabled={loading}
+        style={({ pressed }) => ({
+          backgroundColor: '#EF4444',
+          paddingVertical: 14,
+          paddingHorizontal: 20,
+          borderRadius: 12,
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed || loading ? 0.7 : 1,
+          marginTop: 16,
+          zIndex: 999,
+        })}
+      >
+        {loading ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>
+            Log out
+          </Text>
+        )}
+      </Pressable>
+      <LogoutConfirmationModal
+        visible={confirmationVisible}
+        onCancel={() => setConfirmationVisible(false)}
+        onConfirm={() => {
+          setConfirmationVisible(false);
+          void onLogout();
+        }}
+      />
+    </>
   );
 }
 
@@ -157,6 +170,7 @@ export default function MerchantProfileScreen() {
   const [modal, setModal] = useState<SettingsModal>(null);
   const [bankPickerVisible, setBankPickerVisible] = useState(false);
   const [bankSaving, setBankSaving] = useState(false);
+  const [deleteConfirmationVisible, setDeleteConfirmationVisible] = useState(false);
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -476,31 +490,17 @@ export default function MerchantProfileScreen() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    const confirmDelete = async () => {
-      try {
-        const { error } = await supabase.rpc('delete_user_account');
-        if (error) throw error;
-        await signOutUser();
-        setProfile((current) => ({ ...current, name: '', email: '', phone: '', business: '', location: '', cacRegNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '' }));
-        setAvatarUrl(null);
-        router.replace('/auth?mode=signin');
-      } catch (error) {
-        Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');
-      }
-    };
-
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm('This will deactivate your account and sign you out.')) {
-        void confirmDelete();
-      }
-      return;
+  const handleDeleteAccount = async () => {
+    try {
+      const { error } = await supabase.rpc('delete_user_account');
+      if (error) throw error;
+      await signOutUser();
+      setProfile((current) => ({ ...current, name: '', email: '', phone: '', business: '', location: '', cacRegNumber: '', avatar: '', bankName: '', bankCode: '', accountNumber: '', accountName: '', flutterwaveSubaccountId: '' }));
+      setAvatarUrl(null);
+      router.replace('/auth?mode=signin');
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');
     }
-
-    Alert.alert('Deactivate Account', 'This will deactivate your account and sign you out.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { void confirmDelete(); } },
-    ]);
   };
 
   const pickAvatar = async () => {
@@ -610,12 +610,24 @@ export default function MerchantProfileScreen() {
 
         <View style={styles.section}>
           <LogoutButton />
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
+          <TouchableOpacity style={styles.deleteButton} onPress={() => setDeleteConfirmationVisible(true)}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color="#FCA5A5" />
             <Text style={styles.deleteText}>Delete account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <LogoutConfirmationModal
+        visible={deleteConfirmationVisible}
+        title="Deactivate account?"
+        message="This will deactivate your account and sign you out."
+        confirmLabel="Delete account"
+        onCancel={() => setDeleteConfirmationVisible(false)}
+        onConfirm={() => {
+          setDeleteConfirmationVisible(false);
+          void handleDeleteAccount();
+        }}
+      />
 
       {/* Edit Profile Modal */}
       <Modal visible={modal === 'profile'} animationType="fade" transparent onRequestClose={() => setModal(null)}>

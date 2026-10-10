@@ -9,6 +9,13 @@ type AuthMode = 'sign-in' | 'sign-up';
 const VERIFIED_NOTICE_KEY = 'mvs_verified_auth_notice';
 const PRODUCTION_AUTH_URL = 'https://mvsapp.com.ng/auth?mode=signin';
 
+const normalizeNigerianPhoneInput = (value: string) => {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('234')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits.slice(0, 10);
+};
+
 const getAuthRedirectUrl = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
     return `${window.location.origin}/auth?mode=signin`;
@@ -37,7 +44,7 @@ const getVerifiedNotice = () => {
 };
 
 const roles: { value: Role; label: string }[] = [
-  { value: 'client', label: 'Pet parent' },
+  { value: 'client', label: 'Pet owner/Farmer' },
   { value: 'vet', label: 'Veterinarian' },
   { value: 'merchant', label: 'Merchant' },
 ];
@@ -55,6 +62,7 @@ export default function AuthScreen() {
   const [role, setRole] = useState<Role>('client');
   const [email, setEmail] = useState(verifiedNotice.email);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -121,6 +129,12 @@ export default function AuthScreen() {
     try {
       const cleanEmail = email.trim();
       if (!cleanEmail || !password) throw new Error('Enter your email and password to continue.');
+      if (mode === 'sign-up' && !/^[789]\d{9}$/.test(phoneNumber)) {
+        throw new Error('Enter a valid 10-digit Nigerian phone number starting with 7, 8, or 9.');
+      }
+      if (mode === 'sign-up' && role === 'vet' && !licenseNumber.trim()) {
+        throw new Error('Enter your VCN number to register as a veterinarian.');
+      }
       if (mode === 'sign-up' && !/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])/.test(password)) {
         const validationMessage = 'Password must include an uppercase letter, lowercase letter, number, and special symbol (@$!%*?&).';
         setPasswordError(validationMessage);
@@ -134,8 +148,9 @@ export default function AuthScreen() {
           options: {
             data: {
               full_name: fullName.trim(),
-              phone_number: phoneNumber.trim(),
+              phone_number: `+234${phoneNumber}`,
               role,
+              ...(role === 'vet' ? { license_number: licenseNumber.trim() } : {}),
             },
             emailRedirectTo: getAuthRedirectUrl(),
           },
@@ -227,7 +242,32 @@ export default function AuthScreen() {
           />
         ) : null}
         <TextInput style={styles.input} placeholder="Email address" placeholderTextColor="#718096" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
-        {mode === 'sign-up' ? <TextInput style={styles.input} placeholder="e.g. +2349012345678" placeholderTextColor="#718096" keyboardType="phone-pad" value={phoneNumber} onChangeText={setPhoneNumber} /> : null}
+        {mode === 'sign-up' ? (
+          <View style={styles.phoneInputContainer}>
+            <View style={styles.countryCode}>
+              <Text style={styles.countryCodeText}>+234</Text>
+            </View>
+            <TextInput
+              accessibilityLabel="Nigerian phone number without country code"
+              style={styles.phoneInput}
+              placeholder="9012345678"
+              placeholderTextColor="#718096"
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={(value) => setPhoneNumber(normalizeNigerianPhoneInput(value))}
+            />
+          </View>
+        ) : null}
+        {mode === 'sign-up' && role === 'vet' ? (
+          <TextInput
+            accessibilityLabel="Veterinary Council of Nigeria (VCN) number"
+            style={styles.input}
+            placeholder="VCN number"
+            placeholderTextColor="#718096"
+            value={licenseNumber}
+            onChangeText={setLicenseNumber}
+          />
+        ) : null}
         <View style={styles.passwordInputContainer}>
           <TextInput
             style={styles.passwordInput}
@@ -308,15 +348,19 @@ const styles = StyleSheet.create({
   modeText: { color: '#94A3B8', fontWeight: '700' },
   activeModeText: { color: '#052E2B' },
   input: { backgroundColor: '#E8F0FC', borderRadius: 8, color: '#08111F', paddingHorizontal: 16, paddingVertical: 14, fontSize: 16 },
+  phoneInputContainer: { alignItems: 'center', backgroundColor: '#E8F0FC', borderRadius: 8, flexDirection: 'row' },
+  countryCode: { paddingLeft: 16, paddingRight: 8, paddingVertical: 14 },
+  countryCodeText: { color: '#059669', fontSize: 16, fontWeight: '800' },
+  phoneInput: { color: '#08111F', flex: 1, fontSize: 16, paddingHorizontal: 8, paddingVertical: 14 },
   passwordInputContainer: { alignItems: 'center', backgroundColor: '#E8F0FC', borderRadius: 8, flexDirection: 'row' },
   passwordInput: { color: '#08111F', flex: 1, fontSize: 16, paddingHorizontal: 16, paddingVertical: 14 },
   passwordToggle: { paddingHorizontal: 14, paddingVertical: 12 },
   passwordHint: { color: '#94A3B8', fontSize: 12, marginTop: -6 },
   passwordError: { color: '#FDA4AF', fontSize: 12, marginTop: -6 },
   roles: { flexDirection: 'row', gap: 8 },
-  role: { flex: 1, borderColor: '#334155', borderRadius: 8, borderWidth: 1, padding: 12, alignItems: 'center' },
+  role: { flex: 1, borderColor: '#334155', borderRadius: 8, borderWidth: 1, padding: 12, alignItems: 'center', justifyContent: 'center' },
   selectedRole: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  roleText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  roleText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700', textAlign: 'center', width: '100%' },
   selectedRoleText: { color: '#052E2B' },
   error: { color: '#FDA4AF', backgroundColor: '#3B1725', borderRadius: 8, padding: 12 },
   message: { color: '#6EE7B7', backgroundColor: '#12352F', borderRadius: 8, padding: 12 },

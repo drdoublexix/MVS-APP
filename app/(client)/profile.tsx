@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../../components/AvatarPreviewModal";
+import LogoutConfirmationModal from "../../components/LogoutConfirmationModal";
 import MVSDiseasePredictor from "../../components/MVSDiseasePredictor";
 import MVSFeedCalculator from "../../components/MVSFeedCalculator";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
@@ -141,6 +142,8 @@ export default function ProfileScreen() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [petEditorVisible, setPetEditorVisible] = useState(false);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
+  const [logoutConfirmationVisible, setLogoutConfirmationVisible] = useState(false);
+  const [deleteConfirmationVisible, setDeleteConfirmationVisible] = useState(false);
   const [profileState, setProfile] = useState<{
     name?: string;
     phone?: string;
@@ -736,43 +739,24 @@ export default function ProfileScreen() {
       router.replace('/auth?mode=signin');
     }
   };
-  const handleDeleteAccount = () => {
-    const confirmDelete = async () => {
-      try {
-        const { error } = await supabase.rpc("delete_user_account");
-        if (error) throw error;
-        await signOutUser();
-        setUser(null);
-        setProfile(null);
-        setAvatarUrl(null);
-        setCurrentUserId("");
-        setPets([]);
-        setFarmRecords([]);
-        router.replace('/auth?mode=signin');
-      } catch (error) {
-        Alert.alert(
-          "Error",
-          error instanceof Error ? error.message : "Failed to delete account."
-        );
-      }
-    };
-    if (
-      Platform.OS === "web" &&
-      window.confirm("This will deactivate your account and sign you out.")
-    ) {
-      void confirmDelete();
-      return;
+  const handleDeleteAccount = async () => {
+    try {
+      const { error } = await supabase.rpc("delete_user_account");
+      if (error) throw error;
+      await signOutUser();
+      setUser(null);
+      setProfile(null);
+      setAvatarUrl(null);
+      setCurrentUserId("");
+      setPets([]);
+      setFarmRecords([]);
+      router.replace('/auth?mode=signin');
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error instanceof Error ? error.message : "Failed to delete account."
+      );
     }
-    Alert.alert("Deactivate Account", "This will deactivate your account and sign you out.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          void confirmDelete();
-        },
-      },
-    ]);
   };
 
   const pickAvatar = async () => {
@@ -1159,18 +1143,37 @@ export default function ProfileScreen() {
         <TouchableOpacity
           style={styles.logout}
           onPress={() => {
-            void handleLogout();
+            setLogoutConfirmationVisible(true);
           }}
         >
           <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.deleteAccount}
-          onPress={handleDeleteAccount}
+          onPress={() => setDeleteConfirmationVisible(true)}
         >
           <Text style={styles.deleteText}>Delete account</Text>
         </TouchableOpacity>
       </ScrollView>
+      <LogoutConfirmationModal
+        visible={logoutConfirmationVisible}
+        onCancel={() => setLogoutConfirmationVisible(false)}
+        onConfirm={() => {
+          setLogoutConfirmationVisible(false);
+          void handleLogout();
+        }}
+      />
+      <LogoutConfirmationModal
+        visible={deleteConfirmationVisible}
+        title="Deactivate account?"
+        message="This will deactivate your account and sign you out."
+        confirmLabel="Delete account"
+        onCancel={() => setDeleteConfirmationVisible(false)}
+        onConfirm={() => {
+          setDeleteConfirmationVisible(false);
+          void handleDeleteAccount();
+        }}
+      />
       <Modal
         visible={farmModalVisible}
         animationType="fade"

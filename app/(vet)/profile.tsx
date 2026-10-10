@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
+import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
 import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
 import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import { requestDeviceLocation } from '../../lib/location';
@@ -83,6 +84,8 @@ export default function VetProfileScreen() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
+  const [logoutConfirmationVisible, setLogoutConfirmationVisible] = useState(false);
+  const [deleteConfirmationVisible, setDeleteConfirmationVisible] = useState(false);
 
   const [profile, setProfile] = useState({
     name: 'Veterinarian',
@@ -426,42 +429,16 @@ export default function VetProfileScreen() {
     }
   };
 
-  const confirmLogout = () => {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm('Are you sure you want to log out?')) void handleLogout();
-      return;
+  const handleDeleteAccount = async () => {
+    try {
+      const { error } = await supabase.rpc('delete_user_account');
+      if (error) throw error;
+
+      await signOutUser();
+      router.replace('/auth?mode=signin');
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');
     }
-
-    Alert.alert('Log out?', 'You will be signed out of your account.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log out', style: 'destructive', onPress: () => { void handleLogout(); } },
-    ]);
-  };
-
-  const handleDeleteAccount = () => {
-    const confirmDelete = async () => {
-      try {
-        const { error } = await supabase.rpc('delete_user_account');
-        if (error) throw error;
-
-        await signOutUser();
-        router.replace('/auth?mode=signin');
-      } catch (error) {
-        Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account.');
-      }
-    };
-
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm('This will deactivate your account and sign you out.')) {
-        void confirmDelete();
-      }
-      return;
-    }
-
-    Alert.alert('Deactivate Account', 'This will deactivate your account and sign you out.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { void confirmDelete(); } },
-    ]);
   };
 
   const pickAvatar = async () => {
@@ -561,17 +538,37 @@ export default function VetProfileScreen() {
 
         {/* Account Actions */}
         <View style={styles.section}>
-          <TouchableOpacity style={styles.logout} onPress={confirmLogout}>
+          <TouchableOpacity style={styles.logout} onPress={() => setLogoutConfirmationVisible(true)}>
             <MaterialCommunityIcons name="logout" size={18} color="#FFFFFF" />
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
+          <TouchableOpacity style={styles.deleteButton} onPress={() => setDeleteConfirmationVisible(true)}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color="#FCA5A5" />
             <Text style={styles.deleteText}>Delete account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <LogoutConfirmationModal
+        visible={logoutConfirmationVisible}
+        onCancel={() => setLogoutConfirmationVisible(false)}
+        onConfirm={() => {
+          setLogoutConfirmationVisible(false);
+          void handleLogout();
+        }}
+      />
+      <LogoutConfirmationModal
+        visible={deleteConfirmationVisible}
+        title="Deactivate account?"
+        message="This will deactivate your account and sign you out."
+        confirmLabel="Delete account"
+        onCancel={() => setDeleteConfirmationVisible(false)}
+        onConfirm={() => {
+          setDeleteConfirmationVisible(false);
+          void handleDeleteAccount();
+        }}
+      />
 
       {/* Edit Profile Modal */}
       <Modal visible={modal === 'profile'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
