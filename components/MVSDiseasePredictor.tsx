@@ -19,8 +19,18 @@ type Symptom =
   | 'Vomiting'
   | 'Fever'
   | 'Lethargy'
+  | 'Somnolence (unusually sleepy)'
+  | 'Inactive or less responsive than usual'
+  | 'Reduced agility or reluctance to move'
   | 'Coughing'
   | 'Difficulty breathing'
+  | 'Greenish diarrhea or droppings'
+  | 'White or creamy droppings'
+  | 'Brownish diarrhea or droppings'
+  | 'Bloody diarrhea'
+  | 'Dark, unclotted blood from body openings'
+  | 'Sudden unexplained death'
+  | 'Neurologic signs (tremors, twisted neck, or paralysis)'
   | 'Excessive thirst'
   | 'Frequent urination'
   | 'Rashes'
@@ -60,8 +70,18 @@ const symptoms: Symptom[] = [
   'Vomiting',
   'Fever',
   'Lethargy',
+  'Somnolence (unusually sleepy)',
+  'Inactive or less responsive than usual',
+  'Reduced agility or reluctance to move',
   'Coughing',
   'Difficulty breathing',
+  'Greenish diarrhea or droppings',
+  'White or creamy droppings',
+  'Brownish diarrhea or droppings',
+  'Bloody diarrhea',
+  'Dark, unclotted blood from body openings',
+  'Sudden unexplained death',
+  'Neurologic signs (tremors, twisted neck, or paralysis)',
   'Excessive thirst',
   'Frequent urination',
   'Rashes',
@@ -77,7 +97,7 @@ const symptoms: Symptom[] = [
 
 const diseaseMatrix: Record<Species, Differential[]> = {
   Dog: [
-    { name: 'Canine parvovirus', symptoms: ['Vomiting', 'Diarrhea', 'Fever', 'Lethargy', 'Loss of appetite'], note: 'A contagious, potentially severe intestinal infection; prompt veterinary assessment is important, especially for puppies.' },
+    { name: 'Canine parvovirus', symptoms: ['Vomiting', 'Diarrhea', 'Bloody diarrhea', 'Fever', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Loss of appetite'], note: 'A contagious, potentially severe intestinal infection. Bloody diarrhea is an emergency warning sign, especially in puppies; seek veterinary care promptly.' },
     { name: 'Acute gastroenteritis', symptoms: ['Vomiting', 'Diarrhea', 'Loss of appetite', 'Lethargy'], note: 'Stomach or intestinal irritation has many possible causes and can lead to dehydration.' },
     { name: 'Canine distemper', symptoms: ['Coughing', 'Discharge from eyes/nose', 'Fever', 'Lethargy', 'Loss of appetite'], note: 'A serious contagious viral disease, particularly in unvaccinated dogs.' },
     { name: 'Infectious respiratory disease (including kennel cough)', symptoms: ['Coughing', 'Discharge from eyes/nose', 'Fever'], note: 'Respiratory infections have overlapping signs and may need examination and testing.' },
@@ -94,10 +114,13 @@ const diseaseMatrix: Record<Species, Differential[]> = {
     { name: 'Allergic or parasitic skin disease', symptoms: ['Rashes', 'Skin irritation', 'Hair loss', 'Behavioral changes'], note: 'Itching and hair loss can result from parasites, allergy or infection.' },
   ],
   Poultry: [
-    { name: 'Newcastle disease', symptoms: ['Difficulty breathing', 'Coughing', 'Diarrhea', 'Lethargy', 'Loss of appetite'], note: 'A highly contagious poultry disease. Isolate affected birds and contact a veterinarian promptly.' },
-    { name: 'Avian influenza', symptoms: ['Difficulty breathing', 'Coughing', 'Diarrhea', 'Lethargy', 'Fever', 'Loss of appetite', 'Swelling'], note: 'A serious reportable disease in many regions. Avoid handling sick or dead birds and seek veterinary or animal-health authority advice.' },
-    { name: 'Infectious bronchitis', symptoms: ['Difficulty breathing', 'Coughing', 'Discharge from eyes/nose', 'Loss of appetite', 'Lethargy'], note: 'A contagious respiratory infection; other poultry diseases may appear similar.' },
-    { name: 'Coccidiosis or other intestinal disease', symptoms: ['Diarrhea', 'Lethargy', 'Loss of appetite', 'Weight loss', 'Abnormal posture'], note: 'Intestinal disease can spread quickly in a flock and requires flock-level assessment.' },
+    { name: 'Newcastle disease', symptoms: ['Difficulty breathing', 'Coughing', 'Diarrhea', 'Greenish diarrhea or droppings', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Reduced agility or reluctance to move', 'Neurologic signs (tremors, twisted neck, or paralysis)', 'Loss of appetite'], note: 'A highly contagious poultry disease. Greenish diarrhea and respiratory or neurologic signs can occur but are not specific to Newcastle disease. Isolate affected birds and contact a veterinarian promptly.' },
+    { name: 'Avian influenza', symptoms: ['Difficulty breathing', 'Coughing', 'Diarrhea', 'Greenish diarrhea or droppings', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Fever', 'Loss of appetite', 'Swelling', 'Sudden unexplained death'], note: 'A serious reportable disease in many regions. Avoid handling sick or dead birds and seek veterinary or animal-health authority advice promptly.' },
+    { name: 'Infectious bronchitis', symptoms: ['Difficulty breathing', 'Coughing', 'Discharge from eyes/nose', 'Loss of appetite', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual'], note: 'A contagious respiratory infection; other poultry diseases may appear similar.' },
+    { name: 'Coccidiosis or other intestinal disease', symptoms: ['Diarrhea', 'Brownish diarrhea or droppings', 'Bloody diarrhea', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Reduced agility or reluctance to move', 'Loss of appetite', 'Weight loss', 'Abnormal posture'], note: 'Coccidiosis can cause blood-stained or brownish droppings, but intestinal disease has other causes too. A veterinarian should assess affected birds and the flock.' },
+    { name: 'Fowl typhoid', symptoms: ['Fever', 'Diarrhea', 'Greenish diarrhea or droppings', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Reduced agility or reluctance to move', 'Loss of appetite'], note: 'Fowl typhoid may cause depression and greenish-yellow diarrhea. These signs overlap with other infections and need veterinary assessment.' },
+    { name: 'Fowl cholera', symptoms: ['Fever', 'Diarrhea', 'Greenish diarrhea or droppings', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Reduced agility or reluctance to move', 'Loss of appetite', 'Sudden unexplained death'], note: 'Fowl cholera can cause sudden illness or death and diarrhea. Droppings color alone cannot identify the cause; contact a veterinarian promptly.' },
+    { name: 'Pullorum disease (white diarrhea)', symptoms: ['White or creamy droppings', 'Diarrhea', 'Lethargy', 'Somnolence (unusually sleepy)', 'Inactive or less responsive than usual', 'Loss of appetite'], note: 'White pasty droppings are especially concerning in young chicks but have several possible causes. Seek veterinary assessment and flock-level advice.' },
     { name: 'External parasites or dermatitis', symptoms: ['Rashes', 'Skin irritation', 'Hair loss', 'Loss of appetite', 'Lethargy'], note: 'Check flock condition and housing; a professional can help confirm the cause.' },
   ],
   Swine: [
@@ -108,6 +131,7 @@ const diseaseMatrix: Record<Species, Differential[]> = {
     { name: 'Mange or other skin disease', symptoms: ['Rashes', 'Skin irritation', 'Hair loss', 'Behavioral changes'], note: 'Skin signs may be caused by mites, infection or other irritation.' },
   ],
   Goat: [
+    { name: 'Anthrax (suspected)', symptoms: ['Dark, unclotted blood from body openings', 'Sudden unexplained death'], note: 'Possible anthrax is a life-threatening zoonotic emergency. Do not touch, move, butcher, or open the carcass. Keep people and animals away and immediately contact a veterinarian or animal-health authority.' },
     { name: 'Peste des petits ruminants (PPR)', symptoms: ['Fever', 'Diarrhea', 'Discharge from eyes/nose', 'Difficulty breathing', 'Loss of appetite', 'Lethargy'], note: 'A serious contagious disease. Isolate affected animals and contact a veterinarian or animal-health authority promptly.' },
     { name: 'Pneumonia or other respiratory infection', symptoms: ['Coughing', 'Difficulty breathing', 'Fever', 'Discharge from eyes/nose', 'Lethargy'], note: 'Respiratory illness can worsen quickly and requires veterinary assessment.' },
     { name: 'Internal parasites or gastrointestinal disease', symptoms: ['Weight loss', 'Diarrhea', 'Loss of appetite', 'Lethargy'], note: 'A fecal examination and herd history help identify the cause.' },
@@ -117,6 +141,7 @@ const diseaseMatrix: Record<Species, Differential[]> = {
   ],
   Cattle: [
     { name: 'Bovine respiratory disease complex', symptoms: ['Coughing', 'Difficulty breathing', 'Fever', 'Discharge from eyes/nose', 'Lethargy', 'Loss of appetite'], note: 'A common but potentially serious group of respiratory conditions.' },
+    { name: 'Anthrax (suspected)', symptoms: ['Dark, unclotted blood from body openings', 'Sudden unexplained death'], note: 'Possible anthrax is a life-threatening zoonotic emergency. Do not touch, move, butcher, or open the carcass. Keep people and animals away and immediately contact a veterinarian or animal-health authority.' },
     { name: 'Foot-and-mouth disease (suspected)', symptoms: ['Fever', 'Limping', 'Loss of appetite', 'Lethargy', 'Swelling'], note: 'If suspected, restrict animal movement and promptly contact a veterinarian or animal-health authority.' },
     { name: 'Bovine viral diarrhoea or enteric disease', symptoms: ['Diarrhea', 'Fever', 'Loss of appetite', 'Lethargy', 'Weight loss'], note: 'Several infectious and non-infectious conditions cause these signs; testing is needed.' },
     { name: 'Internal parasites or poor-condition syndrome', symptoms: ['Weight loss', 'Diarrhea', 'Loss of appetite', 'Lethargy'], note: 'Nutrition, parasites and chronic disease can produce overlapping signs.' },
@@ -147,6 +172,9 @@ export default function MVSDiseasePredictor({ onContactVet, compact = false }: P
   const [selectedSymptoms, setSelectedSymptoms] = useState<Symptom[]>([]);
   const [speciesMenuOpen, setSpeciesMenuOpen] = useState(false);
   const [matches, setMatches] = useState<Match[] | null>(null);
+  const hasAnthraxWarning = (selectedSpecies === 'Goat' || selectedSpecies === 'Cattle')
+    && (selectedSymptoms.includes('Dark, unclotted blood from body openings')
+      || selectedSymptoms.includes('Sudden unexplained death'));
 
   const reset = () => {
     setSelectedSpecies(null);
@@ -251,9 +279,12 @@ export default function MVSDiseasePredictor({ onContactVet, compact = false }: P
 
                   <View style={styles.disclaimerCard}>
                     <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#FBBF24" />
-                    <Text style={styles.disclaimerText}>This tool provides preliminary educational triage and suspected differential diagnoses. It does not replace professional veterinary examination. Match percentages show overlap with a simple symptom pattern; they are not diagnostic probabilities.</Text>
+                    <Text style={styles.disclaimerText}>This tool provides preliminary educational triage and suspected differential diagnoses. It does not replace professional veterinary examination. Match percentages show overlap with a simple symptom pattern; they are not diagnostic probabilities, and droppings color alone cannot identify a disease.</Text>
                   </View>
                   <Text style={styles.urgentNote}>Seek urgent veterinary help for difficulty breathing, collapse, severe weakness, repeated vomiting, inability to urinate, or rapidly worsening signs. For suspected contagious livestock disease, isolate the animal and contact a veterinarian or animal-health authority.</Text>
+                  {hasAnthraxWarning ? (
+                    <Text style={styles.urgentNote}>Possible anthrax: do not touch, move, butcher, or open the carcass. Keep people and animals away and immediately contact a veterinarian or animal-health authority.</Text>
+                  ) : null}
                 </ScrollView>
                 <View style={styles.actions}>
                   {onContactVet ? (
@@ -272,7 +303,7 @@ export default function MVSDiseasePredictor({ onContactVet, compact = false }: P
               <>
                 <ScrollView style={styles.contentScroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                   <Text style={styles.introTitle}>What signs have you noticed?</Text>
-                  <Text style={styles.introCopy}>Choose an animal, then select every symptom you have observed. Your selections stay on this device.</Text>
+                  <Text style={styles.introCopy}>Choose an animal, then select every sign you have observed. Behavior changes and droppings appearance are included; droppings color alone cannot identify a disease.</Text>
 
                   <Text style={styles.label}>Animal species <Text style={styles.required}>*</Text></Text>
                   <TouchableOpacity
@@ -330,6 +361,9 @@ export default function MVSDiseasePredictor({ onContactVet, compact = false }: P
                           );
                         })}
                       </View>
+                      {hasAnthraxWarning ? (
+                        <Text style={styles.urgentNote}>Possible anthrax is an emergency. Do not touch, move, butcher, or open the carcass. Keep people and animals away and immediately contact a veterinarian or animal-health authority.</Text>
+                      ) : null}
                     </>
                   ) : null}
 
