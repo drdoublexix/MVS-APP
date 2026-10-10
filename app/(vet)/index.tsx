@@ -268,7 +268,7 @@ export default function VetDashboardScreen() {
         <Text style={styles.subtitle}>Manage consultations and earnings</Text>
 
         <View style={styles.metrics}>
-          <Metric icon="paw" label="Active Consultation" value={String(totalPatients)} color="#3B82F6" />
+          <Metric icon="paw" label="Consultations" value={String(totalPatients)} color="#3B82F6" />
           <Metric icon="star" label="Overall Rating" value={`${overallRating.toFixed(1)} ★`} color="#F59E0B" />
           <Metric icon="cash" label="Total Earnings" value={`₦${totalEarnings.toLocaleString('en-NG')}`} color="#10B981" />
         </View>
