@@ -9,6 +9,7 @@ import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, St
 import 'react-native-get-random-values';
 import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
+import { logActivity, isSuperAdmin } from '../lib/admin';
 import { readCachedAuthState, safeSupabaseCall, signOutUser, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 
 const registerForPushNotifications = async (userId: string) => {
@@ -118,6 +119,7 @@ function RootAuthGate() {
   const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null; deleted_at?: string | null } | null>(null);
   const profileRef = useRef(profile);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
+  const previousAuthUserId = useRef<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const segments = useSegments();
@@ -251,6 +253,7 @@ function RootAuthGate() {
 
       console.log('[AUTH ROUTER] checkAuthAndRoute event:', event, 'email:', session?.user?.email);
       if (mounted) setAuthUser(session?.user || null);
+      if (session?.user) previousAuthUserId.current = session.user.id;
 
       const cachedState = await readCachedAuthState();
       const cachedProfile = cachedState.profile || profileRef.current;
@@ -337,6 +340,9 @@ function RootAuthGate() {
 
         console.log('[AUTH ROUTER] Navigating authenticated user:', session.user.email, 'Role:', userRole);
         const currentRootSegment = segmentsRef.current[0];
+        if (currentRootSegment === '(admin)' && isSuperAdmin(session.user.email)) {
+          return;
+        }
         const expectedRootSegment = userRole === 'vet' || userRole === 'veterinarian'
           ? '(vet)'
           : userRole === 'merchant'
@@ -377,6 +383,7 @@ function RootAuthGate() {
       console.log('[Auth Layout] onAuthStateChange fired:', event, 'session:', session?.user?.id);
 
       if (event === 'SIGNED_OUT') {
+        previousAuthUserId.current = null;
         if (mounted) {
           setAuthUser(null);
           setProfile(null);
@@ -397,6 +404,8 @@ function RootAuthGate() {
       }
 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        previousAuthUserId.current = session.user.id;
+        if (event === 'SIGNED_IN') void logActivity('user_login', session.user.id);
         void safeSupabaseCall(() => supabase
           .from('profiles')
           .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at')

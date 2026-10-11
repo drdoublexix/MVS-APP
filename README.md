@@ -23,6 +23,14 @@ In the output, you'll find options to open the app in a
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
+## Owner security dashboard
+
+The authenticated account `emmykul89@gmail.com` can open **Super Admin Dashboard** from the client profile settings. Access is also checked by Supabase row-level security and by the server-side email function; a client-side route check alone does not grant access.
+
+To install or update its database policies and audit triggers, run `npx supabase db push`. To deploy dashboard email delivery, run `npx supabase functions deploy admin-send-email`. The Edge Function requires the Supabase project secrets `RESEND_API_KEY` and (optionally) `RESEND_FROM_EMAIL`; never put provider or service-role keys in Expo app code.
+
+The audit trail starts when the migration is applied. It records sign-ins/sign-outs and database inserts, updates, and deletes on account, pet/farm, consultation/prescription, chat/community, order/invoice, product, notification, rating, loyalty, and submission tables. Database triggers do not record historical activity, read-only browsing, failed sign-ins, or storage-only access.
+
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
 ## Get a fresh project

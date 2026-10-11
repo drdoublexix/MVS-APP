@@ -146,6 +146,22 @@ export const getCurrentUser = async () => {
 export const signOutUser = async () => {
   const currentUser = await getCurrentUser().catch(() => null);
 
+  if (currentUser?.id) {
+    try {
+      const { error: activityError } = await supabase.from('activity_logs').insert({
+        user_id: currentUser.id,
+        action: 'user_logout',
+        details: {},
+        status: 'success',
+      });
+      if (activityError) {
+        console.warn('[Auth SignOut] Could not record logout activity:', activityError);
+      }
+    } catch (activityError) {
+      console.warn('[Auth SignOut] Could not reach Supabase to record logout activity:', activityError);
+    }
+  }
+
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.setItem('mvs_logout_requested', '1');

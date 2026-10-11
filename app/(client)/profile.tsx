@@ -29,6 +29,7 @@ import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
 import { formatDateInput, parseDateInput } from "../../lib/dateFormat";
+import { isSuperAdmin } from "../../lib/admin";
 import { requestDeviceLocation } from "../../lib/location";
 import { registerForPushNotifications } from "../../lib/notifications";
 import { isValidPassword, PASSWORD_REQUIREMENTS } from "../../lib/password";
@@ -1128,6 +1129,12 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
+          {isSuperAdmin(user?.email) ? (
+            <Setting
+              label="Super Admin Dashboard"
+              onPress={() => router.push('/(admin)')}
+            />
+          ) : null}
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: "/(client)", params: { openMarketplace: "true" } })} />
           <MVSDiseasePredictor onContactVet={() => router.push('/(client)/vets')} />
           <Setting label="Edit Profile" onPress={() => setModal("profile")} />
