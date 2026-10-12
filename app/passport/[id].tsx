@@ -100,8 +100,18 @@ export default function PublicDigitalPassport() {
               {passport.species}{passport.species_verified ? ' · Verified' : ' · Not yet verified'}
               {'\n'}{passport.breed || 'Breed not recorded'}{passport.breed_verified ? ' · Verified' : ''}
             </Text>
-            {passport.species_verified_by?.name ? <Text style={styles.muted}>Species verified by {passport.species_verified_by.name}{passport.species_verified_by.license_number ? ` · License ${passport.species_verified_by.license_number}` : ''}</Text> : null}
-            {passport.breed_verified_by?.name && passport.breed_verified ? <Text style={styles.muted}>Breed verified by {passport.breed_verified_by.name}{passport.breed_verified_by.license_number ? ` · License ${passport.breed_verified_by.license_number}` : ''}</Text> : null}
+            {passport.species_verified_by?.name ? (
+              <View style={styles.verifier}>
+                <Text style={styles.muted}>Species verified by {passport.species_verified_by.name}</Text>
+                {passport.species_verified_by.email ? <Text style={styles.muted}>Email: {passport.species_verified_by.email}</Text> : null}
+              </View>
+            ) : null}
+            {passport.breed_verified_by?.name && passport.breed_verified ? (
+              <View style={styles.verifier}>
+                <Text style={styles.muted}>Breed verified by {passport.breed_verified_by.name}</Text>
+                {passport.breed_verified_by.email ? <Text style={styles.muted}>Email: {passport.breed_verified_by.email}</Text> : null}
+              </View>
+            ) : null}
             <View style={styles.divider} />
             <Info label="Record type" value={passport.record_type === 'pet' ? 'Pet record' : 'Farm / livestock record'} />
             {passport.flock_size ? <Info label="Recorded herd / flock size" value={String(passport.flock_size)} /> : null}
@@ -159,7 +169,8 @@ function MedicalSection({ title, records, empty }: { title: string; records: Dig
           {record.status ? <Text style={styles.muted}>Status: {record.status}</Text> : null}
           <Text style={styles.followUp}>{record.follow_up_status}</Text>
           {record.notes ? <Text style={styles.muted}>Notes: {record.notes}</Text> : null}
-          <Text style={styles.vet}>Vet: {record.vet_name}{record.vet_license_number ? ` · License ${record.vet_license_number}` : ''}</Text>
+          <Text style={styles.vet}>Vet: {record.vet_name}</Text>
+          {record.vet_email ? <Text style={styles.vet}>Email: {record.vet_email}</Text> : null}
           {record.vet_verified ? <Text style={styles.vetVerified}>MVS-verified veterinarian</Text> : null}
         </View>
       ))}
@@ -183,6 +194,7 @@ const styles = StyleSheet.create({
   verifiedText: { color: '#6EE7B7', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   name: { color: '#FFFFFF', fontSize: 26, fontWeight: '800' },
   species: { color: '#CBD5E1', fontSize: 14, marginTop: 5 },
+  verifier: { marginTop: 7 },
   divider: { height: 1, backgroundColor: '#334155', marginVertical: 16 },
   infoRow: { marginBottom: 12 },
   infoLabel: { color: '#94A3B8', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 },

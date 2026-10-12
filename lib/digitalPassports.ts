@@ -13,7 +13,7 @@ export type PassportMedicalRecord = {
   status: string | null;
   follow_up_status: string;
   vet_name: string;
-  vet_license_number: string | null;
+  vet_email: string | null;
   vet_verified: boolean;
 };
 
@@ -29,7 +29,7 @@ export type PassportSoapRecord = {
   temperature_c: number | null;
   heart_rate_bpm: number | null;
   vet_name: string;
-  vet_license_number: string | null;
+  vet_email: string | null;
   vet_verified: boolean;
 };
 
@@ -41,8 +41,8 @@ export type DigitalPassport = {
   breed: string | null;
   species_verified: boolean;
   breed_verified: boolean;
-  species_verified_by: { name: string | null; license_number: string | null } | null;
-  breed_verified_by: { name: string | null; license_number: string | null } | null;
+  species_verified_by: { name: string | null; email: string | null } | null;
+  breed_verified_by: { name: string | null; email: string | null } | null;
   owner_name: string;
   flock_size?: number | null;
   vaccination_status_reported?: string | null;
@@ -115,8 +115,9 @@ export const createDigitalPassportHtml = (
         ${record.status ? `<p>Status: ${escapeHtml(record.status)}</p>` : ''}
         <p>Follow-up: ${escapeHtml(record.follow_up_status)}</p>
         ${record.notes ? `<p>Notes: ${escapeHtml(record.notes)}</p>` : ''}
-        <p>Veterinarian: ${escapeHtml(record.vet_name)}${record.vet_license_number
-          ? ` · License ${escapeHtml(record.vet_license_number)}` : ''}${record.vet_verified ? ' · MVS verified' : ''}</p>
+        <p>Veterinarian: ${escapeHtml(record.vet_name)}</p>
+        ${record.vet_email ? `<p>Email: ${escapeHtml(record.vet_email)}</p>` : ''}
+        ${record.vet_verified ? '<p>MVS verified veterinarian</p>' : ''}
       </section>`).join('')
     : '<p>No veterinarian-entered treatment, vaccination, or deworming records are recorded.</p>';
 

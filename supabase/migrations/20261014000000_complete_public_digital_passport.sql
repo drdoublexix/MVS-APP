@@ -29,6 +29,25 @@ begin
     return null;
   end if;
 
+  passport_details := jsonb_set(
+    passport_details,
+    '{species_verified_by}',
+    jsonb_build_object(
+      'name', passport_details #>> '{species_verified_by,name}',
+      'email', (select profiles.email from public.profiles where profiles.id = passport_row.species_verified_by)
+    ),
+    true
+  );
+  passport_details := jsonb_set(
+    passport_details,
+    '{breed_verified_by}',
+    jsonb_build_object(
+      'name', passport_details #>> '{breed_verified_by,name}',
+      'email', (select profiles.email from public.profiles where profiles.id = passport_row.breed_verified_by)
+    ),
+    true
+  );
+
   if passport_row.pet_id is not null then
     select jsonb_build_object(
       'record_details', jsonb_build_object(
@@ -54,7 +73,7 @@ begin
             else 'Up to date'
           end,
           'vet_name', coalesce(vets.full_name, 'Veterinarian'),
-          'vet_license_number', vets.license_number,
+          'vet_email', vets.email,
           'vet_verified', coalesce(vets.is_verified, false)
         ) order by records.administered_date desc)
         from public.pet_medical_records records
@@ -74,7 +93,7 @@ begin
           'temperature_c', records.temperature_c,
           'heart_rate_bpm', records.heart_rate_bpm,
           'vet_name', coalesce(vets.full_name, 'Veterinarian'),
-          'vet_license_number', vets.license_number,
+          'vet_email', vets.email,
           'vet_verified', coalesce(vets.is_verified, false)
         ) order by records.created_at desc)
         from public.pet_soap_records records
@@ -115,7 +134,7 @@ begin
             else 'Up to date'
           end,
           'vet_name', coalesce(vets.full_name, 'Veterinarian'),
-          'vet_license_number', vets.license_number,
+          'vet_email', vets.email,
           'vet_verified', coalesce(vets.is_verified, false)
         ) order by records.administered_date desc)
         from public.farm_medical_records records
@@ -135,7 +154,7 @@ begin
           'temperature_c', null,
           'heart_rate_bpm', null,
           'vet_name', coalesce(vets.full_name, 'Veterinarian'),
-          'vet_license_number', vets.license_number,
+          'vet_email', vets.email,
           'vet_verified', coalesce(vets.is_verified, false)
         ) order by records.created_at desc)
         from public.farm_soap_records records
