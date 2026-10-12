@@ -22,6 +22,16 @@ export interface AdminRecipient {
   role: string | null;
 }
 
+export interface AdminUserAccount {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string | null;
+  is_banned: boolean;
+  banned_at: string | null;
+  ban_reason: string | null;
+}
+
 export interface EmailLog {
   id: string;
   recipient_email: string;
@@ -108,6 +118,25 @@ export const fetchAdminUserCount = async (): Promise<number> => {
     throw new Error('The total user count returned an invalid value.');
   }
   return data;
+};
+
+export const fetchAdminUserAccounts = async (search = ''): Promise<AdminUserAccount[]> => {
+  const { data, error } = await supabase.rpc('admin_list_user_accounts', {
+    p_search: search.trim() || null,
+    p_limit: 100,
+    p_offset: 0,
+  });
+  if (error) throw error;
+  return (data || []) as AdminUserAccount[];
+};
+
+export const setAdminUserBan = async (userId: string, isBanned: boolean, reason = '') => {
+  const { error } = await supabase.rpc('admin_set_user_ban', {
+    p_user_id: userId,
+    p_is_banned: isBanned,
+    p_reason: reason.trim() || null,
+  });
+  if (error) throw error;
 };
 
 export const fetchEmailLogs = async (limit = 50): Promise<EmailLog[]> => {

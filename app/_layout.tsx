@@ -9,8 +9,9 @@ import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, St
 import 'react-native-get-random-values';
 import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
+import { readOfflineRecords, subscribeToOfflineQueue, syncOfflineRecords } from '../lib/offlineRecords';
 import { logActivity, isSuperAdmin } from '../lib/admin';
-import { readCachedAuthState, safeSupabaseCall, signOutUser, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
+import { clearCachedAuthState, readCachedAuthState, safeSupabaseCall, signOutUser, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 import { LanguageProvider, normalizeAppLanguage, useLanguage } from '../lib/language';
 
 const registerForPushNotifications = async (userId: string) => {
@@ -38,6 +39,7 @@ type AuthProfileState = {
   email?: string | null;
   avatar_url?: string | null;
   deleted_at?: string | null;
+  is_banned?: boolean | null;
   preferred_language?: string | null;
 };
 
@@ -201,13 +203,26 @@ function RootAuthGate() {
     };
 
     void syncNotifications();
+    void syncOfflineRecords(userId).catch((error) => {
+      console.error('[Offline Sync] Initial record sync failed:', error);
+    });
     const unsubscribeNetwork = NetInfo.addEventListener((state) => {
       const connected = state.isConnected === true && state.isInternetReachable !== false;
-      if (connected && !lastConnected) void syncNotifications();
+      if (connected && !lastConnected) {
+        void syncNotifications();
+        void syncOfflineRecords(userId).catch((error) => {
+          console.error('[Offline Sync] Reconnection sync failed:', error);
+        });
+      }
       lastConnected = connected;
     });
     const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void syncNotifications();
+      if (state === 'active') {
+        void syncNotifications();
+        void syncOfflineRecords(userId).catch((error) => {
+          console.error('[Offline Sync] Foreground sync failed:', error);
+        });
+      }
     });
 
     return () => {
@@ -290,7 +305,7 @@ function RootAuthGate() {
         if (cachedState.user) {
           if (mounted) {
             setAuthUser(cachedState.user as Session['user']);
-            if (cachedState.profile) setProfile(cachedState.profile as { role?: string | null; full_name?: string | null; avatar_url?: string | null; email?: string | null; deleted_at?: string | null });
+            if (cachedState.profile) setProfile(cachedState.profile as { role?: string | null; full_name?: string | null; avatar_url?: string | null; email?: string | null; deleted_at?: string | null; is_banned?: boolean | null });
           }
           return;
         }
@@ -306,7 +321,7 @@ function RootAuthGate() {
         try {
           profileData = await safeSupabaseCall<AuthProfileState | null>(() => supabase
             .from('profiles')
-            .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, preferred_language')
+            .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
             .eq('id', session.user.id)
             .maybeSingle());
         } catch (profileError) {
@@ -319,6 +334,18 @@ function RootAuthGate() {
             setAuthUser(null);
             setProfile(null);
             router.replace('/auth?mode=signin');
+          }
+          return;
+        }
+
+        if (profileData?.is_banned) {
+          const { error: signOutError } = await supabase.auth.signOut();
+          if (signOutError) console.error('[Auth] Could not end suspended user session:', signOutError);
+          await clearCachedAuthState();
+          if (mounted) {
+            setAuthUser(null);
+            setProfile(null);
+            router.replace('/auth?mode=signin&suspended=1');
           }
           return;
         }
@@ -430,7 +457,7 @@ function RootAuthGate() {
         if (event === 'SIGNED_IN') void logActivity('user_login', session.user.id);
         void safeSupabaseCall<AuthProfileState | null>(() => supabase
           .from('profiles')
-          .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, preferred_language')
+          .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
           .eq('id', session.user.id)
           .maybeSingle())
           .then(async (data) => {
@@ -505,17 +532,92 @@ function RootAuthGate() {
   }
 
   return (
-    <NotificationCenter
-      notifications={authUser && routePathname === '/' ? pendingNotifications : []}
-      onRead={async (notificationId) => {
-        try {
-          await markNotificationRead(notificationId);
-          setPendingNotifications((current) => current.filter((notification) => notification.id !== notificationId));
-        } catch (error) {
-          console.warn('[Notifications] Failed to mark notification as read:', error);
-        }
-      }}
-    />
+    <>
+      <OfflineSyncBanner userId={authUser?.id} />
+      <NotificationCenter
+        notifications={authUser && routePathname === '/' ? pendingNotifications : []}
+        onRead={async (notificationId) => {
+          try {
+            await markNotificationRead(notificationId);
+            setPendingNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+          } catch (error) {
+            console.warn('[Notifications] Failed to mark notification as read:', error);
+          }
+        }}
+      />
+    </>
+  );
+}
+
+function OfflineSyncBanner({ userId }: { userId?: string }) {
+  const [queueState, setQueueState] = useState<{ userId: string; pendingCount: number; error: string | null } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const operations = await readOfflineRecords(userId);
+        if (!mounted) return;
+        setQueueState({
+          userId,
+          pendingCount: operations.length,
+          error: operations.find((operation) => operation.lastError)?.lastError || null,
+        });
+      } catch (error) {
+        console.error('[Offline Sync] Could not read pending record queue:', error);
+        if (mounted) setQueueState({
+          userId,
+          pendingCount: 1,
+          error: 'Could not read saved offline records. Keep the app data on this device and retry.',
+        });
+      }
+    };
+    void refresh();
+    const unsubscribe = subscribeToOfflineQueue((changedUserId) => {
+      if (changedUserId === userId) void refresh();
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [userId]);
+
+  const currentQueueState = userId && queueState?.userId === userId ? queueState : null;
+  const pendingCount = currentQueueState?.pendingCount ?? 0;
+  const syncError = currentQueueState?.error ?? null;
+  if (!userId || pendingCount === 0) return null;
+
+  const retrySync = async () => {
+    setSyncing(true);
+    setQueueState((current) => current?.userId === userId ? { ...current, error: null } : current);
+    try {
+      const result = await syncOfflineRecords(userId);
+      setQueueState({ userId, pendingCount: result.remaining, error: result.error || null });
+    } catch (error) {
+      console.error('[Offline Sync] Manual record sync failed:', error);
+      setQueueState({
+        userId,
+        pendingCount,
+        error: error instanceof Error ? error.message : 'Could not sync saved records.',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <View style={styles.offlineSyncBanner}>
+      <View style={styles.offlineSyncCopy}>
+        <Text style={styles.offlineSyncText}>
+          {syncError ? `${pendingCount} saved record${pendingCount === 1 ? '' : 's'} waiting. ${syncError}` : `${pendingCount} record${pendingCount === 1 ? '' : 's'} saved on this device and waiting to sync.`}
+        </Text>
+      </View>
+      <Pressable onPress={() => void retrySync()} disabled={syncing} accessibilityRole="button" accessibilityLabel="Sync saved offline records">
+        {syncing ? <ActivityIndicator color="#6EE7B7" size="small" /> : <Text style={styles.offlineSyncAction}>Sync</Text>}
+      </Pressable>
+    </View>
   );
 }
 
@@ -668,6 +770,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  offlineSyncBanner: {
+    position: 'absolute',
+    top: 56,
+    left: 16,
+    right: 16,
+    zIndex: 99,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#064E3B',
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  offlineSyncCopy: { flex: 1 },
+  offlineSyncText: { color: '#D1FAE5', fontSize: 11, lineHeight: 16 },
+  offlineSyncAction: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', paddingHorizontal: 4 },
   notificationBell: {
     position: 'absolute',
     top: 14,

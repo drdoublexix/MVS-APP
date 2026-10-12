@@ -47,7 +47,7 @@ const getVerifiedNotice = () => {
 export default function AuthScreen() {
   const { language, ready: languageReady, selectLanguage, t } = useLanguage();
   const router = useRouter();
-  const { code, mode: modeParam, type: typeParam } = useLocalSearchParams<{ code?: string; mode?: string; type?: string }>();
+  const { code, mode: modeParam, type: typeParam, suspended } = useLocalSearchParams<{ code?: string; mode?: string; type?: string; suspended?: string }>();
   const hashValues = getWebHashParams();
   const hasHashSession = Boolean(hashValues?.get('access_token') && hashValues.get('refresh_token'));
   const verifiedNotice = getVerifiedNotice();
@@ -64,9 +64,11 @@ export default function AuthScreen() {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(Boolean(code || hasHashSession));
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; title: string; message: string } | null>(
-    verifiedNotice.exists || typeParam === 'signup' || typeParam === 'email_confirmation'
-      ? { kind: 'success', title: 'Email verified', message: 'Email successfully verified! Please sign in to your account.' }
-      : null,
+    suspended === '1'
+      ? { kind: 'error', title: 'Account suspended', message: 'This account has been suspended. Contact MVS Support if you believe this is a mistake.' }
+      : verifiedNotice.exists || typeParam === 'signup' || typeParam === 'email_confirmation'
+        ? { kind: 'success', title: 'Email verified', message: 'Email successfully verified! Please sign in to your account.' }
+        : null,
   );
   const [error, setError] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -172,7 +174,10 @@ export default function AuthScreen() {
         router.replace(getRoleNavPath(profileRole));
       }
     } catch (submitError) {
-      const nextError = submitError instanceof Error ? submitError.message : 'Authentication failed. Please try again.';
+      const rawError = submitError instanceof Error ? submitError.message : 'Authentication failed. Please try again.';
+      const nextError = /banned|suspend/i.test(rawError)
+        ? 'This account has been suspended. Contact MVS Support if you believe this is a mistake.'
+        : rawError;
       setError(nextError);
       setNotice({
         kind: 'error',

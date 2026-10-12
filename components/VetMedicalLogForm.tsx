@@ -1,10 +1,12 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
+import NetInfo from '@react-native-community/netinfo';
 import { useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { formatDateInput, parseDateInput } from '../lib/dateFormat';
 import { verifyDigitalPassportDetails } from '../lib/digitalPassports';
+import { createOfflineRecordId, enqueueOfflineRecord, syncOfflineRecords } from '../lib/offlineRecords';
 import { sanitizeInput } from '../lib/sanitize';
-import { getCurrentUser, supabase } from '../lib/supabase';
+import { getCurrentUser, readCachedAuthState, supabase } from '../lib/supabase';
 
 type Props = { petId: string; onSaved: () => void };
 type Preset = 'dhlpp' | 'deworming' | 'rabies' | 'custom';
@@ -68,9 +70,16 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
     try {
       const user = await getCurrentUser();
       if (!user) throw new Error('You must be signed in to log a treatment.');
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      const network = await NetInfo.fetch();
+      const connected = network.isConnected === true && network.isInternetReachable !== false;
+      const cachedState = connected ? null : await readCachedAuthState();
+      const { data: profile, error: profileError } = connected
+        ? await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+        : { data: { role: cachedState?.profile?.role }, error: null };
+      if (profileError) throw profileError;
       if (!['vet', 'veterinarian'].includes(profile?.role || '')) throw new Error('Only veterinarians can log medical records.');
-      const { error } = await supabase.from('pet_medical_records').insert({
+      const payload = {
+        id: createOfflineRecordId(),
         pet_id: petId,
         vet_id: user.id,
         treatment_type: cleanTreatmentType,
@@ -80,10 +89,16 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
         administered_date: toDateValue(administeredDate),
         next_due_date: nextDueDate ? toDateValue(nextDueDate) : null,
         notes: cleanNotes || null,
-      });
-      if (error) throw error;
+      };
+      await enqueueOfflineRecord(user.id, 'pet_medical_record', payload);
+      const syncResult = await syncOfflineRecords(user.id);
       setNotes('');
-      Alert.alert('Treatment logged', 'The medical record and next due date were saved.');
+      Alert.alert(
+        syncResult.remaining ? 'Treatment saved on this device' : 'Treatment logged',
+        syncResult.remaining
+          ? 'This treatment is stored locally and will sync when a reliable internet connection is available.'
+          : 'The medical record and next due date were saved.',
+      );
       onSaved();
     } catch (error) {
       Alert.alert('Could not save treatment', error instanceof Error ? error.message : 'Please try again.');

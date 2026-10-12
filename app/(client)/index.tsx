@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import HomeAnimalTools from '../../components/HomeAnimalTools';
@@ -241,6 +242,29 @@ export default function ClientHome() {
     }, 100);
   };
 
+  const copyAiMessage = async (content: string) => {
+    try {
+      await Clipboard.setStringAsync(content);
+      if (Platform.OS === 'web') window.alert('Message copied to clipboard.');
+      else Alert.alert('Copied', 'Message copied to clipboard.');
+    } catch (error) {
+      console.error('[MVS AI] Could not copy message:', error);
+      if (Platform.OS === 'web') window.alert('Could not copy this message.');
+      else Alert.alert('Copy failed', 'Could not copy this message.');
+    }
+  };
+
+  const showAiMessageOptions = (content: string) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Copy this message to the clipboard?')) void copyAiMessage(content);
+      return;
+    }
+    Alert.alert('Message options', 'Choose an action for this message.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Copy message', onPress: () => { void copyAiMessage(content); } },
+    ]);
+  };
+
   const openVetChat = () => {
     setAiVisible(false);
     router.push('/(client)/vets');
@@ -355,7 +379,7 @@ export default function ClientHome() {
             <View style={styles.aiHeader}>
               <View style={styles.aiHeaderCopy}>
                 <Text style={styles.aiModalTitle}>MVS AI Assistant</Text>
-                <Text style={styles.aiModalSubtitle}>Pet and livestock care guidance</Text>
+                <Text style={styles.aiModalSubtitle}>Pet and livestock care guidance · hold a message to copy</Text>
               </View>
               <TouchableOpacity onPress={() => setAiVisible(false)} accessibilityLabel="Close AI assistant">
                 <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
@@ -374,13 +398,17 @@ export default function ClientHome() {
                 </Text>
               )}
               {messages.map((msg, index) => (
-                <View key={msg.id || `msg-${index}`} style={[styles.messageBubble, msg.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
+                <TouchableOpacity key={msg.id || `msg-${index}`} activeOpacity={0.9} onLongPress={() => showAiMessageOptions(msg.content)} accessibilityRole="button" accessibilityLabel={`Message options for ${msg.role} message`}>
                   {msg.role === 'assistant' ? (
-                    <MarkdownResponse text={msg.content} />
+                    <View style={[styles.messageBubble, styles.assistantMessage]}>
+                      <MarkdownResponse text={msg.content} />
+                    </View>
                   ) : (
-                    <Text style={styles.userMessageText}>{msg.content}</Text>
+                    <View style={[styles.messageBubble, styles.userMessage]}>
+                      <Text style={styles.userMessageText}>{msg.content}</Text>
+                    </View>
                   )}
-                </View>
+                </TouchableOpacity>
               ))}
               {aiLoading && (
                 <View style={[styles.messageBubble, styles.assistantMessage]}>

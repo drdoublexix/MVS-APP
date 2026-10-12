@@ -1,9 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
+import { createOfflineRecordId, enqueueOfflineRecord, readOfflineRecords, readOfflineSnapshot, saveOfflineSnapshot, syncOfflineRecords } from '../../lib/offlineRecords';
+import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
 type Species = 'Broilers' | 'Layers' | 'Fish' | 'Pigs' | 'Swine' | 'Goats' | 'Cattle';
@@ -17,6 +20,7 @@ type Batch = {
   feed_cost_per_kg: number | string;
   initial_avg_weight_g: number | string | null;
   status: 'active' | 'completed';
+  sync_pending?: boolean;
 };
 type DailyLog = {
   id: string;
@@ -25,8 +29,10 @@ type DailyLog = {
   mortality_count: number;
   average_weight_g: number | string | null;
   weight_gain_g: number | string;
+  symptoms: string;
   expense_amount: number | string;
   revenue_amount: number | string;
+  sync_pending?: boolean;
 };
 
 const speciesOptions: Species[] = ['Broilers', 'Layers', 'Fish', 'Pigs', 'Swine', 'Goats', 'Cattle'];
@@ -38,8 +44,42 @@ const colors = {
   muted: '#94A3B8', green: '#34D399', red: '#F87171', blue: '#60A5FA', amber: '#FBBF24',
 };
 const amount = (value: number) => `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
-const numberFrom = (value: number | string | null | undefined) => Number(value ?? 0);
+const numberFrom = (value: unknown) => typeof value === 'number' || typeof value === 'string' ? Number(value || 0) : 0;
 const today = () => new Date().toISOString().slice(0, 10);
+const batchFromOfflinePayload = (payload: Record<string, unknown>): Batch | null => {
+  const id = typeof payload.id === 'string' ? payload.id : null;
+  const batchName = typeof payload.batch_name === 'string' ? payload.batch_name : null;
+  const batchSpecies = speciesOptions.find((option) => option === payload.species);
+  const startDate = typeof payload.start_date === 'string' ? payload.start_date : null;
+  if (!id || !batchName || !batchSpecies || !startDate) return null;
+  return {
+    id,
+    batch_name: batchName,
+    species: batchSpecies,
+    initial_head_count: numberFrom(payload.initial_head_count),
+    start_date: startDate,
+    initial_cost: numberFrom(payload.initial_cost),
+    feed_cost_per_kg: numberFrom(payload.feed_cost_per_kg),
+    initial_avg_weight_g: payload.initial_avg_weight_g == null ? null : numberFrom(payload.initial_avg_weight_g),
+    status: payload.status === 'completed' ? 'completed' : 'active',
+    sync_pending: true,
+  };
+};
+const dailyLogFromOfflinePayload = (payload: Record<string, unknown>): DailyLog | null => {
+  if (typeof payload.id !== 'string' || typeof payload.batch_id !== 'string' || typeof payload.log_date !== 'string') return null;
+  return {
+    id: payload.id,
+    log_date: payload.log_date,
+    feed_consumed_kg: numberFrom(payload.feed_consumed_kg),
+    mortality_count: numberFrom(payload.mortality_count),
+    average_weight_g: payload.average_weight_g == null ? null : numberFrom(payload.average_weight_g),
+    weight_gain_g: numberFrom(payload.weight_gain_g),
+    symptoms: typeof payload.symptoms === 'string' ? payload.symptoms : '',
+    expense_amount: numberFrom(payload.expense_amount),
+    revenue_amount: numberFrom(payload.revenue_amount),
+    sync_pending: true,
+  };
+};
 
 export default function FarmPerformanceScreen() {
   const router = useRouter();
@@ -61,10 +101,12 @@ export default function FarmPerformanceScreen() {
   const [feedConsumed, setFeedConsumed] = useState('');
   const [mortality, setMortality] = useState('0');
   const [averageWeight, setAverageWeight] = useState('');
+  const [symptoms, setSymptoms] = useState('');
   const [expenses, setExpenses] = useState('');
   const [revenue, setRevenue] = useState('');
   const [editingLogId, setEditingLogId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [offlineMode, setOfflineMode] = useState(false);
 
   const loadData = useCallback(async (preferredBatchId?: string) => {
     setLoading(true);
@@ -72,6 +114,55 @@ export default function FarmPerformanceScreen() {
     try {
       const user = await getCurrentUser();
       if (!user) throw new Error('Sign in to access your farm production data.');
+      const network = await NetInfo.fetch();
+      const isOnline = network.isConnected === true && network.isInternetReachable !== false;
+      const pendingOperations = await readOfflineRecords(user.id);
+      const pendingBatches = pendingOperations
+        .filter((operation) => operation.kind === 'farm_batch' && operation.payload.owner_id === user.id)
+        .map((operation) => batchFromOfflinePayload(operation.payload))
+        .filter((batch): batch is Batch => Boolean(batch));
+      const mergeBatches = (records: Batch[]) => {
+        const byId = new Map(records.map((batch) => [batch.id, batch]));
+        for (const batch of pendingBatches) byId.set(batch.id, { ...batch, sync_pending: true } as Batch);
+        return [...byId.values()].sort((left, right) => right.start_date.localeCompare(left.start_date));
+      };
+      if (!isOnline) {
+        const cachedBatches = await readOfflineSnapshot<Batch[]>(user.id, 'farm-performance-batches');
+        const ownedBatches = mergeBatches(cachedBatches?.value || []);
+        setBatches(ownedBatches);
+        const nextBatchId = preferredBatchId && ownedBatches.some((batch) => batch.id === preferredBatchId)
+          ? preferredBatchId
+          : ownedBatches.some((batch) => batch.id === selectedBatchId)
+            ? selectedBatchId
+            : ownedBatches.find((batch) => batch.status === 'active')?.id || ownedBatches[0]?.id || '';
+        setSelectedBatchId(nextBatchId);
+        const deletedLogIds = new Set(pendingOperations
+          .filter((operation) => operation.kind === 'farm_daily_log_delete')
+          .map((operation) => operation.payload.id));
+        if (!nextBatchId) {
+          setLogs([]);
+          setErrorMessage(cachedBatches ? '' : 'No saved farm performance data is available offline yet.');
+        } else {
+          const cachedLogs = await readOfflineSnapshot<DailyLog[]>(user.id, `farm-performance-logs:${nextBatchId}`);
+          const pendingLogs = pendingOperations
+            .filter((operation) => operation.kind === 'farm_daily_log' && operation.payload.batch_id === nextBatchId)
+            .map((operation) => dailyLogFromOfflinePayload(operation.payload))
+            .filter((log): log is DailyLog => Boolean(log));
+          const mergedLogs = [...(cachedLogs?.value || []).filter((log) => !deletedLogIds.has(log.id))];
+          for (const pendingLog of pendingLogs) {
+            const index = mergedLogs.findIndex((log) => log.id === pendingLog.id || log.log_date === pendingLog.log_date);
+            if (!deletedLogIds.has(pendingLog.id)) {
+              if (index >= 0) mergedLogs[index] = pendingLog;
+              else mergedLogs.push(pendingLog);
+            }
+          }
+          setLogs(mergedLogs);
+          setErrorMessage(cachedLogs || pendingLogs.length ? '' : 'No saved daily logs are available offline for this batch.');
+        }
+        setOfflineMode(true);
+        return;
+      }
+
       const { data: batchData, error: batchError } = await supabase
         .from('farm_batches')
         .select('id, batch_name, species, initial_head_count, start_date, initial_cost, feed_cost_per_kg, initial_avg_weight_g, status')
@@ -79,8 +170,9 @@ export default function FarmPerformanceScreen() {
         .order('created_at', { ascending: false });
       if (batchError) throw batchError;
 
-      const ownedBatches = (batchData || []) as Batch[];
+      const ownedBatches = mergeBatches((batchData || []) as Batch[]);
       setBatches(ownedBatches);
+      await saveOfflineSnapshot(user.id, 'farm-performance-batches', (batchData || []) as Batch[]);
       const nextBatchId = preferredBatchId && ownedBatches.some((batch) => batch.id === preferredBatchId)
         ? preferredBatchId
         : ownedBatches.some((batch) => batch.id === selectedBatchId)
@@ -93,15 +185,34 @@ export default function FarmPerformanceScreen() {
       } else {
         const { data: logData, error: logError } = await supabase
           .from('farm_daily_logs')
-          .select('id, log_date, feed_consumed_kg, mortality_count, average_weight_g, weight_gain_g, expense_amount, revenue_amount')
+          .select('id, log_date, feed_consumed_kg, mortality_count, average_weight_g, weight_gain_g, symptoms, expense_amount, revenue_amount')
           .eq('batch_id', nextBatchId)
           .order('log_date', { ascending: false });
         if (logError) throw logError;
-        setLogs((logData || []) as DailyLog[]);
+        const loadedLogs = (logData || []) as DailyLog[];
+        const pendingLogs = pendingOperations
+          .filter((operation) => operation.kind === 'farm_daily_log' && operation.payload.batch_id === nextBatchId)
+          .map((operation) => dailyLogFromOfflinePayload(operation.payload))
+          .filter((log): log is DailyLog => Boolean(log));
+        const deletedLogIds = new Set(pendingOperations
+          .filter((operation) => operation.kind === 'farm_daily_log_delete')
+          .map((operation) => operation.payload.id));
+        const mergedLogs = [...loadedLogs.filter((log) => !deletedLogIds.has(log.id))];
+        for (const pendingLog of pendingLogs) {
+          const index = mergedLogs.findIndex((log) => log.id === pendingLog.id || log.log_date === pendingLog.log_date);
+          if (!deletedLogIds.has(pendingLog.id)) {
+            if (index >= 0) mergedLogs[index] = pendingLog;
+            else mergedLogs.push(pendingLog);
+          }
+        }
+        setLogs(mergedLogs);
+        await saveOfflineSnapshot(user.id, `farm-performance-logs:${nextBatchId}`, loadedLogs);
       }
+      setOfflineMode(false);
     } catch (error) {
       console.error('[Farm Performance] Failed to load production data:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load production data.');
+      setOfflineMode(false);
     } finally {
       setLoading(false);
     }
@@ -139,6 +250,7 @@ export default function FarmPerformanceScreen() {
     setFeedConsumed('');
     setMortality('0');
     setAverageWeight('');
+    setSymptoms('');
     setExpenses('');
     setRevenue('');
   };
@@ -165,7 +277,8 @@ export default function FarmPerformanceScreen() {
     try {
       const user = await getCurrentUser();
       if (!user) throw new Error('Sign in to create a production batch.');
-      const { data, error } = await supabase.from('farm_batches').insert({
+      const payload = {
+        id: createOfflineRecordId(),
         owner_id: user.id,
         batch_name: batchName.trim(),
         species,
@@ -174,8 +287,10 @@ export default function FarmPerformanceScreen() {
         initial_cost: batchCost,
         feed_cost_per_kg: pricePerKg,
         initial_avg_weight_g: startWeight,
-      }).select('id').single();
-      if (error) throw error;
+        status: 'active' as const,
+      };
+      await enqueueOfflineRecord(user.id, 'farm_batch', payload);
+      const syncResult = await syncOfflineRecords(user.id);
       setBatchName('');
       setHeadCount('');
       setInitialCost('');
@@ -183,7 +298,8 @@ export default function FarmPerformanceScreen() {
       setInitialWeight('');
       setStartDate(today());
       setBatchFormVisible(false);
-      await loadData(data.id);
+      await loadData(payload.id);
+      if (syncResult.remaining) showAlert('Batch saved on this device', 'It will sync when a reliable internet connection is available.');
     } catch (error) {
       console.error('[Farm Performance] Failed to save batch:', error);
       showAlert('Could not save batch', error instanceof Error ? error.message : 'Please try again.');
@@ -215,22 +331,37 @@ export default function FarmPerformanceScreen() {
 
     setSaving(true);
     try {
+      const user = await getCurrentUser();
+      if (!user) throw new Error('Sign in to save your daily log.');
       const payload = {
+        id: editingLogId || createOfflineRecordId(),
         batch_id: selectedBatch.id,
         log_date: logDate,
         feed_consumed_kg: feed,
         mortality_count: deaths,
         average_weight_g: weight,
+        symptoms: sanitizeInput(symptoms).trim(),
         expense_amount: expense,
         revenue_amount: sales,
       };
-      const result = editingLogId
-        ? await supabase.from('farm_daily_logs').update(payload).eq('id', editingLogId)
-        : await supabase.from('farm_daily_logs').insert(payload);
-      if (result.error) throw result.error;
+      const previousWeightLog = logs
+        .filter((log) => log.log_date < logDate && log.average_weight_g != null)
+        .sort((left, right) => right.log_date.localeCompare(left.log_date))[0];
+      const previousWeight = previousWeightLog
+        ? numberFrom(previousWeightLog.average_weight_g)
+        : numberFrom(selectedBatch.initial_avg_weight_g);
+      const mortalityThroughDate = logs
+        .filter((log) => log.log_date <= logDate && log.id !== editingLogId)
+        .reduce((sum, log) => sum + Number(log.mortality_count), 0) + deaths;
+      const weightGain = weight === null || previousWeight <= 0
+        ? 0
+        : Math.max(0, (weight - previousWeight) * Math.max(0, initialHeadCount - mortalityThroughDate));
+      await enqueueOfflineRecord(user.id, 'farm_daily_log', { ...payload, weight_gain_g: weightGain });
+      const syncResult = await syncOfflineRecords(user.id);
       resetLogForm();
       setLogFormVisible(false);
       await loadData(selectedBatch.id);
+      if (syncResult.remaining) showAlert('Daily log saved on this device', 'It will sync when a reliable internet connection is available.');
     } catch (error) {
       console.error('[Farm Performance] Failed to save daily log:', error);
       showAlert('Could not save daily log', error instanceof Error ? error.message : 'Please try again.');
@@ -245,6 +376,7 @@ export default function FarmPerformanceScreen() {
     setFeedConsumed(String(numberFrom(log.feed_consumed_kg)));
     setMortality(String(log.mortality_count));
     setAverageWeight(log.average_weight_g == null ? '' : String(numberFrom(log.average_weight_g)));
+    setSymptoms(log.symptoms || '');
     setExpenses(String(numberFrom(log.expense_amount)));
     setRevenue(String(numberFrom(log.revenue_amount)));
     setLogFormVisible(true);
@@ -253,9 +385,12 @@ export default function FarmPerformanceScreen() {
   const deleteLog = (log: DailyLog) => {
     const remove = async () => {
       try {
-        const { error } = await supabase.from('farm_daily_logs').delete().eq('id', log.id);
-        if (error) throw error;
-        await loadData();
+        const user = await getCurrentUser();
+        if (!user) throw new Error('Sign in to delete this daily log.');
+        await enqueueOfflineRecord(user.id, 'farm_daily_log_delete', { id: log.id });
+        const syncResult = await syncOfflineRecords(user.id);
+        if (syncResult.remaining) showAlert('Log removal saved on this device', 'It will sync when a reliable internet connection is available.');
+        await loadData(selectedBatchId);
       } catch (error) {
         console.error('[Farm Performance] Failed to delete daily log:', error);
         showAlert('Could not delete daily log', error instanceof Error ? error.message : 'Please try again.');
@@ -276,13 +411,41 @@ export default function FarmPerformanceScreen() {
     setLoading(true);
     setErrorMessage('');
     try {
+      const user = await getCurrentUser();
+      if (!user) throw new Error('Sign in to access your farm production data.');
+      const network = await NetInfo.fetch();
+      if (network.isConnected !== true || network.isInternetReachable === false) {
+        const cachedLogs = await readOfflineSnapshot<DailyLog[]>(user.id, `farm-performance-logs:${batchId}`);
+        const pendingOperations = await readOfflineRecords(user.id);
+        const pendingLogs = pendingOperations
+          .filter((operation) => operation.kind === 'farm_daily_log' && operation.payload.batch_id === batchId)
+          .map((operation) => dailyLogFromOfflinePayload(operation.payload))
+          .filter((log): log is DailyLog => Boolean(log));
+        const deletedLogIds = new Set(pendingOperations
+          .filter((operation) => operation.kind === 'farm_daily_log_delete')
+          .map((operation) => operation.payload.id));
+        const mergedLogs = [...(cachedLogs?.value || []).filter((log) => !deletedLogIds.has(log.id))];
+        for (const pendingLog of pendingLogs) {
+          const index = mergedLogs.findIndex((log) => log.id === pendingLog.id || log.log_date === pendingLog.log_date);
+          if (!deletedLogIds.has(pendingLog.id)) {
+            if (index >= 0) mergedLogs[index] = pendingLog;
+            else mergedLogs.push(pendingLog);
+          }
+        }
+        setLogs(mergedLogs);
+        setOfflineMode(true);
+        setErrorMessage(cachedLogs || pendingLogs.length ? '' : 'No saved daily logs are available offline for this batch.');
+        return;
+      }
       const { data, error } = await supabase
         .from('farm_daily_logs')
-        .select('id, log_date, feed_consumed_kg, mortality_count, average_weight_g, weight_gain_g, expense_amount, revenue_amount')
+        .select('id, log_date, feed_consumed_kg, mortality_count, average_weight_g, weight_gain_g, symptoms, expense_amount, revenue_amount')
         .eq('batch_id', batchId)
         .order('log_date', { ascending: false });
       if (error) throw error;
       setLogs((data || []) as DailyLog[]);
+      await saveOfflineSnapshot(user.id, `farm-performance-logs:${batchId}`, (data || []) as DailyLog[]);
+      setOfflineMode(false);
     } catch (error) {
       console.error('[Farm Performance] Failed to load batch logs:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load daily logs.');
@@ -305,6 +468,12 @@ export default function FarmPerformanceScreen() {
           <View style={styles.logo}><MaterialCommunityIcons name="chart-box-outline" size={22} color={colors.green} /></View>
         </View>
         <Text style={styles.intro}>Your flock, stock or pond — clear numbers for every growing day.</Text>
+        {offlineMode ? (
+          <View style={styles.offlineCard}>
+            <MaterialCommunityIcons name="cloud-off-outline" size={18} color={colors.amber} />
+            <Text style={styles.offlineText}>Offline mode: showing saved records. New changes will sync when you reconnect.</Text>
+          </View>
+        ) : null}
 
         {errorMessage ? (
           <View style={styles.errorCard}>
@@ -357,7 +526,7 @@ export default function FarmPerformanceScreen() {
           <>
             <View style={styles.chipWrap}>
               {batches.map((batch) => (
-                <Chip key={batch.id} label={`${batch.status === 'active' ? '● ' : ''}${batch.batch_name}`} selected={selectedBatchId === batch.id} onPress={() => { void selectBatch(batch.id); }} />
+                <Chip key={batch.id} label={`${batch.sync_pending ? '↻ ' : batch.status === 'active' ? '● ' : ''}${batch.batch_name}`} selected={selectedBatchId === batch.id} onPress={() => { void selectBatch(batch.id); }} />
               ))}
             </View>
             {selectedBatch ? (
@@ -404,6 +573,7 @@ export default function FarmPerformanceScreen() {
                     </View>
                     <Field label="Average live weight (g)" value={averageWeight} onChangeText={setAverageWeight} placeholder="Optional · enter grams" keyboardType="decimal-pad" />
                     <Text style={styles.fieldHint}>Weight gain is estimated from changes in average live weight × surviving head count. Enter weight in grams; e.g. 1.25 kg = 1250 g.</Text>
+                    <Field label="Symptoms / health observations" value={symptoms} onChangeText={setSymptoms} placeholder="Optional · describe signs noticed today" multiline />
                     <View style={styles.formColumns}>
                       <Field label="Other expenses (₦)" value={expenses} onChangeText={setExpenses} placeholder="0" keyboardType="decimal-pad" />
                       <Field label="Sales / revenue (₦)" value={revenue} onChangeText={setRevenue} placeholder="0" keyboardType="decimal-pad" />
@@ -422,6 +592,7 @@ export default function FarmPerformanceScreen() {
                     <View style={styles.logInfo}>
                       <Text style={styles.logTitle}>{numberFrom(log.feed_consumed_kg).toFixed(1)} kg feed · {log.mortality_count} mortality</Text>
                       <Text style={styles.logCaption}>{log.average_weight_g == null ? 'No weight logged' : `${numberFrom(log.average_weight_g).toLocaleString()} g avg.`} · {log.weight_gain_g && numberFrom(log.weight_gain_g) > 0 ? `+${(numberFrom(log.weight_gain_g) / 1000).toFixed(2)} kg gain · ` : ''}Sales ${amount(numberFrom(log.revenue_amount))}</Text>
+                      {log.symptoms ? <Text style={styles.logCaption}>Health: {log.symptoms}</Text> : null}
                     </View>
                     <Pressable onPress={() => editLog(log)} accessibilityLabel={`Edit log for ${formatDate(log.log_date)}`} style={styles.rowAction}><MaterialCommunityIcons name="pencil-outline" size={18} color={colors.blue} /></Pressable>
                     <Pressable onPress={() => deleteLog(log)} accessibilityLabel={`Delete log for ${formatDate(log.log_date)}`} style={styles.rowAction}><MaterialCommunityIcons name="delete-outline" size={18} color={colors.red} /></Pressable>
@@ -442,8 +613,8 @@ function formatDate(value: string) {
   return new Date(`${value}T12:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function Field({ label, ...props }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: 'number-pad' | 'decimal-pad' }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text><TextInput {...props} placeholderTextColor="#708197" style={styles.input} keyboardType={props.keyboardType || 'default'} /></View>;
+function Field({ label, ...props }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: 'number-pad' | 'decimal-pad'; multiline?: boolean }) {
+  return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text><TextInput {...props} placeholderTextColor="#708197" style={[styles.input, props.multiline && styles.multilineInput]} keyboardType={props.keyboardType || 'default'} /></View>;
 }
 
 function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
@@ -515,6 +686,8 @@ const styles = StyleSheet.create({
   pageTitle: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2 },
   logo: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#34D39918', alignItems: 'center', justifyContent: 'center' },
   intro: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 12, marginBottom: 24 },
+  offlineCard: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#422006', borderWidth: 1, borderColor: '#92400E', borderRadius: 10, padding: 11, marginBottom: 14 },
+  offlineText: { flex: 1, color: '#FDE68A', fontSize: 12, lineHeight: 17 },
   errorCard: { backgroundColor: '#391F2A', borderRadius: 14, padding: 13, marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 9 },
   errorText: { flex: 1, color: '#FECACA', fontSize: 12, lineHeight: 18 },
   retryText: { color: colors.green, fontSize: 12, fontWeight: '700' },
@@ -534,6 +707,7 @@ const styles = StyleSheet.create({
   field: { flex: 1, minWidth: 0, marginTop: 14 },
   fieldLabel: { color: '#C2CDDA', fontSize: 11, fontWeight: '600', marginBottom: 7 },
   input: { height: 44, paddingHorizontal: 12, borderRadius: 10, borderColor: '#2B3B50', borderWidth: 1, color: colors.text, backgroundColor: '#0C1726', fontSize: 13 },
+  multilineInput: { minHeight: 84, height: undefined, paddingVertical: 10, textAlignVertical: 'top' },
   fieldHint: { color: '#8393A8', fontSize: 10, lineHeight: 15, marginTop: 9 },
   fullButton: { marginTop: 17, alignSelf: 'stretch', minHeight: 46 },
   loading: { paddingVertical: 56, alignItems: 'center', gap: 12 },

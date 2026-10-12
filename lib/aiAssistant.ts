@@ -7,7 +7,7 @@ export type AiMessage = {
 
 const aiAssistantUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/ai-assistant`;
 
-export const requestAiAssistant = async (messages: AiMessage[], role: 'client' | 'vet') => {
+export const requestAiAssistant = async (messages: AiMessage[], role: 'client' | 'vet' | 'merchant') => {
   const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   if (sessionError || !session?.access_token) {

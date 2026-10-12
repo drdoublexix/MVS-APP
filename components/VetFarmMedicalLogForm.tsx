@@ -1,10 +1,12 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
+import NetInfo from '@react-native-community/netinfo';
 import { useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { formatDateInput, parseDateInput } from '../lib/dateFormat';
 import { verifyDigitalPassportDetails } from '../lib/digitalPassports';
+import { createOfflineRecordId, enqueueOfflineRecord, syncOfflineRecords } from '../lib/offlineRecords';
 import { sanitizeInput } from '../lib/sanitize';
-import { getCurrentUser, supabase } from '../lib/supabase';
+import { getCurrentUser, readCachedAuthState, supabase } from '../lib/supabase';
 
 type Props = { farmId: string; clientId: string; onSaved: () => void };
 type Preset = 'vaccination' | 'deworming' | 'custom';
@@ -52,9 +54,16 @@ export default function VetFarmMedicalLogForm({ farmId, clientId, onSaved }: Pro
     try {
       const user = await getCurrentUser();
       if (!user) throw new Error('You must be signed in to log a treatment.');
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      const network = await NetInfo.fetch();
+      const connected = network.isConnected === true && network.isInternetReachable !== false;
+      const cachedState = connected ? null : await readCachedAuthState();
+      const { data: profile, error: profileError } = connected
+        ? await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+        : { data: { role: cachedState?.profile?.role }, error: null };
+      if (profileError) throw profileError;
       if (!['vet', 'veterinarian'].includes(profile?.role || '')) throw new Error('Only veterinarians can log farm medical records.');
-      const { error } = await supabase.from('farm_medical_records').insert({
+      const payload = {
+        id: createOfflineRecordId(),
         farm_id: farmId,
         client_id: clientId,
         vet_id: user.id,
@@ -65,11 +74,17 @@ export default function VetFarmMedicalLogForm({ farmId, clientId, onSaved }: Pro
         next_due_date: nextDueDate.toISOString(),
         status: 'active',
         notes: cleanNotes || null,
-      });
-      if (error) throw error;
+      };
+      await enqueueOfflineRecord(user.id, 'farm_medical_record', payload);
+      const syncResult = await syncOfflineRecords(user.id);
       setDosage('');
       setNotes('');
-      Alert.alert('Treatment logged', 'The farm medical record and next due date were saved.');
+      Alert.alert(
+        syncResult.remaining ? 'Treatment saved on this device' : 'Treatment logged',
+        syncResult.remaining
+          ? 'This treatment is stored locally and will sync when a reliable internet connection is available.'
+          : 'The farm medical record and next due date were saved.',
+      );
       onSaved();
     } catch (error) {
       Alert.alert('Could not save treatment', error instanceof Error ? error.message : 'Please try again.');

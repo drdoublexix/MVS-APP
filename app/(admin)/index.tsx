@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { fetchActivityLogs, fetchAdminUserCount, type ActivityLog } from '../../lib/admin';
 
 const actions = [
+  { label: 'Manage users', icon: 'account-cancel-outline', route: '/(admin)/users', color: '#F87171' },
   { label: 'Activity logs', icon: 'history', route: '/(admin)/activity-logs', color: '#00C853' },
   { label: 'Send an email', icon: 'email-edit-outline', route: '/(admin)/email-manager', color: '#60A5FA' },
   { label: 'Email history', icon: 'email-check-outline', route: '/(admin)/email-logs', color: '#F59E0B' },

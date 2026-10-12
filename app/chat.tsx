@@ -44,6 +44,7 @@ import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment, isFlutterwaveCheckoutReady } from "../lib/flutterwave";
 import { sendPushNotification } from "../lib/notifications";
+import { createOfflineRecordId, enqueueOfflineRecord, readOfflineRecords, readOfflineSnapshot, saveOfflineSnapshot, syncOfflineRecords } from "../lib/offlineRecords";
 import { createOfflineMessageId, enqueueOfflineMessage, readOfflineMessages, removeOfflineMessage, type OfflineOneToOneMessage } from "../lib/offlineMessageQueue";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { sanitizeInput } from "../lib/sanitize";
@@ -161,6 +162,7 @@ type MedicalRecord = {
   assessment: string;
   plan: string;
   is_deleted: boolean;
+  sync_pending?: boolean;
 };
 
 type SoapDraft = {
@@ -194,6 +196,7 @@ type FarmSoapRecord = {
   plan: string | null;
   created_at: string;
   is_deleted: boolean;
+  sync_pending?: boolean;
 };
 
 type FarmSoapDraft = {
@@ -2181,6 +2184,45 @@ export default function ChatScreen() {
         console.warn("[Patient File] No client ID available");
         return [];
       }
+      const network = await NetInfo.fetch();
+      if (network.isConnected !== true || network.isInternetReachable === false) {
+        const [cachedPets, cachedRecords, queued] = await Promise.all([
+          readOfflineSnapshot<PatientPet[]>(currentUserId, `vet-patient-pets:${targetClientId}`),
+          readOfflineSnapshot<MedicalRecord[]>(currentUserId, `vet-patient-soap:${targetClientId}`),
+          readOfflineRecords(currentUserId),
+        ]);
+        if (!cachedPets) throw new Error("This patient's file has not been saved on this device yet. Open it while online before going offline.");
+        const pets = cachedPets.value;
+        const petIds = new Set(pets.map((pet) => pet.id));
+        const records = [...(cachedRecords?.value || [])];
+        const archivedIds = new Set(queued
+          .filter((operation) => operation.kind === "pet_soap_delete")
+          .map((operation) => operation.payload.id));
+        for (const operation of queued.filter((item) => item.kind === "pet_soap_record")) {
+          if (!petIds.has(String(operation.payload.pet_id)) || typeof operation.payload.created_at !== "string") continue;
+          const pendingRecord: MedicalRecord = {
+            id: String(operation.payload.id),
+            created_at: operation.payload.created_at,
+            pet_id: String(operation.payload.pet_id),
+            weight_kg: typeof operation.payload.weight_kg === "number" ? operation.payload.weight_kg : null,
+            temperature_c: typeof operation.payload.temperature_c === "number" ? operation.payload.temperature_c : null,
+            heart_rate_bpm: typeof operation.payload.heart_rate_bpm === "number" ? operation.payload.heart_rate_bpm : null,
+            subjective: String(operation.payload.subjective || ""),
+            objective: typeof operation.payload.objective === "string" ? operation.payload.objective : null,
+            assessment: String(operation.payload.assessment || ""),
+            plan: String(operation.payload.plan || ""),
+            is_deleted: false,
+            sync_pending: true,
+          };
+          const index = records.findIndex((record) => record.id === pendingRecord.id);
+          if (index >= 0) records[index] = pendingRecord;
+          else records.push(pendingRecord);
+        }
+        setPatientPets(pets);
+        setActivePetId(pets[0]?.id || null);
+        setMedicalRecords(records.filter((record) => !archivedIds.has(record.id)));
+        return pets;
+      }
       const { data, error } = await supabase
         .from("pets")
         .select("id, name, type, breed, dob, vaccination_status, medical_notes, photos")
@@ -2188,6 +2230,7 @@ export default function ChatScreen() {
         .order("created_at", { ascending: true });
       if (error) throw error;
       const pets = (data || []) as PatientPet[];
+      await saveOfflineSnapshot(currentUserId, `vet-patient-pets:${targetClientId}`, pets);
       const selectedPetId = pets[0]?.id || null;
       setPatientPets(pets);
       setActivePetId(selectedPetId);
@@ -2200,7 +2243,9 @@ export default function ChatScreen() {
           .eq("is_deleted", false)
           .order("created_at", { ascending: false });
         if (recordsError) throw recordsError;
-        setMedicalRecords((records || []) as MedicalRecord[]);
+        const medicalRecords = (records || []) as MedicalRecord[];
+        setMedicalRecords(medicalRecords);
+        await saveOfflineSnapshot(currentUserId, `vet-patient-soap:${targetClientId}`, medicalRecords);
       }
       return pets;
     } catch (error) {
@@ -2218,12 +2263,24 @@ export default function ChatScreen() {
   };
 
   const deletePetSoapRecord = async (recordId: string) => {
-    const { error } = await supabase.from("pet_soap_records").update({ is_deleted: true }).eq("id", recordId);
-    if (error) {
-      Alert.alert("Unable to archive SOAP record", error.message);
-      return;
+    try {
+      const network = await NetInfo.fetch();
+      if (network.isConnected !== true || network.isInternetReachable === false) {
+        await enqueueOfflineRecord(currentUserId, "pet_soap_delete", { id: recordId });
+      } else {
+        const { error } = await supabase.from("pet_soap_records").update({ is_deleted: true }).eq("id", recordId);
+        if (error) throw error;
+      }
+      setMedicalRecords((current) => current.filter((record) => record.id !== recordId));
+    } catch (error) {
+      const network = await NetInfo.fetch();
+      if (network.isConnected !== true || network.isInternetReachable === false) {
+        await enqueueOfflineRecord(currentUserId, "pet_soap_delete", { id: recordId });
+        setMedicalRecords((current) => current.filter((record) => record.id !== recordId));
+        return;
+      }
+      Alert.alert("Unable to archive SOAP record", error instanceof Error ? error.message : "Please try again.");
     }
-    setMedicalRecords((current) => current.filter((record) => record.id !== recordId));
   };
 
   const openFarmRecords = async (selectFarm = false, openSoap = false, showModal = true): Promise<FarmRecord[]> => {
@@ -2238,12 +2295,61 @@ export default function ChatScreen() {
       return [];
     }
     try {
+      const network = await NetInfo.fetch();
+      if (network.isConnected !== true || network.isInternetReachable === false) {
+        const [cachedFarms, cachedSoapRecords, queued] = await Promise.all([
+          readOfflineSnapshot<Omit<FarmRecord, "soapRecords">[]>(currentUserId, `vet-farm-records:${clientId}`),
+          readOfflineSnapshot<FarmSoapRecord[]>(currentUserId, `vet-farm-soap:${clientId}`),
+          readOfflineRecords(currentUserId),
+        ]);
+        if (!cachedFarms) throw new Error("This farm file has not been saved on this device yet. Open it while online before going offline.");
+        const records = [...(cachedSoapRecords?.value || [])];
+        const farmIds = new Set(cachedFarms.value.map((farm) => farm.id));
+        const archivedIds = new Set(queued
+          .filter((operation) => operation.kind === "farm_soap_delete")
+          .map((operation) => operation.payload.id));
+        for (const operation of queued.filter((item) => item.kind === "farm_soap_record")) {
+          if (!farmIds.has(String(operation.payload.farm_id)) || typeof operation.payload.created_at !== "string") continue;
+          const pendingRecord: FarmSoapRecord = {
+            id: String(operation.payload.id),
+            farm_id: String(operation.payload.farm_id),
+            subjective: typeof operation.payload.subjective === "string" ? operation.payload.subjective : null,
+            objective: typeof operation.payload.objective === "string" ? operation.payload.objective : null,
+            tentative_diagnosis: typeof operation.payload.tentative_diagnosis === "string" ? operation.payload.tentative_diagnosis : null,
+            plan: typeof operation.payload.plan === "string" ? operation.payload.plan : null,
+            created_at: operation.payload.created_at,
+            is_deleted: false,
+            sync_pending: true,
+          };
+          const index = records.findIndex((record) => record.id === pendingRecord.id);
+          if (index >= 0) records[index] = pendingRecord;
+          else records.push(pendingRecord);
+        }
+        const recordsWithHistory = cachedFarms.value.map((farm) => ({
+          ...farm,
+          soapRecords: records.filter((record) => record.farm_id === farm.id && !archivedIds.has(record.id)),
+        }));
+        setFarmRecords(recordsWithHistory);
+        if (openSoap) {
+          const firstFarmId = recordsWithHistory[0]?.id;
+          if (!firstFarmId) {
+            setFarmRecordsVisible(false);
+            Alert.alert("No farm records found", "Add a farm record before completing a farm consultation.");
+            return [];
+          }
+          setSelectedFarmId(firstFarmId);
+          setFarmRecordsVisible(false);
+          setFarmSoapVisible(true);
+        }
+        return recordsWithHistory;
+      }
       const { data: farms, error: farmError } = await supabase
         .from("farm_records")
         .select("id, species, breed, flock_size, location, restock_date, medical_log, production_summary")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (farmError) throw farmError;
+      await saveOfflineSnapshot(currentUserId, `vet-farm-records:${clientId}`, farms || []);
       const farmIds = (farms || []).map((farm) => farm.id);
       const { data: soapRecords, error: soapError } = farmIds.length
         ? await (["vet", "veterinarian"].includes(userRole)
@@ -2262,6 +2368,7 @@ export default function ChatScreen() {
                 .order("created_at", { ascending: false }))
         : { data: [], error: null };
       if (soapError) throw soapError;
+      await saveOfflineSnapshot(currentUserId, `vet-farm-soap:${clientId}`, soapRecords || []);
       const recordsWithHistory = (farms || []).map((farm) => ({
         ...(farm as FarmRecord),
         soapRecords: (soapRecords || []).filter((record) => record.farm_id === farm.id) as FarmSoapRecord[],
@@ -2454,25 +2561,35 @@ export default function ChatScreen() {
     const assessment = sanitizeInput(draft.assessment).trim();
     const plan = sanitizeInput(draft.plan).trim();
     setSoapSubmitting(true);
+    const recordPayload = {
+      id: createOfflineRecordId(),
+      pet_id: activePetId,
+      vet_id: session.user.id,
+      conversation_id: activeConversationId,
+      weight_kg: weightKg,
+      temperature_c: temperatureC,
+      heart_rate_bpm: heartRateBpm,
+      subjective,
+      objective,
+      assessment,
+      plan,
+      created_at: new Date().toISOString(),
+    };
     try {
-      const { error } = await supabase.from("pet_soap_records").insert({
-        pet_id: activePetId,
-        vet_id: session.user.id,
-        conversation_id: activeConversationId,
-        weight_kg: weightKg,
-        temperature_c: temperatureC,
-        heart_rate_bpm: heartRateBpm,
-        subjective,
-        objective,
-        assessment,
-        plan,
-      });
-      if (error) {
-        console.error("[SOAP Insert Error Details]:", error);
-        Alert.alert("Unable to save consultation", error.message);
-        return;
+      await enqueueOfflineRecord(session.user.id, "pet_soap_record", recordPayload);
+      await syncOfflineRecords(session.user.id);
+      const soapStillQueued = (await readOfflineRecords(session.user.id)).some((operation) => (
+        operation.kind === "pet_soap_record" && operation.payload.id === recordPayload.id
+      ));
+      if (soapStillQueued && consultation) {
+        await enqueueOfflineRecord(session.user.id, "consultation_status", {
+          id: consultation.id,
+          conversation_id: consultation.conversation_id,
+          status: "completed",
+        });
+      } else if (!soapStillQueued) {
+        await updateConsultation("completed");
       }
-      await updateConsultation("completed");
       setSoapVisible(false);
       handleBack();
     } catch (error) {
@@ -2490,19 +2607,33 @@ export default function ChatScreen() {
       return;
     }
     setFarmSoapSubmitting(true);
+    const recordPayload = {
+      id: createOfflineRecordId(),
+      farm_id: selectedFarmId,
+      client_id: clientId,
+      vet_id: currentUserId,
+      consultation_id: consultation.id,
+      subjective: sanitizeInput(draft.subjective).trim(),
+      objective: sanitizeInput(draft.objective).trim(),
+      tentative_diagnosis: sanitizeInput(draft.tentative_diagnosis).trim(),
+      plan: sanitizeInput(draft.plan).trim(),
+      created_at: new Date().toISOString(),
+    };
     try {
-      const { error } = await supabase.from("farm_soap_records").insert({
-        farm_id: selectedFarmId,
-        client_id: clientId,
-        vet_id: currentUserId,
-        consultation_id: consultation.id,
-        subjective: sanitizeInput(draft.subjective).trim(),
-        objective: sanitizeInput(draft.objective).trim(),
-        tentative_diagnosis: sanitizeInput(draft.tentative_diagnosis).trim(),
-        plan: sanitizeInput(draft.plan).trim(),
-      });
-      if (error) throw error;
-      await updateConsultation("completed");
+      await enqueueOfflineRecord(currentUserId, "farm_soap_record", recordPayload);
+      await syncOfflineRecords(currentUserId);
+      const soapStillQueued = (await readOfflineRecords(currentUserId)).some((operation) => (
+        operation.kind === "farm_soap_record" && operation.payload.id === recordPayload.id
+      ));
+      if (soapStillQueued) {
+        await enqueueOfflineRecord(currentUserId, "consultation_status", {
+          id: consultation.id,
+          conversation_id: consultation.conversation_id,
+          status: "completed",
+        });
+      } else {
+        await updateConsultation("completed");
+      }
       setFarmSoapVisible(false);
       setSelectedFarmId(null);
       handleBack();
@@ -2947,24 +3078,31 @@ export default function ChatScreen() {
       console.error("[Chat Error]: Authenticated user email is missing");
       return;
     }
-    const network = await NetInfo.fetch();
-    if (network.isConnected !== true || network.isInternetReachable === false) {
-      const offlineMessage: OfflineOneToOneMessage = {
-        id: createOfflineMessageId(),
-        kind: "one_to_one",
-        conversationId: conversationIdFor(cleanSenderId, cleanReceiverId),
-        senderId: cleanSenderId,
-        receiverId: cleanReceiverId,
-        content: text,
-        assets: selectedImages.map((asset) => ({ uri: asset.uri, type: asset.type === "video" ? "video" : "image", fileName: asset.fileName, mimeType: asset.mimeType, fileSize: asset.fileSize })),
-        replyTo: toReplySnippet(replyTarget),
-        createdAt: new Date().toISOString(),
-      };
+    const offlineMessage: OfflineOneToOneMessage = {
+      id: createOfflineMessageId(),
+      kind: "one_to_one",
+      conversationId,
+      senderId: cleanSenderId,
+      receiverId: cleanReceiverId,
+      content: text,
+      assets: selectedImages.map((asset) => ({ uri: asset.uri, type: asset.type === "video" ? "video" : "image", fileName: asset.fileName, mimeType: asset.mimeType, fileSize: asset.fileSize })),
+      replyTo: toReplySnippet(replyTarget),
+      createdAt: new Date().toISOString(),
+    };
+    const saveMessageOffline = async () => {
       await enqueueOfflineMessage(offlineMessage);
       setMessages((current) => appendUniqueMessage(current, pendingToRealtimeMessage(offlineMessage)));
       setMessage("");
       setSelectedImages([]);
       Alert.alert("Saved offline", "Your message will send automatically when connection is restored.");
+    };
+    const network = await NetInfo.fetch();
+    if (network.isConnected !== true || network.isInternetReachable === false) {
+      try {
+        await saveMessageOffline();
+      } catch (error) {
+        Alert.alert("Could not save message", error instanceof Error ? error.message : "Could not save the message on this device.");
+      }
       return;
     }
     setUploading(selectedImages.length > 0);
@@ -2975,10 +3113,16 @@ export default function ChatScreen() {
       }
     } catch (error) {
       setUploading(false);
-      Alert.alert(
-        "Attachment failed",
-        error instanceof Error ? error.message : "Could not upload attachment."
-      );
+      const currentNetwork = await NetInfo.fetch();
+      if (currentNetwork.isConnected !== true || currentNetwork.isInternetReachable === false) {
+        try {
+          await saveMessageOffline();
+        } catch (saveError) {
+          Alert.alert("Could not save message", saveError instanceof Error ? saveError.message : "Could not save the message on this device.");
+        }
+      } else {
+        Alert.alert("Attachment failed", error instanceof Error ? error.message : "Could not upload attachment.");
+      }
       return;
     }
     if (
@@ -3058,10 +3202,16 @@ export default function ChatScreen() {
     } catch (error) {
       setMessages((current) => current.filter((item) => !optimisticIds.includes(item.id)));
       console.error("[Supabase Chat Insert Error]:", error);
-      Alert.alert(
-        "Message failed",
-        error instanceof Error ? error.message : "Failed to send message."
-      );
+      const currentNetwork = await NetInfo.fetch();
+      if (currentNetwork.isConnected !== true || currentNetwork.isInternetReachable === false) {
+        try {
+          await saveMessageOffline();
+        } catch (saveError) {
+          Alert.alert("Could not save message", saveError instanceof Error ? saveError.message : "Could not save the message on this device.");
+        }
+      } else {
+        Alert.alert("Message failed", error instanceof Error ? error.message : "Failed to send message.");
+      }
     } finally {
       setUploading(false);
     }

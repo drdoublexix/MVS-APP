@@ -94,16 +94,27 @@ export default function CommunityScreen() {
       sender_name: replyTarget.senderName,
       content: replyTarget.content,
     } : null;
-    const network = await NetInfo.fetch();
-    if (network.isConnected !== true || network.isInternetReachable === false) {
-      const offlineMessage: OfflineCommunityMessage = {
-        id: createOfflineMessageId(), kind: 'community', userId: currentUserId, content: trimmedContent,
-        assets: pendingImages.map((image) => ({ uri: image.uri, type: 'image', fileName: image.fileName, mimeType: image.mimeType, fileSize: image.fileSize })),
-        replyTo: reply, createdAt: new Date().toISOString(),
-      };
+    const offlineMessage: OfflineCommunityMessage = {
+      id: createOfflineMessageId(), kind: 'community', userId: currentUserId, content: trimmedContent,
+      assets: pendingImages.map((image) => ({ uri: image.uri, type: 'image', fileName: image.fileName, mimeType: image.mimeType, fileSize: image.fileSize })),
+      replyTo: reply, createdAt: new Date().toISOString(),
+    };
+    const saveOfflineMessage = async () => {
       await enqueueOfflineMessage(offlineMessage);
       setMessages((current) => [...current, pendingToCommunityMessage(offlineMessage)]);
-      setContent(''); setPendingImages([]); setReplyTarget(null); setSending(false);
+      setContent('');
+      setInputHeight(42);
+      setPendingImages([]);
+      setReplyTarget(null);
+    };
+    const network = await NetInfo.fetch();
+    if (network.isConnected !== true || network.isInternetReachable === false) {
+      try {
+        await saveOfflineMessage();
+      } catch (error) {
+        Alert.alert('Could not save message', error instanceof Error ? error.message : 'Could not save the message on this device.');
+      }
+      setSending(false);
       return;
     }
     let mediaUrls: string[] = [];
@@ -121,7 +132,16 @@ export default function CommunityScreen() {
         return supabase.storage.from('community-uploads').getPublicUrl(filePath).data.publicUrl;
       }));
     } catch (error) {
-      Alert.alert('Attachment failed', error instanceof Error ? error.message : 'Could not upload images.');
+      const currentNetwork = await NetInfo.fetch();
+      if (currentNetwork.isConnected !== true || currentNetwork.isInternetReachable === false) {
+        try {
+          await saveOfflineMessage();
+        } catch (saveError) {
+          Alert.alert('Could not save message', saveError instanceof Error ? saveError.message : 'Could not save the message on this device.');
+        }
+      } else {
+        Alert.alert('Attachment failed', error instanceof Error ? error.message : 'Could not upload images.');
+      }
       setSending(false);
       return;
     }
@@ -132,7 +152,16 @@ export default function CommunityScreen() {
       reply_to: reply,
     });
     if (error) {
-      Alert.alert('Message failed', 'Could not send your message. Please try again.');
+      const currentNetwork = await NetInfo.fetch();
+      if (currentNetwork.isConnected !== true || currentNetwork.isInternetReachable === false) {
+        try {
+          await saveOfflineMessage();
+        } catch (saveError) {
+          Alert.alert('Could not save message', saveError instanceof Error ? saveError.message : 'Could not save the message on this device.');
+        }
+      } else {
+        Alert.alert('Message failed', error.message || 'Could not send your message. Please try again.');
+      }
     } else {
       setContent('');
       setInputHeight(42);
