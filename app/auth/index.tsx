@@ -3,6 +3,7 @@ import { Eye, EyeOff } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getProfileRole, getRoleNavPath, supabase } from '../../lib/supabase';
+import { languageOptions, useLanguage } from '../../lib/language';
 
 type Role = 'client' | 'vet' | 'merchant';
 type AuthMode = 'sign-in' | 'sign-up';
@@ -43,13 +44,8 @@ const getVerifiedNotice = () => {
   }
 };
 
-const roles: { value: Role; label: string }[] = [
-  { value: 'client', label: 'Pet owner/Farmer' },
-  { value: 'vet', label: 'Veterinarian' },
-  { value: 'merchant', label: 'Merchant' },
-];
-
 export default function AuthScreen() {
+  const { language, ready: languageReady, selectLanguage, t } = useLanguage();
   const router = useRouter();
   const { code, mode: modeParam, type: typeParam } = useLocalSearchParams<{ code?: string; mode?: string; type?: string }>();
   const hashValues = getWebHashParams();
@@ -75,7 +71,7 @@ export default function AuthScreen() {
   const [error, setError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
-  const fullNamePlaceholder = role === 'vet' ? 'Dr. Ibrahim Paul' : 'Ibrahim Paul';
+  const fullNamePlaceholder = role === 'vet' ? t('auth.vetNameExample') : t('auth.fullName');
 
   useEffect(() => {
     const hashValues = getWebHashParams();
@@ -128,12 +124,12 @@ export default function AuthScreen() {
 
     try {
       const cleanEmail = email.trim();
-      if (!cleanEmail || !password) throw new Error('Enter your email and password to continue.');
+      if (!cleanEmail || !password) throw new Error(t('auth.emailRequired'));
       if (mode === 'sign-up' && !/^[789]\d{9}$/.test(phoneNumber)) {
-        throw new Error('Enter a valid 10-digit Nigerian phone number starting with 7, 8, or 9.');
+        throw new Error(t('auth.invalidPhone'));
       }
       if (mode === 'sign-up' && role === 'vet' && !licenseNumber.trim()) {
-        throw new Error('Enter your VCN number to register as a veterinarian.');
+        throw new Error(t('auth.vcnRequired'));
       }
       if (mode === 'sign-up' && !/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])/.test(password)) {
         const validationMessage = 'Password must include an uppercase letter, lowercase letter, number, and special symbol (@$!%*?&).';
@@ -150,6 +146,7 @@ export default function AuthScreen() {
               full_name: fullName.trim(),
               phone_number: `+234${phoneNumber}`,
               role,
+              preferred_language: language,
               ...(role === 'vet' ? { license_number: licenseNumber.trim() } : {}),
             },
             emailRedirectTo: getAuthRedirectUrl(),
@@ -208,25 +205,52 @@ export default function AuthScreen() {
         <View style={styles.logoFrame}>
           <Image source={require('../../assets/images/mvsfp.jpeg')} resizeMode="contain" style={styles.logo} />
         </View>
-        <Text style={styles.eyebrow}>MOBILE VETERINARY SERVICES</Text>
-        <Text style={styles.title}>Your farm animals/pet care circle starts here.</Text>
-        <Text style={styles.subtitle}>Create an account or sign in to access trusted animal care and supplies, or join us as a certified veterinary professional or merchant to serve our growing ecosystem.</Text>
+        <Text style={styles.eyebrow}>{t('auth.eyebrow')}</Text>
+        <Text style={styles.title}>{t('auth.title')}</Text>
+        <Text style={styles.subtitle}>{t('auth.subtitle')}</Text>
+        {mode === 'sign-up' ? (
+          <View style={styles.languageChooser}>
+            <Text style={styles.languageTitle}>{t('auth.selectLanguage')}</Text>
+            <View style={styles.languageOptions}>
+              {languageOptions.map((option) => {
+                const selected = language === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: !languageReady }}
+                    disabled={!languageReady}
+                    onPress={() => {
+                      void selectLanguage(option.value).catch((languageError) => {
+                        console.error('[Auth] Could not save selected language:', languageError);
+                        setError(t('settings.languageSaveFailed'));
+                      });
+                    }}
+                    style={[styles.languageOption, selected && styles.languageOptionSelected]}
+                  >
+                    <Text style={[styles.languageOptionText, selected && styles.languageOptionTextSelected]}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
         <View style={styles.modeSwitch}>
           <TouchableOpacity style={[styles.modeButton, mode === 'sign-in' && styles.activeMode]} onPress={() => updateMode('sign-in')}>
-            <Text style={[styles.modeText, mode === 'sign-in' && styles.activeModeText]}>Sign in</Text>
+            <Text style={[styles.modeText, mode === 'sign-in' && styles.activeModeText]}>{t('auth.signIn')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.modeButton, mode === 'sign-up' && styles.activeMode]} onPress={() => updateMode('sign-up')}>
-            <Text style={[styles.modeText, mode === 'sign-up' && styles.activeModeText]}>Create account</Text>
+            <Text style={[styles.modeText, mode === 'sign-up' && styles.activeModeText]}>{t('auth.createAccount')}</Text>
           </TouchableOpacity>
         </View>
 
-        {mode === 'sign-up' ? <Text style={styles.registrationPrompt}>Please select your registration type to proceed:</Text> : null}
+        {mode === 'sign-up' ? <Text style={styles.registrationPrompt}>{t('auth.registrationType')}</Text> : null}
 
         {mode === 'sign-up' ? (
           <View style={styles.roles}>
-            {roles.map((option) => (
-              <TouchableOpacity key={option.value} style={[styles.role, role === option.value && styles.selectedRole]} onPress={() => setRole(option.value)}>
-                <Text style={[styles.roleText, role === option.value && styles.selectedRoleText]}>{option.label}</Text>
+            {(['client', 'vet', 'merchant'] as Role[]).map((roleOption) => (
+              <TouchableOpacity key={roleOption} style={[styles.role, role === roleOption && styles.selectedRole]} onPress={() => setRole(roleOption)}>
+                <Text style={[styles.roleText, role === roleOption && styles.selectedRoleText]}>{t(roleOption === 'client' ? 'auth.petOwner' : roleOption === 'vet' ? 'auth.veterinarian' : 'auth.merchant')}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -241,14 +265,14 @@ export default function AuthScreen() {
             onChangeText={setFullName}
           />
         ) : null}
-        <TextInput style={styles.input} placeholder="Email address" placeholderTextColor="#718096" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
+        <TextInput style={styles.input} placeholder={t('auth.email')} placeholderTextColor="#718096" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
         {mode === 'sign-up' ? (
           <View style={styles.phoneInputContainer}>
             <View style={styles.countryCode}>
               <Text style={styles.countryCodeText}>+234</Text>
             </View>
             <TextInput
-              accessibilityLabel="Nigerian phone number without country code"
+              accessibilityLabel={t('auth.phone')}
               style={styles.phoneInput}
               placeholder="9012345678"
               placeholderTextColor="#718096"
@@ -262,7 +286,7 @@ export default function AuthScreen() {
           <TextInput
             accessibilityLabel="Veterinary Council of Nigeria (VCN) number"
             style={styles.input}
-            placeholder="VCN number"
+            placeholder={t('auth.vcn')}
             placeholderTextColor="#718096"
             value={licenseNumber}
             onChangeText={setLicenseNumber}
@@ -271,7 +295,7 @@ export default function AuthScreen() {
         <View style={styles.passwordInputContainer}>
           <TextInput
             style={styles.passwordInput}
-            placeholder="Password"
+            placeholder={t('auth.password')}
             placeholderTextColor="#718096"
             secureTextEntry={!showPassword}
             value={password}
@@ -288,18 +312,16 @@ export default function AuthScreen() {
             {showPassword ? <EyeOff size={21} /> : <Eye size={21} />}
           </TouchableOpacity>
         </View>
-        {mode === 'sign-up' ? <Text style={styles.passwordHint}>Use uppercase, lowercase, a number, and a special symbol (@$!%*?&).</Text> : null}
+        {mode === 'sign-up' ? <Text style={styles.passwordHint}>{t('auth.passwordHint')}</Text> : null}
         {passwordError ? <Text style={styles.passwordError}>{passwordError}</Text> : null}
 
         <Text style={styles.modeHelper}>
-          {mode === 'sign-in'
-            ? 'Welcome back! Enter your credentials to access your dashboard.'
-            : 'Fill in your details above to get started.'}
+          {mode === 'sign-in' ? t('auth.welcomeBack') : t('auth.fillDetails')}
         </Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity style={styles.primaryButton} onPress={() => void submit()} disabled={loading}>
-          <Text style={styles.primaryText}>{mode === 'sign-up' ? 'Create account' : 'Sign in'}</Text>
+          <Text style={styles.primaryText}>{mode === 'sign-up' ? t('auth.submitSignUp') : t('auth.submitSignIn')}</Text>
         </TouchableOpacity>
         </View>
       </ScrollView>
@@ -368,4 +390,11 @@ const styles = StyleSheet.create({
   primaryText: { color: '#3B0A16', fontSize: 16, fontWeight: '800' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#08111F', gap: 14 },
   loadingText: { color: '#CBD5E1', fontSize: 16 },
+  languageChooser: { gap: 8 },
+  languageTitle: { color: '#CBD5E1', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  languageOptions: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 7 },
+  languageOption: { minWidth: 72, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#334155', backgroundColor: '#111C2E' },
+  languageOptionSelected: { backgroundColor: '#0C3B31', borderColor: '#10B981' },
+  languageOptionText: { color: '#CBD5E1', fontSize: 11, fontWeight: '600' },
+  languageOptionTextSelected: { color: '#6EE7B7' },
 });

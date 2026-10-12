@@ -13,6 +13,7 @@ import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
+import { useLanguage } from '../../lib/language';
 
 interface Message {
   id?: string;
@@ -26,6 +27,7 @@ interface AiSession {
 }
 
 export default function VetDashboardScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { openMarketplace } = useLocalSearchParams<{ openMarketplace?: string }>();
   const { products } = useMarketplace();
@@ -258,14 +260,14 @@ export default function VetDashboardScreen() {
             <MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" />
           </View>
           <View style={styles.aiCardCopy}>
-            <Text style={styles.aiTitle}>Ask AI Assistant</Text>
-            <Text style={styles.aiText}>Get quick triage and animal care guidance.</Text>
+            <Text style={styles.aiTitle}>{t('home.askAssistant')}</Text>
+            <Text style={styles.aiText}>{t('home.assistantDescription')}</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
-        <Text style={styles.title}>Practice Dashboard</Text>
-        <Text style={styles.subtitle}>Manage consultations and earnings</Text>
+        <Text style={styles.title}>{t('dashboard.practice')}</Text>
+        <Text style={styles.subtitle}>{t('dashboard.managePractice')}</Text>
 
         <View style={styles.metrics}>
           <Metric icon="paw" label="Consultations" value={String(totalPatients)} color="#3B82F6" />
@@ -280,9 +282,9 @@ export default function VetDashboardScreen() {
         </View>
 
         <View style={styles.marketplaceHeader}>
-          <Text style={styles.sectionTitle}>Global Marketplace</Text>
+          <Text style={styles.sectionTitle}>{t('dashboard.marketplace')}</Text>
           <TouchableOpacity onPress={() => setMarketplaceBrowseVisible(true)}>
-            <Text style={styles.browseAction}>Browse All</Text>
+            <Text style={styles.browseAction}>{t('home.browseAll')}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.marketplace}>

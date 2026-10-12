@@ -2,9 +2,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnreadMessages } from '../../lib/unreadMessages';
+import { useLanguage } from '../../lib/language';
 
 export default function ClientLayout() {
   const { totalUnreadCount } = useUnreadMessages();
+  const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -31,7 +33,7 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('nav.home'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="home" color={color} size={size} />
           ),
@@ -40,7 +42,7 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="vets"
         options={{
-          title: 'Vets',
+          title: t('nav.vets'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="hospital-box" color={color} size={size} />
           ),
@@ -49,18 +51,19 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="community"
         options={{
-          title: 'Community',
+          title: t('nav.community'),
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-group" color={color} size={size} />
           ),
         }}
       />
+      <Tabs.Screen name="farm-performance" options={{ href: null }} />
       <Tabs.Screen
         name="chat"
         listeners={{ tabPress: () => router.navigate('/chat') }}
         options={{
-          title: 'Chat',
+          title: t('nav.chat'),
           tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined,
           tabBarBadgeStyle: { backgroundColor: '#EF4444', color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' },
           tabBarIcon: ({ color, size }) => (
@@ -71,7 +74,7 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('nav.profile'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account" color={color} size={size} />
           ),

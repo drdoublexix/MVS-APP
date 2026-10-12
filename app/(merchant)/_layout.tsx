@@ -2,9 +2,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnreadMessages } from '../../lib/unreadMessages';
+import { useLanguage } from '../../lib/language';
 
 export default function MerchantLayout() {
   const { totalUnreadCount } = useUnreadMessages();
+  const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -31,7 +33,7 @@ export default function MerchantLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
+          title: t('nav.dashboard'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="view-dashboard" color={color} size={size} />
           ),
@@ -40,7 +42,7 @@ export default function MerchantLayout() {
       <Tabs.Screen
         name="add-product"
         options={{
-          title: 'Add Product',
+          title: t('nav.addProduct'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="plus-circle" color={color} size={size} />
           ),
@@ -50,7 +52,7 @@ export default function MerchantLayout() {
         name="inventory"
         options={{
           href: null,
-          title: 'Inventory',
+          title: t('nav.inventory'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="package-variant-closed" color={color} size={size} />
           ),
@@ -59,7 +61,7 @@ export default function MerchantLayout() {
       <Tabs.Screen
         name="community"
         options={{
-          title: 'Community',
+          title: t('nav.community'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-group" color={color} size={size} />
           ),
@@ -69,7 +71,7 @@ export default function MerchantLayout() {
         name="chat"
         listeners={{ tabPress: () => router.navigate('/chat') }}
         options={{
-          title: 'Chats',
+          title: t('nav.chats'),
           tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined,
           tabBarBadgeStyle: { backgroundColor: '#EF4444', color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' },
           tabBarIcon: ({ color, size }) => (
@@ -80,7 +82,7 @@ export default function MerchantLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('nav.profile'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-circle" color={color} size={size} />
           ),

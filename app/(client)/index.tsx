@@ -12,6 +12,7 @@ import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
 import { sanitizeInput } from '../../lib/sanitize';
+import { useLanguage } from '../../lib/language';
 import { getCurrentUser, normalizeUuid, readCachedAuthState, supabase } from '../../lib/supabase';
 
 interface Message {
@@ -28,6 +29,7 @@ interface AiSession {
 const naira = (price: number) => `₦${price.toLocaleString()}`;
 
 export default function ClientHome() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { openMarketplace } = useLocalSearchParams<{ openMarketplace?: string }>();
   const role = 'client';
@@ -249,16 +251,16 @@ export default function ClientHome() {
       <WelcomeModal />
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.greeting}>
-          <Text style={styles.greetingTitle}>Hello, {firstName}! 👋</Text>
-          <Text style={styles.greetingSubtitle}>How are your furry buddies doing today?</Text>
+          <Text style={styles.greetingTitle}>{t('home.hello', { name: firstName })} 👋</Text>
+          <Text style={styles.greetingSubtitle}>{t('home.subtitle')}</Text>
         </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>
             <MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" />
           </View>
           <View style={styles.aiCardCopy}>
-            <Text style={styles.aiTitle}>Ask AI Assistant</Text>
-            <Text style={styles.aiText}>Get quick triage and animal care guidance.</Text>
+            <Text style={styles.aiTitle}>{t('home.askAssistant')}</Text>
+            <Text style={styles.aiText}>{t('home.assistantDescription')}</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -267,11 +269,11 @@ export default function ClientHome() {
 
         <View style={styles.banner}>
           <View style={styles.flex}>
-            <Text style={styles.bannerTitle}>Consult a Vet Now</Text>
-            <Text style={styles.bannerText}>Get professional advice instantly</Text>
+            <Text style={styles.bannerTitle}>{t('home.consultVet')}</Text>
+            <Text style={styles.bannerText}>{t('home.consultDescription')}</Text>
           </View>
           <TouchableOpacity style={styles.bannerButton} onPress={() => router.push('/(client)/vets')}>
-            <Text style={styles.bannerButtonText}>Consult</Text>
+            <Text style={styles.bannerButtonText}>{t('home.consult')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -280,7 +282,18 @@ export default function ClientHome() {
           onContactVet={() => router.push('/(client)/vets')}
         />
 
-        <SectionHeader title="Marketplace" action="Browse All" onAction={() => setMarketplaceBrowseVisible(true)} />
+        <TouchableOpacity style={styles.farmTrackerCard} onPress={() => router.push('/(client)/farm-performance')}>
+          <View style={styles.farmTrackerIcon}>
+            <MaterialCommunityIcons name="chart-box-outline" size={24} color="#10B981" />
+          </View>
+          <View style={styles.farmTrackerCopy}>
+            <Text style={styles.farmTrackerTitle}>Farm Performance Tracker</Text>
+            <Text style={styles.farmTrackerText}>Monitor feed, growth, mortality & profit.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color="#94A3B8" />
+        </TouchableOpacity>
+
+        <SectionHeader title={t('home.marketplace')} action={t('home.browseAll')} onAction={() => setMarketplaceBrowseVisible(true)} />
         <View style={styles.grid}>
           {products.map((product) => {
             const badge = getOrderBadge(productOrderStatuses[String(product.id)]);
@@ -488,6 +501,11 @@ const styles = StyleSheet.create({
   greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
   greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24, elevation: 4, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6 },
+  farmTrackerCard: { backgroundColor: '#101D2D', borderColor: '#213249', borderWidth: 1, borderRadius: 15, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 22 },
+  farmTrackerIcon: { width: 43, height: 43, borderRadius: 13, backgroundColor: '#34D39918', alignItems: 'center', justifyContent: 'center' },
+  farmTrackerCopy: { flex: 1 },
+  farmTrackerTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  farmTrackerText: { color: '#94A3B8', fontSize: 11, marginTop: 4 },
   aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: '#FFFFFF24', alignItems: 'center', justifyContent: 'center' },
   aiCardCopy: { flex: 1, marginHorizontal: 12 },
   aiTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },

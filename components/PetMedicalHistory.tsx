@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import DigitalPassportCard from './DigitalPassportCard';
 import { supabase } from '../lib/supabase';
 
 type MedicalRecord = {
@@ -69,6 +70,7 @@ export default function PetMedicalHistory({ petId }: { petId: string }) {
           </View>
         );
       })}
+      <DigitalPassportCard recordId={petId} recordType="pet" />
     </View>
   );
 }

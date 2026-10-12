@@ -2,6 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { formatDateInput, parseDateInput } from '../lib/dateFormat';
+import { verifyDigitalPassportDetails } from '../lib/digitalPassports';
 import { sanitizeInput } from '../lib/sanitize';
 import { getCurrentUser, supabase } from '../lib/supabase';
 
@@ -24,6 +25,7 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [verifyingPassport, setVerifyingPassport] = useState(false);
 
   const selectPreset = (nextPreset: Preset) => {
     const today = administeredDate;
@@ -90,9 +92,26 @@ export default function VetMedicalLogForm({ petId, onSaved }: Props) {
     }
   };
 
+  const verifyPassportDetails = async () => {
+    if (verifyingPassport) return;
+    setVerifyingPassport(true);
+    try {
+      await verifyDigitalPassportDetails('pet', petId);
+      Alert.alert('Animal details verified', 'Species and breed have been verified on the MVS Digital Health Passport.');
+    } catch (error) {
+      console.error('[Pet Passport] Could not verify animal details:', error);
+      Alert.alert('Could not verify details', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setVerifyingPassport(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>Log Treatment & Schedule Next Due Date</Text>
+      <TouchableOpacity style={styles.verifyPassport} onPress={() => void verifyPassportDetails()} disabled={verifyingPassport}>
+        <Text style={styles.verifyPassportText}>{verifyingPassport ? 'Verifying...' : 'Verify species & breed on Digital Passport'}</Text>
+      </TouchableOpacity>
       <View style={styles.presetRow}>
         {([['dhlpp', 'DHLPP / Parvo'], ['deworming', 'Puppy Deworming'], ['rabies', 'Annual Rabies'], ['custom', 'Custom Date']] as [Preset, string][]).map(([value, label]) => (
           <TouchableOpacity key={value} style={[styles.preset, preset === value && styles.presetActive]} onPress={() => selectPreset(value)}>
@@ -146,5 +165,7 @@ const styles = StyleSheet.create({
   webDate: { backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', borderRadius: 7, color: '#FFFFFF', padding: 9, width: '100%', marginBottom: 8 },
   picker: { alignItems: 'flex-start', marginBottom: 8 },
   save: { backgroundColor: '#10B981', borderRadius: 8, padding: 11, alignItems: 'center', marginTop: 4 },
+  verifyPassport: { backgroundColor: '#064E3B', borderColor: '#10B981', borderWidth: 1, borderRadius: 8, padding: 10, alignItems: 'center', marginBottom: 12 },
+  verifyPassportText: { color: '#A7F3D0', fontSize: 12, fontWeight: '700' },
   saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
 });

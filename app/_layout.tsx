@@ -11,6 +11,7 @@ import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInset
 import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
 import { logActivity, isSuperAdmin } from '../lib/admin';
 import { readCachedAuthState, safeSupabaseCall, signOutUser, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
+import { LanguageProvider, normalizeAppLanguage, useLanguage } from '../lib/language';
 
 const registerForPushNotifications = async (userId: string) => {
   const { registerForPushNotifications: register } = await import('../lib/notifications');
@@ -30,6 +31,15 @@ const LEGACY_CHAT_CACHE_KEYS = [
   'mvs_consultation_cache:',
   'mvs_cleared_threads_'
 ];
+
+type AuthProfileState = {
+  role?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+  deleted_at?: string | null;
+  preferred_language?: string | null;
+};
 
 const purgeLegacyChatCaches = async () => {
   try {
@@ -114,16 +124,18 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 function RootAuthGate() {
+  const { applyAccountLanguage } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
-  const [profile, setProfile] = useState<{ role?: string | null; full_name?: string | null; deleted_at?: string | null } | null>(null);
+  const [profile, setProfile] = useState<AuthProfileState | null>(null);
   const profileRef = useRef(profile);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const previousAuthUserId = useRef<string | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
+  const routePathname = usePathname();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
+  const routePathnameRef = useRef(routePathname);
 
   useEffect(() => {
     void purgeLegacyChatCaches();
@@ -159,6 +171,10 @@ function RootAuthGate() {
   useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
+
+  useEffect(() => {
+    routePathnameRef.current = routePathname;
+  }, [routePathname]);
 
   useEffect(() => {
     const userId = authUser?.id;
@@ -256,11 +272,12 @@ function RootAuthGate() {
       if (session?.user) previousAuthUserId.current = session.user.id;
 
       const cachedState = await readCachedAuthState();
-      const cachedProfile = cachedState.profile || profileRef.current;
+      const cachedProfile = (cachedState.profile || profileRef.current) as AuthProfileState | null;
 
       const href = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
       const pathname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : '';
       const isAuthPage = pathname === '/auth' || pathname.startsWith('/auth/') || /\/reset-password(?:\/|$)/.test(pathname);
+      const isPassportRoute = routePathnameRef.current.startsWith('/passport/') || segmentsRef.current[0] === 'passport';
 
       if (pathname === '/auth' || pathname.startsWith('/auth/')) {
         console.log('[AUTH ROUTER] Deferring to unified auth page handler...');
@@ -269,6 +286,7 @@ function RootAuthGate() {
 
       if (!session?.user) {
         console.log('[AUTH ROUTER] No session:', { href, pathname, isAuthPage });
+        if (isPassportRoute) return;
         if (cachedState.user) {
           if (mounted) {
             setAuthUser(cachedState.user as Session['user']);
@@ -284,11 +302,11 @@ function RootAuthGate() {
       }
 
       try {
-        let profileData: { role?: string | null; full_name?: string | null; email?: string | null; avatar_url?: string | null; deleted_at?: string | null } | null = null;
+        let profileData: AuthProfileState | null = null;
         try {
-          profileData = await safeSupabaseCall(() => supabase
+          profileData = await safeSupabaseCall<AuthProfileState | null>(() => supabase
             .from('profiles')
-            .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at')
+            .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, preferred_language')
             .eq('id', session.user.id)
             .maybeSingle());
         } catch (profileError) {
@@ -307,6 +325,9 @@ function RootAuthGate() {
 
         console.log('[AUTH ROUTER] Profile query result:', { profileData });
         const resolvedProfile = profileData || cachedProfile || null;
+        if (resolvedProfile?.preferred_language) {
+          await applyAccountLanguage(normalizeAppLanguage(resolvedProfile.preferred_language));
+        }
         const pendingManualRole = Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
           ? window.localStorage.getItem('mvs_pending_signup_role')
           : null;
@@ -339,6 +360,7 @@ function RootAuthGate() {
         if (!mounted) return;
 
         console.log('[AUTH ROUTER] Navigating authenticated user:', session.user.email, 'Role:', userRole);
+        if (isPassportRoute) return;
         const currentRootSegment = segmentsRef.current[0];
         if (currentRootSegment === '(admin)' && isSuperAdmin(session.user.email)) {
           return;
@@ -406,13 +428,16 @@ function RootAuthGate() {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         previousAuthUserId.current = session.user.id;
         if (event === 'SIGNED_IN') void logActivity('user_login', session.user.id);
-        void safeSupabaseCall(() => supabase
+        void safeSupabaseCall<AuthProfileState | null>(() => supabase
           .from('profiles')
-          .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at')
+          .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, preferred_language')
           .eq('id', session.user.id)
           .maybeSingle())
           .then(async (data) => {
             if (mounted) setProfile(data || null);
+            if (data?.preferred_language) {
+              await applyAccountLanguage(normalizeAppLanguage(data.preferred_language));
+            }
             await writeCachedAuthState(session.user, data || session.user.user_metadata || null);
           })
           .catch((error) => {
@@ -455,7 +480,7 @@ function RootAuthGate() {
       }
       authListener.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, applyAccountLanguage]);
 
   if (loading) {
     return (
@@ -481,7 +506,7 @@ function RootAuthGate() {
 
   return (
     <NotificationCenter
-      notifications={authUser && pathname === '/' ? pendingNotifications : []}
+      notifications={authUser && routePathname === '/' ? pendingNotifications : []}
       onRead={async (notificationId) => {
         try {
           await markNotificationRead(notificationId);
@@ -498,18 +523,21 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider style={{ flex: 1, width: '100%', height: '100%', backgroundColor: '#0B132B' }}>
-        <ContextSafeAreaView style={styles.rootSafeArea} edges={[]}>
-          <RootAuthGate />
-          <NetworkStatusBanner />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
-            <Stack.Screen name="auth" options={{ headerShown: false }} />
-            <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-            <Stack.Screen name="(client)" options={{ headerShown: false }} />
-            <Stack.Screen name="(vet)" options={{ headerShown: false }} />
-            <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
-          </Stack>
-        </ContextSafeAreaView>
+        <LanguageProvider>
+          <ContextSafeAreaView style={styles.rootSafeArea} edges={[]}>
+            <RootAuthGate />
+            <NetworkStatusBanner />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
+              <Stack.Screen name="auth" options={{ headerShown: false }} />
+              <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+              <Stack.Screen name="passport/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="(client)" options={{ headerShown: false }} />
+              <Stack.Screen name="(vet)" options={{ headerShown: false }} />
+              <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
+            </Stack>
+          </ContextSafeAreaView>
+        </LanguageProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
   );

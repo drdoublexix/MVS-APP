@@ -22,7 +22,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AvatarPreviewModal from "../../components/AvatarPreviewModal";
+import DigitalPassportCard from "../../components/DigitalPassportCard";
 import LogoutConfirmationModal from "../../components/LogoutConfirmationModal";
+import LanguagePreference from "../../components/LanguagePreference";
 import MVSDiseasePredictor from "../../components/MVSDiseasePredictor";
 import MVSFeedCalculator from "../../components/MVSFeedCalculator";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
@@ -35,6 +37,7 @@ import { registerForPushNotifications } from "../../lib/notifications";
 import { isValidPassword, PASSWORD_REQUIREMENTS } from "../../lib/password";
 import { calculatePetAgeInWeeks } from "../../lib/petAge";
 import { sanitizeInput } from "../../lib/sanitize";
+import { useLanguage } from "../../lib/language";
 import {
     getCurrentUser,
     readCachedAuthState,
@@ -136,6 +139,7 @@ const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null
 });
 
 export default function ProfileScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [modal, setModal] = useState<SettingsModal>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
@@ -1007,7 +1011,7 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.section}>
           <View style={styles.rowHeader}>
-            <Text style={styles.sectionTitle}>My Pets Record</Text>
+            <Text style={styles.sectionTitle}>{t('profile.pets')}</Text>
             <TouchableOpacity onPress={() => openPet()}>
               <Text style={styles.add}>+</Text>
             </TouchableOpacity>
@@ -1052,7 +1056,7 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.section}>
           <View style={styles.rowHeader}>
-            <Text style={styles.sectionTitle}>My Farm & Livestock Records</Text>
+            <Text style={styles.sectionTitle}>{t('profile.farms')}</Text>
             <TouchableOpacity onPress={() => openAddFarmModal()}>
               <Text style={styles.add}>+</Text>
             </TouchableOpacity>
@@ -1123,12 +1127,14 @@ export default function ProfileScreen() {
                   ) : null}
                 </TouchableOpacity>
                 <FarmMedicalHistory farmId={farm.id} />
+                <DigitalPassportCard recordId={farm.id} recordType="farm" />
               </View>
             ))
           )}
         </View>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Settings</Text>
+          <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
+          <LanguagePreference />
           {isSuperAdmin(user?.email) ? (
             <Setting
               label="Super Admin Dashboard"
@@ -1137,13 +1143,13 @@ export default function ProfileScreen() {
           ) : null}
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: "/(client)", params: { openMarketplace: "true" } })} />
           <MVSDiseasePredictor onContactVet={() => router.push('/(client)/vets')} />
-          <Setting label="Edit Profile" onPress={() => setModal("profile")} />
+          <Setting label={t('settings.editProfile')} onPress={() => setModal("profile")} />
           <Setting
-            label="Change Password"
+            label={t('settings.changePassword')}
             onPress={() => setModal("password")}
           />
           <Setting
-            label="Notifications"
+            label={t('settings.notifications')}
             onPress={() => setModal("notifications")}
           />
         </View>
@@ -1153,13 +1159,13 @@ export default function ProfileScreen() {
             setLogoutConfirmationVisible(true);
           }}
         >
-          <Text style={styles.logoutText}>Log out</Text>
+          <Text style={styles.logoutText}>{t('settings.logOut')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.deleteAccount}
           onPress={() => setDeleteConfirmationVisible(true)}
         >
-          <Text style={styles.deleteText}>Delete account</Text>
+          <Text style={styles.deleteText}>{t('settings.deleteAccount')}</Text>
         </TouchableOpacity>
       </ScrollView>
       <LogoutConfirmationModal

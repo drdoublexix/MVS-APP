@@ -30,10 +30,12 @@ import { parsePriceInput } from "../../lib/price";
 import { isProductCategory, PRODUCT_CATEGORIES } from "../../lib/productCategories";
 import { sanitizeInput } from "../../lib/sanitize";
 import { getCurrentUser, supabase } from "../../lib/supabase";
+import { useLanguage } from "../../lib/language";
 
 const naira = (value: number) => `₦${value.toLocaleString("en-NG")}`;
 
 export default function MerchantDashboardScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { openMarketplace } = useLocalSearchParams<{ openMarketplace?: string }>();
   const { products } = useMarketplace();
@@ -263,8 +265,8 @@ export default function MerchantDashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Store Dashboard</Text>
-        <Text style={styles.subtitle}>Manage your inventory and sales</Text>
+        <Text style={styles.title}>{t('dashboard.store')}</Text>
+        <Text style={styles.subtitle}>{t('dashboard.manageStore')}</Text>
         <View style={styles.stats}>
           <Stat
             icon="cash"
@@ -292,13 +294,13 @@ export default function MerchantDashboardScreen() {
           onPress={() => router.push("/(merchant)/add-product")}
         >
           <MaterialCommunityIcons name="plus" size={21} color="#FFFFFF" />
-          <Text style={styles.addText}>Add New Product</Text>
+          <Text style={styles.addText}>{t('dashboard.addProduct')}</Text>
         </TouchableOpacity>
         <HomeAnimalTools onContactVendor={() => setMarketplaceBrowseVisible(true)} />
         <View style={styles.marketplaceHeader}>
-          <Text style={styles.sectionTitle}>Global Marketplace Inventory</Text>
+          <Text style={styles.sectionTitle}>{t('dashboard.storeInventory')}</Text>
           <TouchableOpacity onPress={() => setMarketplaceBrowseVisible(true)}>
-            <Text style={styles.browseAction}>Browse All</Text>
+            <Text style={styles.browseAction}>{t('home.browseAll')}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.grid}>

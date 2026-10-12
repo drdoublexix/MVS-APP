@@ -22,12 +22,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
+import LanguagePreference from '../../components/LanguagePreference';
 import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
 import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
+import { useLanguage } from '../../lib/language';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 const isExpoGo =
@@ -166,6 +168,7 @@ const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null
 });
 
 export default function MerchantProfileScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [modal, setModal] = useState<SettingsModal>(null);
   const [bankPickerVisible, setBankPickerVisible] = useState(false);
@@ -560,7 +563,7 @@ export default function MerchantProfileScreen() {
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.pageTitle}>My Profile</Text>
+        <Text style={styles.pageTitle}>{t('profile.title')}</Text>
 
         <View style={styles.profileHeader}>
           <TouchableOpacity onPress={() => setAvatarPreviewVisible(true)} accessibilityLabel="View profile photo">
@@ -590,7 +593,7 @@ export default function MerchantProfileScreen() {
         />
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Business Information</Text>
+          <Text style={styles.sectionTitle}>{t('settings.businessInfo')}</Text>
           <InfoRow icon="storefront" label="Business Name" value={profile.business || 'Not set'} />
           <InfoRow icon="map-marker" label="Location" value={profile.location || 'Not set'} />
           <InfoRow icon="file-document" label="CAC Reg Number" value={profile.cacRegNumber || 'Not set'} />
@@ -598,21 +601,22 @@ export default function MerchantProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Settings</Text>
+          <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
+          <LanguagePreference />
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: '/(merchant)', params: { openMarketplace: 'true' } })} />
           <MVSDiseasePredictor />
-          <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
-          <Setting label="My Inventory" icon="archive" onPress={() => router.push('/inventory')} />
-          <Setting label="Change Password" icon="lock" onPress={() => setModal('password')} />
-          <Setting label="Notifications" icon="bell" onPress={() => setModal('notifications')} />
-          <Setting label="Bank Account" icon="bank" onPress={() => setModal('bank')} />
+          <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
+          <Setting label={t('nav.inventory')} icon="archive" onPress={() => router.push('/inventory')} />
+          <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />
+          <Setting label={t('settings.notifications')} icon="bell" onPress={() => setModal('notifications')} />
+          <Setting label={t('settings.bankAccount')} icon="bank" onPress={() => setModal('bank')} />
         </View>
 
         <View style={styles.section}>
           <LogoutButton />
           <TouchableOpacity style={styles.deleteButton} onPress={() => setDeleteConfirmationVisible(true)}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color="#FCA5A5" />
-            <Text style={styles.deleteText}>Delete account</Text>
+            <Text style={styles.deleteText}>{t('settings.deleteAccount')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -1,7 +1,9 @@
 import knowledgeArticles from '@/assets/data/knowledgeHub.json';
+import { knowledgeHubTranslations } from '@/assets/data/knowledgeHubTranslations';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useLanguage } from '../lib/language';
 
 interface KnowledgeArticle {
   id: string;
@@ -13,15 +15,30 @@ interface KnowledgeArticle {
 }
 
 const articles = knowledgeArticles as KnowledgeArticle[];
-const categories = ['All', 'Vaccination', 'Livestock Care', 'Hydration & Nutrition', 'First Aid & Triage', 'Biosecurity', 'Public Health'];
+const categories = [
+  { value: 'All', translationKey: 'knowledge.all' },
+  { value: 'Vaccination', translationKey: 'knowledge.vaccination' },
+  { value: 'Livestock Care', translationKey: 'knowledge.livestockCare' },
+  { value: 'Hydration & Nutrition', translationKey: 'knowledge.hydrationNutrition' },
+  { value: 'First Aid & Triage', translationKey: 'knowledge.firstAid' },
+  { value: 'Biosecurity', translationKey: 'knowledge.biosecurity' },
+  { value: 'Public Health', translationKey: 'knowledge.publicHealth' },
+];
 
 export default function KnowledgeHubSection() {
-  const [selectedArticle, setSelectedArticle] = useState<KnowledgeArticle | null>(null);
+  const { language, t } = useLanguage();
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [isModalOpen, setModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
 
-  const filteredArticles = articles.filter((article) => {
+  const localizedArticles = articles.map((article) => ({
+    ...article,
+    ...knowledgeHubTranslations[language]?.[article.id],
+  }));
+  const selectedArticle = localizedArticles.find((article) => article.id === selectedArticleId) ?? null;
+
+  const filteredArticles = localizedArticles.filter((article) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesCategory = category === 'All' || article.category === category;
     const matchesSearch = !normalizedSearch || `${article.title} ${article.category} ${article.summary}`.toLowerCase().includes(normalizedSearch);
@@ -37,14 +54,14 @@ export default function KnowledgeHubSection() {
   return (
     <>
       <View style={styles.headerRow}>
-        <Text style={styles.sectionTitle}>MVS Knowledge Hub</Text>
+        <Text style={styles.sectionTitle}>{t('knowledge.title')}</Text>
         <TouchableOpacity onPress={() => setModalOpen(true)}>
-          <Text style={styles.action}>View All</Text>
+          <Text style={styles.action}>{t('knowledge.viewAll')}</Text>
         </TouchableOpacity>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowGap}>
-        {articles.map((article) => (
-          <TouchableOpacity key={article.id} style={styles.tipCard} onPress={() => setSelectedArticle(article)}>
+        {localizedArticles.map((article) => (
+          <TouchableOpacity key={article.id} style={styles.tipCard} onPress={() => setSelectedArticleId(article.id)}>
             <View style={styles.tipIcon}>
               <MaterialCommunityIcons name={article.icon as any} size={30} color="#3B82F6" />
             </View>
@@ -58,40 +75,42 @@ export default function KnowledgeHubSection() {
         <View style={styles.knowledgeOverlay}>
           <View style={styles.knowledgeModal}>
             <View style={styles.knowledgeHeader}>
-              <Text style={styles.knowledgeModalTitle}>MVS Knowledge Hub</Text>
-              <TouchableOpacity onPress={closeHub} accessibilityLabel="Close Knowledge Hub">
+              <Text style={styles.knowledgeModalTitle}>{t('knowledge.title')}</Text>
+              <TouchableOpacity onPress={closeHub} accessibilityLabel={t('knowledge.closeHub')}>
                 <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
             <TextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search articles..."
+              placeholder={t('knowledge.search')}
               placeholderTextColor="#64748B"
               style={styles.knowledgeSearch}
-              accessibilityLabel="Search Knowledge Hub articles"
+              accessibilityLabel={t('knowledge.search')}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFiltersScroll} contentContainerStyle={styles.categoryFilters}>
               {categories.map((item) => (
                 <TouchableOpacity
-                  key={item}
-                  style={[styles.categoryPill, category === item && styles.categoryPillActive]}
-                  onPress={() => setCategory(item)}
+                  key={item.value}
+                  style={[styles.categoryPill, category === item.value && styles.categoryPillActive]}
+                  onPress={() => setCategory(item.value)}
                 >
-                  <Text style={[styles.categoryPillText, category === item && styles.categoryPillTextActive]}>{item}</Text>
+                  <Text style={[styles.categoryPillText, category === item.value && styles.categoryPillTextActive]}>{t(item.translationKey)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
             <ScrollView contentContainerStyle={styles.knowledgeGrid} showsVerticalScrollIndicator={false}>
               {filteredArticles.length === 0 ? (
-                <Text style={styles.knowledgeEmpty}>No articles match your search.</Text>
+                <Text style={styles.knowledgeEmpty}>{t('knowledge.noResults')}</Text>
               ) : filteredArticles.map((article) => (
-                <TouchableOpacity key={article.id} style={styles.knowledgeArticleCard} onPress={() => setSelectedArticle(article)} activeOpacity={0.8}>
+                <TouchableOpacity key={article.id} style={styles.knowledgeArticleCard} onPress={() => setSelectedArticleId(article.id)} activeOpacity={0.8}>
                   <View style={styles.knowledgeArticleIcon}>
                     <MaterialCommunityIcons name={article.icon as any} size={25} color="#3B82F6" />
                   </View>
                   <Text style={styles.knowledgeArticleTitle}>{article.title}</Text>
-                  <Text style={styles.knowledgeArticleCategory}>{article.category}</Text>
+                  <Text style={styles.knowledgeArticleCategory}>
+                    {t(categories.find((item) => item.value === article.category)?.translationKey ?? article.category)}
+                  </Text>
                   <Text style={styles.knowledgeArticleSummary} numberOfLines={4}>{article.summary}</Text>
                 </TouchableOpacity>
               ))}
@@ -100,16 +119,18 @@ export default function KnowledgeHubSection() {
         </View>
       </Modal>
 
-      <Modal visible={Boolean(selectedArticle)} animationType="fade" transparent onRequestClose={() => setSelectedArticle(null)}>
+      <Modal visible={Boolean(selectedArticle)} animationType="fade" transparent onRequestClose={() => setSelectedArticleId(null)}>
         <View style={styles.overlay}>
           <View style={styles.modal}>
-            <TouchableOpacity style={styles.close} onPress={() => setSelectedArticle(null)} accessibilityLabel="Close article">
+            <TouchableOpacity style={styles.close} onPress={() => setSelectedArticleId(null)} accessibilityLabel={t('knowledge.closeArticle')}>
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
             {selectedArticle && (
               <>
                 <View style={styles.articleHeader}>
-                  <Text style={styles.categoryTag}>{selectedArticle.category}</Text>
+                  <Text style={styles.categoryTag}>
+                    {t(categories.find((item) => item.value === selectedArticle.category)?.translationKey ?? selectedArticle.category)}
+                  </Text>
                   <Text style={styles.modalTitle}>{selectedArticle.title}</Text>
                 </View>
                 <ScrollView contentContainerStyle={styles.articleBody} showsVerticalScrollIndicator>
@@ -117,8 +138,8 @@ export default function KnowledgeHubSection() {
                     <Text key={paragraph} style={styles.articleParagraph}>{paragraph}</Text>
                   ))}
                 </ScrollView>
-                <TouchableOpacity style={styles.primaryButton} onPress={() => setSelectedArticle(null)}>
-                  <Text style={styles.primaryText}>Got it</Text>
+                <TouchableOpacity style={styles.primaryButton} onPress={() => setSelectedArticleId(null)}>
+                  <Text style={styles.primaryText}>{t('knowledge.gotIt')}</Text>
                 </TouchableOpacity>
               </>
             )}

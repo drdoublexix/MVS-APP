@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
+import LanguagePreference from '../../components/LanguagePreference';
 import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
 import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import { requestDeviceLocation } from '../../lib/location';
@@ -27,6 +28,7 @@ import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
+import { useLanguage } from '../../lib/language';
 
 type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
 
@@ -73,6 +75,7 @@ const NIGERIAN_BANKS = [
 ];
 
 export default function VetProfileScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const role = 'vet';
   const [modal, setModal] = useState<SettingsModal>(null);
@@ -485,7 +488,7 @@ export default function VetProfileScreen() {
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.pageTitle}>My Profile</Text>
+        <Text style={styles.pageTitle}>{t('profile.title')}</Text>
 
         {/* Profile Header */}
         <View style={styles.profileHeader}>
@@ -517,7 +520,7 @@ export default function VetProfileScreen() {
 
         {/* Practice Information */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Practice Information</Text>
+          <Text style={styles.sectionTitle}>{t('settings.practiceInfo')}</Text>
           <InfoRow icon="hospital-box" label="Clinic" value={profile.clinic || 'Not set'} />
           <InfoRow icon="briefcase" label="Specialty" value={profile.specialty || 'Not set'} />
           {role === 'vet' ? <InfoRow icon="text-box-outline" label="Bio" value={profile.bio || 'Add a short bio'} /> : null}
@@ -527,25 +530,26 @@ export default function VetProfileScreen() {
 
         {/* Account Settings */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Settings</Text>
+          <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
+          <LanguagePreference />
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: '/(vet)', params: { openMarketplace: 'true' } })} />
           <MVSDiseasePredictor />
-          <Setting label="Edit Profile" icon="pencil" onPress={() => setModal('profile')} />
-          <Setting label="Change Password" icon="lock" onPress={() => setModal('password')} />
-          <Setting label="Notifications" icon="bell" onPress={() => setModal('notifications')} />
-          <Setting label="Bank Account" icon="bank" onPress={() => setModal('bank')} />
+          <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
+          <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />
+          <Setting label={t('settings.notifications')} icon="bell" onPress={() => setModal('notifications')} />
+          <Setting label={t('settings.bankAccount')} icon="bank" onPress={() => setModal('bank')} />
         </View>
 
         {/* Account Actions */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.logout} onPress={() => setLogoutConfirmationVisible(true)}>
             <MaterialCommunityIcons name="logout" size={18} color="#FFFFFF" />
-            <Text style={styles.logoutText}>Log out</Text>
+            <Text style={styles.logoutText}>{t('settings.logOut')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.deleteButton} onPress={() => setDeleteConfirmationVisible(true)}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color="#FCA5A5" />
-            <Text style={styles.deleteText}>Delete account</Text>
+            <Text style={styles.deleteText}>{t('settings.deleteAccount')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
