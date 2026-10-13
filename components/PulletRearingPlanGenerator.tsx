@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Packer } from 'docx';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { createPulletRearingPlanMhtml } from '../lib/pulletRearingPlan';
+import { createPulletRearingPlanDocx } from '../lib/pulletRearingPlan';
 
 type Props = {
   audience: 'vet' | 'client';
@@ -40,15 +41,14 @@ export default function PulletRearingPlanGenerator({ audience, compact = false, 
 
     setIsGenerating(true);
     try {
-      const documentContent = createPulletRearingPlanMhtml({
+      const planDocument = createPulletRearingPlanDocx({
         birds,
         clientName: audience === 'vet' ? name : undefined,
-        includeEstimatedPrices: false,
       });
-      const filename = `mvs-pullet-rearing-plan-${birds}-birds-${Date.now()}.mht`;
+      const filename = `mvs-pullet-rearing-plan-${birds}-birds-${Date.now()}.docx`;
 
       if (Platform.OS === 'web') {
-        const file = new Blob([documentContent], { type: 'application/x-mimearchive' });
+        const file = await Packer.toBlob(planDocument);
         const url = URL.createObjectURL(file);
         const link = document.createElement('a');
         link.href = url;
@@ -62,10 +62,11 @@ export default function PulletRearingPlanGenerator({ audience, compact = false, 
 
       if (!FileSystem.cacheDirectory) throw new Error('Temporary document storage is unavailable.');
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      await FileSystem.writeAsStringAsync(fileUri, documentContent, { encoding: FileSystem.EncodingType.UTF8 });
+      const documentBase64 = await Packer.toBase64String(planDocument);
+      await FileSystem.writeAsStringAsync(fileUri, documentBase64, { encoding: FileSystem.EncodingType.Base64 });
       if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is unavailable on this device.');
       await Sharing.shareAsync(fileUri, {
-        mimeType: 'application/x-mimearchive',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         dialogTitle: 'Save or share your MVS Pullet Rearing Plan',
       });
     } catch (error) {
@@ -91,7 +92,7 @@ export default function PulletRearingPlanGenerator({ audience, compact = false, 
           <MaterialCommunityIcons name="file-document-edit-outline" size={22} color="#34D399" />
         </View>
         <View style={styles.copy}>
-          <Text style={styles.title}>Pullet Rearing Plan</Text>
+          <Text style={styles.title}>MVS Pullet Rearing Plan</Text>
           <Text style={styles.subtitle}>Create a layer flock plan through point of lay</Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={23} color="#6EE7B7" />
@@ -105,7 +106,7 @@ export default function PulletRearingPlanGenerator({ audience, compact = false, 
                 <MaterialCommunityIcons name="file-document-edit-outline" size={22} color="#34D399" />
               </View>
               <View style={styles.headerCopy}>
-                <Text style={styles.title}>Pullet Rearing Plan</Text>
+                <Text style={styles.title}>MVS Pullet Rearing Plan</Text>
                 <Text style={styles.subtitle}>Layer flock plan through point of lay</Text>
               </View>
               <TouchableOpacity onPress={close} style={styles.closeButton} accessibilityLabel="Close pullet rearing plan">
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   compactTrigger: {
-    flex: 1,
+    alignSelf: 'stretch',
     marginTop: 0,
     minHeight: 76,
     paddingHorizontal: 10,

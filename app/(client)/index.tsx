@@ -306,23 +306,23 @@ export default function ClientHome() {
           onContactVendor={() => setMarketplaceBrowseVisible(true)}
           onContactVet={() => router.push('/(client)/vets')}
         />
-        <View style={styles.farmToolsRow}>
+        <View style={styles.farmToolsColumn}>
+          <PulletRearingPlanGenerator audience="client" compact />
           <TouchableOpacity
-            style={[styles.farmTrackerCard, styles.farmTrackerCompact]}
+            style={[styles.farmTrackerCard, styles.farmTrackerCompact, styles.farmTrackerFullWidth]}
             onPress={() => router.push('/(client)/farm-performance')}
             accessibilityRole="button"
-            accessibilityLabel="Open Farm Performance Tracker"
+            accessibilityLabel="Open MVS Farm Performance Tracker"
           >
             <View style={styles.farmTrackerIcon}>
               <MaterialCommunityIcons name="chart-box-outline" size={21} color="#10B981" />
             </View>
             <View style={styles.farmTrackerCopy}>
-              <Text style={styles.farmTrackerCompactTitle}>Farm Performance Tracker</Text>
+              <Text style={styles.farmTrackerCompactTitle}>MVS Farm Performance Tracker</Text>
               <Text style={styles.farmTrackerText}>Monitor feed, growth, mortality & profit.</Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
           </TouchableOpacity>
-          <PulletRearingPlanGenerator audience="client" compact />
         </View>
 
         <SectionHeader title={t('home.marketplace')} action={t('home.browseAll')} onAction={() => setMarketplaceBrowseVisible(true)} />
@@ -538,8 +538,9 @@ const styles = StyleSheet.create({
   greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24, elevation: 4, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6 },
   farmTrackerCard: { backgroundColor: '#101D2D', borderColor: '#213249', borderWidth: 1, borderRadius: 15, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 22 },
-  farmToolsRow: { flexDirection: 'row', alignItems: 'stretch', gap: 9, marginBottom: 16 },
-  farmTrackerCompact: { flex: 1, minHeight: 76, padding: 10, borderRadius: 12, gap: 8, marginBottom: 0 },
+  farmToolsColumn: { width: '100%', alignItems: 'stretch', gap: 9, marginBottom: 16 },
+  farmTrackerCompact: { minHeight: 76, padding: 10, borderRadius: 12, gap: 8, marginBottom: 0 },
+  farmTrackerFullWidth: { alignSelf: 'stretch', width: '100%' },
   farmTrackerIcon: { width: 43, height: 43, borderRadius: 13, backgroundColor: '#34D39918', alignItems: 'center', justifyContent: 'center' },
   farmTrackerCopy: { flex: 1 },
   farmTrackerTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },

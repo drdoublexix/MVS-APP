@@ -463,7 +463,7 @@ export default function FarmPerformanceScreen() {
           </Pressable>
           <View style={styles.topBarCopy}>
             <Text style={styles.eyebrow}>FARM RECORDS / MVS TOOLS</Text>
-            <Text style={styles.pageTitle}>Performance tracker</Text>
+            <Text style={styles.pageTitle}>MVS Farm Performance Tracker</Text>
           </View>
           <View style={styles.logo}><MaterialCommunityIcons name="chart-box-outline" size={22} color={colors.green} /></View>
         </View>

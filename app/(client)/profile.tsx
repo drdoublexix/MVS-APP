@@ -1149,13 +1149,13 @@ export default function ProfileScreen() {
             style={styles.farmTrackerCard}
             onPress={() => router.push('/(client)/farm-performance')}
             accessibilityRole="button"
-            accessibilityLabel="Open Farm Performance Tracker"
+            accessibilityLabel="Open MVS Farm Performance Tracker"
           >
             <View style={styles.farmTrackerIcon}>
               <MaterialCommunityIcons name="chart-box-outline" size={24} color="#10B981" />
             </View>
             <View style={styles.farmTrackerCopy}>
-              <Text style={styles.farmTrackerTitle}>Farm Performance Tracker</Text>
+              <Text style={styles.farmTrackerTitle}>MVS Farm Performance Tracker</Text>
               <Text style={styles.farmTrackerText}>Monitor feed, growth, mortality &amp; profit.</Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={22} color="#94A3B8" />
