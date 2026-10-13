@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchMarketplaceProducts } from '../../lib/marketplace';
-import { parsePriceInput } from '../../lib/price';
+import { addPlatformFee, parsePriceInput } from '../../lib/price';
 import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
@@ -165,7 +165,7 @@ export default function MerchantInventoryScreen() {
             <View key={item.id} style={styles.itemCard}>
               <View style={styles.info}>
                 <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.price}>₦{item.price.toLocaleString('en-NG')}</Text>
+                <Text style={styles.price}>₦{addPlatformFee(item.price).toLocaleString('en-NG')}</Text>
                 <Text style={styles.stock}>{item.stock} in stock</Text>
               </View>
 
@@ -202,8 +202,9 @@ export default function MerchantInventoryScreen() {
               <TextInput value={editDraft.title} onChangeText={(title) => setEditDraft((current) => ({ ...current, title }))} style={styles.input} placeholder="Product name" placeholderTextColor="#64748B" />
               <Text style={styles.label}>Description</Text>
               <TextInput value={editDraft.description} onChangeText={(description) => setEditDraft((current) => ({ ...current, description }))} style={[styles.input, styles.descriptionInput]} placeholder="Product description" placeholderTextColor="#64748B" multiline />
-              <Text style={styles.label}>Price in NGN</Text>
+              <Text style={styles.label}>Your price in NGN</Text>
               <TextInput value={editDraft.price} onChangeText={(price) => setEditDraft((current) => ({ ...current, price }))} style={styles.input} placeholder="e.g. 50,000" placeholderTextColor="#64748B" keyboardType="decimal-pad" />
+              {editDraft.price.trim() && Number.isFinite(parsePriceInput(editDraft.price)) ? <Text style={styles.pricePreview}>Marketplace price: ₦ {addPlatformFee(parsePriceInput(editDraft.price)).toLocaleString('en-NG')}</Text> : null}
               <Text style={styles.label}>Category</Text>
               <View style={styles.categories}>{PRODUCT_CATEGORIES.map((category) => <TouchableOpacity key={category} onPress={() => setEditDraft((current) => ({ ...current, category }))} style={[styles.category, editDraft.category === category && styles.selected]}><Text style={[styles.categoryText, editDraft.category === category && styles.selectedText]}>{category}</Text></TouchableOpacity>)}</View>
               <TouchableOpacity style={styles.saveButton} onPress={() => void saveEdit()} disabled={savingEdit}><Text style={styles.saveText}>{savingEdit ? 'Saving...' : 'Save Changes'}</Text></TouchableOpacity>
@@ -240,6 +241,7 @@ const styles = StyleSheet.create({
   form: { padding: 16, paddingBottom: 40 },
   label: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginBottom: 8, marginTop: 14 },
   input: { backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155', borderRadius: 9, color: '#FFFFFF', padding: 13, fontSize: 14 },
+  pricePreview: { color: '#94A3B8', fontSize: 12, marginTop: 6 },
   descriptionInput: { minHeight: 100, textAlignVertical: 'top' },
   categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   category: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#334155', backgroundColor: '#1E293B' },

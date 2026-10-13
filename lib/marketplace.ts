@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { addPlatformFee } from './price';
 import { normalizeUuid, supabase } from './supabase';
 
 export type MarketplaceProduct = {
@@ -19,7 +20,7 @@ export type MarketplaceProduct = {
 const normalizeProduct = (product: any): MarketplaceProduct => ({
   id: String(product.id),
   name: product.name || 'Pet Product',
-  price: Number(product.price || 0),
+  price: addPlatformFee(Number(product.price || 0)),
   merchant: product.profiles?.business_name || product.business_name || 'Nil',
   businessName: product.profiles?.business_name || product.business_name || 'Nil',
   merchantId: normalizeUuid(String(product.merchant_id || product.merchantId || '')) || '',

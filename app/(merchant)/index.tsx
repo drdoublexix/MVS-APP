@@ -28,7 +28,7 @@ import {
     fetchMarketplaceProducts,
     useMarketplace,
 } from "../../lib/marketplace";
-import { parsePriceInput } from "../../lib/price";
+import { addPlatformFee, parsePriceInput } from "../../lib/price";
 import { isProductCategory, PRODUCT_CATEGORIES } from "../../lib/productCategories";
 import { sanitizeInput } from "../../lib/sanitize";
 import { requestAiAssistant } from "../../lib/aiAssistant";
@@ -557,7 +557,7 @@ export default function MerchantDashboardScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.label}>Price in NGN</Text>
+            <Text style={styles.label}>Your price in NGN</Text>
             <TextInput
               value={form.price}
               onChangeText={(price) => setForm({ ...form, price })}
@@ -566,6 +566,11 @@ export default function MerchantDashboardScreen() {
               placeholderTextColor="#64748B"
               keyboardType="decimal-pad"
             />
+            {form.price.trim() && Number.isFinite(parsePriceInput(form.price)) ? (
+              <Text style={styles.label}>
+                Marketplace price: {naira(addPlatformFee(parsePriceInput(form.price)))}
+              </Text>
+            ) : null}
             <Text style={styles.label}>Stock Quantity</Text>
             <TextInput
               value={form.stock}

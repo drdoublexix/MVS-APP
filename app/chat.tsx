@@ -47,6 +47,7 @@ import { sendPushNotification } from "../lib/notifications";
 import { createOfflineRecordId, enqueueOfflineRecord, readOfflineRecords, readOfflineSnapshot, saveOfflineSnapshot, syncOfflineRecords } from "../lib/offlineRecords";
 import { createOfflineMessageId, enqueueOfflineMessage, readOfflineMessages, removeOfflineMessage, type OfflineOneToOneMessage } from "../lib/offlineMessageQueue";
 import { calculatePetAgeInWeeks } from "../lib/petAge";
+import { addPlatformFee } from "../lib/price";
 import { sanitizeInput } from "../lib/sanitize";
 import {
   deleteMessageForEveryone,
@@ -4862,13 +4863,16 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const [note, setNote] = useState(initialItems && initialItems.length > 0 ? draftItems.map((item) => `${item.description}: NGN ${item.amount.toLocaleString("en-NG")}`).join("; ") : "");
 
   const subtotal = items.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+  const totalWithFee = addPlatformFee(subtotal);
+  const platformFee = totalWithFee - subtotal;
+
   const updateItem = (index: number, field: keyof InvoiceItem, value: string) => {
     setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: field === "amount" ? Number(value.replace(/[^\d.]/g, "")) || 0 : value } : item));
   };
   const submit = () => {
     const validItems = items.filter((item) => item.description.trim() && item.amount > 0);
-    const total = validItems.reduce((sum, item) => sum + item.amount, 0);
-    if (!validItems.length || !Number.isFinite(total) || total <= 0) {
+    const subtotalCheck = validItems.reduce((sum, item) => sum + item.amount, 0);
+    if (!validItems.length || !Number.isFinite(subtotalCheck) || subtotalCheck <= 0) {
       Alert.alert("Invalid invoice", "Add at least one item with a valid amount.");
       return;
     }
@@ -4877,11 +4881,23 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       description: item.description.trim(),
       amount: item.amount,
     }));
-    const itemNote = normalizedItems.map((item) => `${item.description}: NGN ${item.amount.toLocaleString("en-NG")}`).join("; ");
-    void onSubmit(total, note.trim() || itemNote, normalizedItems);
+    const validSubtotal = normalizedItems.reduce((sum, item) => sum + item.amount, 0);
+    const invoiceTotal = addPlatformFee(validSubtotal);
+    let allocatedTotal = 0;
+    const feeInclusiveItems = normalizedItems.map((item, index) => {
+      const amount = index === normalizedItems.length - 1
+        ? Math.round((invoiceTotal - allocatedTotal) * 100) / 100
+        : Math.round((item.amount * invoiceTotal / validSubtotal + Number.EPSILON) * 100) / 100;
+      allocatedTotal += amount;
+      return { ...item, amount };
+    });
+    // Spread the fee across item lines so the client sees normal itemized prices without a separate fee row.
+    void onSubmit(invoiceTotal, note.trim(), feeInclusiveItems);
   };
 
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close invoice"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={item.id} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity style={styles.invoiceDeleteButton} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => { const nextItemNumber = current.reduce((max, currentItem) => Math.max(max, Number(currentItem.id) || 0), 0) + 1; return [...current, { id: String(nextItemNumber), description: `Item ${nextItemNumber}`, amount: 1000 }]; })}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Total: NGN {subtotal.toLocaleString("en-NG")}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.invoiceOverlay}><View style={styles.invoiceModal}><View style={styles.invoiceModalHeader}><Text style={styles.invoiceModalTitle}>Create Invoice</Text><TouchableOpacity onPress={onClose} accessibilityLabel="Close invoice"><MaterialCommunityIcons name="close" size={24} color="#FFFFFF" /></TouchableOpacity></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.invoiceForm}><Text style={styles.invoiceLabel}>Invoice Items</Text>{items.map((item, index) => <View key={item.id} style={styles.invoiceItemRow}><TextInput value={item.description} onChangeText={(value) => updateItem(index, "description", value)} placeholder="Service or treatment" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceDescriptionInput]} /><TextInput value={item.amount ? String(item.amount) : ""} onChangeText={(value) => updateItem(index, "amount", value)} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor="#64748B" style={[styles.input, styles.invoiceAmountInput]} /><TouchableOpacity style={styles.invoiceDeleteButton} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><MaterialCommunityIcons name="delete-outline" size={20} color="#F87171" /></TouchableOpacity></View>)}<TouchableOpacity style={styles.addInvoiceItem} onPress={() => setItems((current) => { const nextItemNumber = current.reduce((max, currentItem) => Math.max(max, Number(currentItem.id) || 0), 0) + 1; return [...current, { id: String(nextItemNumber), description: `Item ${nextItemNumber}`, amount: 1000 }]; })}><MaterialCommunityIcons name="plus" size={17} color="#60A5FA" /><Text style={styles.addInvoiceItemText}>Add item</Text></TouchableOpacity><Text style={styles.invoiceTotal}>Subtotal: NGN {subtotal.toLocaleString("en-NG")}</Text>
+            <Text style={[styles.invoiceTotal, { fontSize: 13, color: '#94A3B8' }]}>Platform fee (10%): NGN {platformFee.toLocaleString('en-NG')}</Text>
+            <Text style={[styles.invoiceTotal, { fontWeight: '800' }]}>Total (including platform fee): NGN {totalWithFee.toLocaleString('en-NG')}</Text><Text style={styles.invoiceLabel}>Note or description (optional)</Text><TextInput value={note} onChangeText={setNote} placeholder="Additional clinical context..." placeholderTextColor="#64748B" style={[styles.input, styles.invoiceNoteInput]} multiline /><TouchableOpacity style={styles.sendButton} onPress={submit} disabled={submitting}><Text style={styles.sendText}>{submitting ? "Creating..." : "Create Invoice"}</Text></TouchableOpacity></ScrollView></View></View></Modal>;
 }
 
  function ConsultationChatRoom({
