@@ -6,6 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KnowledgeHubSection from '../../components/KnowledgeHubSection';
 import HomeAnimalTools from '../../components/HomeAnimalTools';
+import PulletRearingPlanGenerator from '../../components/PulletRearingPlanGenerator';
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
@@ -303,6 +304,7 @@ export default function VetDashboardScreen() {
 
         <View style={styles.animalToolsSection}>
           <HomeAnimalTools onContactVendor={() => setMarketplaceBrowseVisible(true)} />
+          <PulletRearingPlanGenerator audience="vet" tight />
         </View>
 
         <View style={styles.marketplaceHeader}>
@@ -509,7 +511,7 @@ const styles = StyleSheet.create({
   metricIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   muted: { color: '#94A3B8', fontSize: 12 },
   metricValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 5, textAlign: 'center' },
-  marketplaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  marketplaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 12 },
   sectionTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   browseAction: { color: '#3B82F6', fontWeight: '600', fontSize: 13 },
   marketplace: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

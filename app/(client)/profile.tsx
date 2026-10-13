@@ -27,6 +27,7 @@ import LogoutConfirmationModal from "../../components/LogoutConfirmationModal";
 import LanguagePreference from "../../components/LanguagePreference";
 import MVSDiseasePredictor from "../../components/MVSDiseasePredictor";
 import MVSFeedCalculator from "../../components/MVSFeedCalculator";
+import PulletRearingPlanGenerator from "../../components/PulletRearingPlanGenerator";
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
@@ -1143,6 +1144,7 @@ export default function ProfileScreen() {
           ) : null}
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: "/(client)", params: { openMarketplace: "true" } })} />
           <MVSDiseasePredictor onContactVet={() => router.push('/(client)/vets')} />
+          <PulletRearingPlanGenerator audience="client" />
           <TouchableOpacity
             style={styles.farmTrackerCard}
             onPress={() => router.push('/(client)/farm-performance')}
@@ -1830,7 +1832,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: { color: "#FFFFFF", fontWeight: "700", fontSize: 17 },
-  farmTrackerCard: { backgroundColor: "#101D2D", borderColor: "#213249", borderWidth: 1, borderRadius: 15, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 },
+  farmTrackerCard: { backgroundColor: "#101D2D", borderColor: "#213249", borderWidth: 1, borderRadius: 15, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8, marginBottom: 8 },
   farmTrackerIcon: { width: 43, height: 43, borderRadius: 13, backgroundColor: "#34D39918", alignItems: "center", justifyContent: "center" },
   farmTrackerCopy: { flex: 1 },
   farmTrackerTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },

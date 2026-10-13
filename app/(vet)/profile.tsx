@@ -23,6 +23,7 @@ import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
 import LanguagePreference from '../../components/LanguagePreference';
 import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
 import MVSFeedCalculator from '../../components/MVSFeedCalculator';
+import PulletRearingPlanGenerator from '../../components/PulletRearingPlanGenerator';
 import { requestDeviceLocation } from '../../lib/location';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
@@ -534,6 +535,7 @@ export default function VetProfileScreen() {
           <LanguagePreference />
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: '/(vet)', params: { openMarketplace: 'true' } })} />
           <MVSDiseasePredictor />
+          <PulletRearingPlanGenerator audience="vet" tight />
           <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
           <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />
           <Setting label={t('settings.notifications')} icon="bell" onPress={() => setModal('notifications')} />
