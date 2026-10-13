@@ -260,7 +260,7 @@ export function createPulletRearingPlanDocx({ birds, clientName }: PulletRearing
     heading('7. Notes & Assumptions'),
     new Paragraph({ text: '• All price fields have intentionally been left blank. Obtain current quotations from local Nigerian suppliers before finalizing your budget.' }),
     new Paragraph({ text: '• Housing quantities assume a deep-litter system; using an existing structure may reduce requirements.' }),
-    new Paragraph({ text: '• Labour is optional and can be removed if you as the client will manage the flock personally.' }),
+    new Paragraph({ text: '• Labour is optional and can be removed if you will manage the flock personally.' }),
     new Paragraph({ text: '• Mortality is not separately budgeted; maintain good brooding and biosecurity practices and allow for contingency in the budget.' }),
     new Paragraph({ text: '• This plan ends at point of lay. Prepare a separate budget for the laying phase, including layer mash, egg trays, crates and ongoing veterinary care.' }),
     new Paragraph({ text: `• Quantities are calculated for this ${flockSize}-bird flock and rounded up where whole equipment units or feed bags are required.` }),
