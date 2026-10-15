@@ -20,7 +20,7 @@
   "include": [
     "**/*.ts",
     "**/*.tsx"
-  ],
+, "scripts/send-client-messages.mjs"  ],
   "exclude": [
     "node_modules"
   ]

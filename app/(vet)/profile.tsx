@@ -99,6 +99,7 @@ export default function VetProfileScreen() {
     clinic: '',
     bio: '',
     licenseNumber: '',
+    isVetApproved: null as boolean | null,
     avatar: '',
     bankName: '',
     bankCode: '',
@@ -159,6 +160,7 @@ export default function VetProfileScreen() {
           clinic: cachedProfile?.clinic || cachedUser.user_metadata?.clinic || '',
           bio: cachedProfile?.bio || '',
           licenseNumber: cachedProfile?.license_number || cachedUser.user_metadata?.license_number || '',
+          isVetApproved: typeof cachedProfile?.is_vet_approved === 'boolean' ? cachedProfile.is_vet_approved : null,
           avatar: cachedAvatar || '',
           bankName: current.bankName,
           bankCode: current.bankCode,
@@ -175,7 +177,10 @@ export default function VetProfileScreen() {
       const user = await getCurrentUser();
       if (!user) return;
 
-      const { data: profileData } = await supabase.from('profiles').select('full_name, avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio').eq('id', user.id).single();
+      const { data: profileData, error: profileError } = await supabase.from('profiles').select('full_name, avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio, is_vet_approved').eq('id', user.id).single();
+      if (profileError) {
+        console.error('[Vet Profile] Could not load profile and license verification status:', profileError);
+      }
       const activeAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
       setAvatarUrl(activeAvatar);
 
@@ -187,6 +192,7 @@ export default function VetProfileScreen() {
         clinic: profileData?.clinic || user.user_metadata?.clinic || '',
         bio: profileData?.bio || user.user_metadata?.bio || '',
         licenseNumber: profileData?.license_number || user.user_metadata?.license_number || '',
+        isVetApproved: profileData ? profileData.is_vet_approved === true : current.isVetApproved,
         avatar: activeAvatar || '',
         bankName: current.bankName,
         bankCode: current.bankCode,
@@ -525,7 +531,7 @@ export default function VetProfileScreen() {
           <InfoRow icon="hospital-box" label="Clinic" value={profile.clinic || 'Not set'} />
           <InfoRow icon="briefcase" label="Specialty" value={profile.specialty || 'Not set'} />
           {role === 'vet' ? <InfoRow icon="text-box-outline" label="Bio" value={profile.bio || 'Add a short bio'} /> : null}
-          <InfoRow icon="card-account-details" label="License Number" value={profile.licenseNumber || 'Not set'} />
+          <InfoRow icon="card-account-details" label="License Number" value={profile.licenseNumber || 'Not set'} verified={profile.isVetApproved ?? undefined} />
           <InfoRow icon="phone" label="Phone" value={profile.phone || 'Not set'} />
         </View>
 
@@ -776,7 +782,7 @@ export default function VetProfileScreen() {
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function InfoRow({ icon, label, value, verified }: { icon: string; label: string; value: string; verified?: boolean }) {
   return (
     <View style={styles.infoRow}>
       <MaterialCommunityIcons name={icon as any} size={20} color="#10B981" />
@@ -784,6 +790,18 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={styles.infoValue}>{value}</Text>
       </View>
+      {typeof verified === 'boolean' ? (
+        <View style={[styles.verificationBadge, verified ? styles.verifiedBadge : styles.unverifiedBadge]}>
+          <MaterialCommunityIcons
+            name={verified ? 'check-decagram-outline' : 'alert-circle-outline'}
+            size={14}
+            color={verified ? '#34D399' : '#FBBF24'}
+          />
+          <Text style={[styles.verificationText, verified ? styles.verifiedText : styles.unverifiedText]}>
+            {verified ? 'Verified by MVS' : 'Not verified'}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -926,6 +944,19 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontWeight: '500',
   },
+  verificationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  verifiedBadge: { backgroundColor: '#064E3B' },
+  unverifiedBadge: { backgroundColor: '#422006' },
+  verificationText: { fontSize: 11, fontWeight: '700' },
+  verifiedText: { color: '#A7F3D0' },
+  unverifiedText: { color: '#FDE68A' },
   setting: {
     flexDirection: 'row',
     alignItems: 'center',
