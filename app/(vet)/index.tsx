@@ -328,7 +328,7 @@ export default function VetDashboardScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.greeting}>
           <Text style={styles.greetingTitle}>{t('home.hello', { name: vetGreetingName })} 👋</Text>
-          <Text style={styles.greetingSubtitle}>{t('dashboard.managePractice')}</Text>
+          <Text style={styles.greetingSubtitle}>{t('dashboard.vetGreetingSubtitle')}</Text>
         </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>
