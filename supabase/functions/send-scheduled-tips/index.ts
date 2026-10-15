@@ -2,6 +2,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webPush from 'npm:web-push@3.6.7';
 
+const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || Deno.env.get('EXPO_PUBLIC_VAPID_KEY');
+const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
+
 const SPECIES_TIPS: Record<string, string[]> = {
   dog: [
     "Check your dog's paws after outdoor walks for cuts, thorns, or irritation. 🐾",
