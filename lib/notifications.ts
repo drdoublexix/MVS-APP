@@ -48,7 +48,7 @@ if (isExpoGo) {
 }
 
 const ANDROID_CHANNEL_ID = 'default';
-const EXPO_PROJECT_ID = '5013bac6-0c3a-4c17-b268-e477a44b';
+const EXPO_PROJECT_ID = Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId;
 
 const showWebPermissionAlert = () => {
   if (Platform.OS !== 'web') return;
@@ -79,14 +79,13 @@ const saveWebPushSubscription = async (userId: string): Promise<string | null> =
 
   const subscriptionPayload = typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription;
   const subscriptionString = JSON.stringify(subscriptionPayload);
-  console.log('[PUSH DIAGNOSTIC] Web Subscription:', subscriptionString);
   const { error } = await supabase
     .from('profiles')
     .update({ web_push_subscription: subscriptionString })
     .eq('id', userId);
 
   if (error) throw error;
-  console.log('[Notifications] Web push subscription saved successfully.');
+  console.log('[Notifications] Web push subscription saved.');
   return subscriptionString;
 };
 
@@ -153,11 +152,14 @@ export const registerForPushNotifications = async (userId: string): Promise<stri
     return null;
   }
 
+  if (!EXPO_PROJECT_ID) {
+    throw new Error('[Notifications] Expo project ID is missing from the app configuration.');
+  }
+
   const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
   const expoPushToken = tokenResponse.data;
   if (!expoPushToken) return null;
 
-  console.log('[PUSH DIAGNOSTIC] Expo Token:', expoPushToken);
   const { error } = await supabase
     .from('profiles')
     .update({ expo_push_token: expoPushToken })
@@ -185,7 +187,12 @@ export const sendPushNotification = async (
       .eq('id', recipientUserId)
       .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.warn('[Notifications] Failed to load recipient notification preferences:', profileError);
+      return;
+    }
+
+    if (!profile) {
       return;
     }
 
@@ -209,7 +216,7 @@ export const sendPushNotification = async (
       return;
     }
 
-    await supabase.functions.invoke('send-push-notification', {
+    const { error } = await supabase.functions.invoke('send-push-notification', {
       body: {
         recipientId: recipientUserId,
         title,
@@ -217,8 +224,11 @@ export const sendPushNotification = async (
         data,
       },
     });
-  } catch {
-    // Swallow notification delivery failures so messaging and status updates continue normally.
+    if (error) {
+      console.warn('[Notifications] Push notification request failed:', error);
+    }
+  } catch (error) {
+    console.warn('[Notifications] Push notification request failed:', error);
   }
 };
 

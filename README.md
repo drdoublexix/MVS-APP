@@ -29,6 +29,8 @@ The authenticated account `emmykul89@gmail.com` can open **Super Admin Dashboard
 
 To install or update its database policies and audit triggers, run `npx supabase db push`. To deploy dashboard email delivery, run `npx supabase functions deploy admin-send-email`. The Edge Function requires the Supabase project secrets `RESEND_API_KEY` and (optionally) `RESEND_FROM_EMAIL`; never put provider or service-role keys in Expo app code.
 
+Scheduled pet-care tips require the same dedicated `PET_TIPS_CRON_SECRET` Edge Function secret and `pet_tips_cron_secret` Vault secret. Configure both before applying the migration that creates the Monday/Wednesday/Friday 09:00 UTC schedule. The sender supports an authenticated `{ "dry_run": true }` request for checking eligible animal profiles and push targets without creating notifications or sending pushes.
+
 The audit trail starts when the migration is applied. It records sign-ins/sign-outs and database inserts, updates, and deletes on account, pet/farm, consultation/prescription, chat/community, order/invoice, product, notification, rating, loyalty, and submission tables. Database triggers do not record historical activity, read-only browsing, failed sign-ins, or storage-only access.
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).

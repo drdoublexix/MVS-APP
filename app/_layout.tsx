@@ -187,6 +187,27 @@ function RootAuthGate() {
     let mounted = true;
     let syncing = false;
     let lastConnected = false;
+    const notificationChannel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!mounted) return;
+          const notification = payload.new as StoredNotification;
+          if (notification.user_id !== userId) return;
+          setPendingNotifications((current) => [
+            notification,
+            ...current.filter((item) => item.id !== notification.id),
+          ].slice(0, 50));
+        },
+      )
+      .subscribe((status, error) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[Notifications] Realtime subscription failed:', error || status);
+        }
+      });
+
     const syncNotifications = async () => {
       if (syncing) return;
       const networkState = await NetInfo.fetch();
@@ -229,6 +250,7 @@ function RootAuthGate() {
       mounted = false;
       unsubscribeNetwork();
       appStateSubscription.remove();
+      void supabase.removeChannel(notificationChannel);
     };
   }, [authUser?.id]);
 

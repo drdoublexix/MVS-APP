@@ -312,7 +312,14 @@ const sendExpoNotification = async (token: string, title: string, body: string, 
     }),
   });
 
-  return response.json();
+  const result = await response.json();
+  const tickets = Array.isArray(result.data) ? result.data : [result.data];
+  const failedTicket = tickets.find((ticket) => ticket?.status === 'error');
+  if (!response.ok || failedTicket) {
+    throw new Error(failedTicket?.message || `Expo push request failed with status ${response.status}.`);
+  }
+
+  return result;
 };
 
 const sendWebNotification = async (subscriptionString: string, title: string, body: string, notificationId?: string) => {
@@ -331,15 +338,18 @@ const sendWebNotification = async (subscriptionString: string, title: string, bo
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!serviceRoleKey || req.headers.get('authorization') !== `Bearer ${serviceRoleKey}`) {
+  const cronSecret = Deno.env.get('PET_TIPS_CRON_SECRET');
+  if (!cronSecret || req.headers.get('x-cron-secret') !== cronSecret) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    serviceRoleKey
-  );
+  const requestBody = await req.json();
+  const dryRun = requestBody?.dry_run === true;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRoleKey) throw new Error('Supabase service configuration is missing.');
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const { data: profiles, error } = await supabase
     .from('profiles')
@@ -356,6 +366,14 @@ Deno.serve(async (req: Request) => {
   }
 
   const deliveryResults = [];
+  const dryRunSummary = {
+    matchedProfiles: 0,
+    skippedProfiles: 0,
+    expoPushTargets: 0,
+    webPushTargets: 0,
+    inAppOnlyTargets: 0,
+    animalDataErrors: 0,
+  };
 
   for (const profile of recipients) {
     const outcome: Record<string, unknown> = { userId: profile.id };
@@ -374,13 +392,26 @@ Deno.serve(async (req: Request) => {
     if (petsError || farmRecordsError) {
       outcome.profileDataWarning = petsError?.message || farmRecordsError?.message;
       console.error('Failed to load profile animal data for scheduled tip:', petsError || farmRecordsError);
+      dryRunSummary.animalDataErrors += 1;
+      outcome.skipped = true;
+      outcome.reason = 'Could not load animal records';
+      deliveryResults.push(outcome);
+      dryRunSummary.skippedProfiles += 1;
+      continue;
     }
     if (personalizedTips.length === 0) {
       outcome.skipped = true;
       outcome.reason = 'No recognized pet or farm species';
       deliveryResults.push(outcome);
+      dryRunSummary.skippedProfiles += 1;
       continue;
     }
+
+    dryRunSummary.matchedProfiles += 1;
+    if (profile.expo_push_token) dryRunSummary.expoPushTargets += 1;
+    if (profile.web_push_subscription) dryRunSummary.webPushTargets += 1;
+    if (!profile.expo_push_token && !profile.web_push_subscription) dryRunSummary.inAppOnlyTargets += 1;
+    if (dryRun) continue;
 
     const tip = chooseRandomTip(personalizedTips);
     const title = 'MVS Pet Care Tip 🐾';
@@ -393,24 +424,34 @@ Deno.serve(async (req: Request) => {
     if (notificationError) {
       outcome.notificationError = notificationError.message;
       console.error('Failed to persist scheduled tip notification:', notificationError);
+      deliveryResults.push(outcome);
+      continue;
     }
 
-    try {
-      if (profile.expo_push_token) {
+    if (profile.expo_push_token) {
+      try {
         const expoResult = await sendExpoNotification(profile.expo_push_token, title, tip, storedNotification?.id);
         outcome.expo = expoResult;
+      } catch (error) {
+        outcome.expoError = error instanceof Error ? error.message : String(error);
       }
+    }
 
-      if (profile.web_push_subscription) {
+    if (profile.web_push_subscription) {
+      try {
         await sendWebNotification(profile.web_push_subscription, title, tip, storedNotification?.id);
         outcome.web = { sent: true };
+      } catch (error) {
+        outcome.webError = error instanceof Error ? error.message : String(error);
       }
-    } catch (error) {
-      outcome.error = error instanceof Error ? error.message : String(error);
     }
 
     deliveryResults.push(outcome);
   }
 
-  return new Response(JSON.stringify({ sent: recipients.length, results: deliveryResults }), { status: 200 });
+  return new Response(JSON.stringify(
+    dryRun
+      ? { dryRun: true, ...dryRunSummary }
+      : { sent: recipients.length, results: deliveryResults }
+  ), { status: 200 });
 });
