@@ -28,6 +28,12 @@ interface AiSession {
   userId: string;
 }
 
+const getVetGreetingName = (fullName?: string | null) => {
+  const nameParts = (fullName || '').trim().replace(/^dr\.?\s+/i, '').split(/\s+/).filter(Boolean);
+  const lastName = nameParts.at(-1);
+  return lastName ? `Dr. ${lastName.toLocaleUpperCase()}` : 'Dr.';
+};
+
 export default function VetDashboardScreen() {
   const { t } = useLanguage();
   const router = useRouter();
@@ -38,6 +44,7 @@ export default function VetDashboardScreen() {
   const [totalPatients, setTotalPatients] = useState(0);
   const [overallRating, setOverallRating] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
+  const [vetGreetingName, setVetGreetingName] = useState('Dr.');
   const [aiVisible, setAiVisible] = useState(false);
   const [userQuery, setUserQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -65,6 +72,45 @@ export default function VetDashboardScreen() {
       console.warn('[Vet Dashboard] Location request skipped or denied:', err);
     });
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const loadVetGreeting = async () => {
+        try {
+          const user = await getCurrentUser();
+          if (!user) {
+            if (active) setVetGreetingName('Dr.');
+            return;
+          }
+
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (error) {
+            console.error('[Vet Dashboard] Could not load profile name for greeting:', error);
+          }
+
+          const fullName = profile?.full_name
+            || user.user_metadata?.full_name
+            || user.user_metadata?.name
+            || null;
+          if (active) setVetGreetingName(getVetGreetingName(fullName));
+        } catch (error) {
+          console.error('[Vet Dashboard] Could not load profile name for greeting:', error);
+          if (active) setVetGreetingName('Dr.');
+        }
+      };
+
+      void loadVetGreeting();
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   // Load AI chat history when modal opens
   useEffect(() => {
@@ -280,6 +326,10 @@ export default function VetDashboardScreen() {
     <SafeAreaView style={styles.container}>
       <WelcomeModal />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.greeting}>
+          <Text style={styles.greetingTitle}>{t('home.hello', { name: vetGreetingName })} 👋</Text>
+          <Text style={styles.greetingSubtitle}>{t('dashboard.managePractice')}</Text>
+        </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>
             <MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" />
@@ -503,6 +553,9 @@ const styles = StyleSheet.create({
   aiText: { color: '#CFFAFE', fontSize: 12, lineHeight: 18, marginTop: 3 },
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 36 },
+  greeting: { marginBottom: 18 },
+  greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
+  greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' },
   subtitle: { color: '#94A3B8', marginTop: 4, marginBottom: 24 },
   metrics: { flexDirection: 'row', gap: 10, marginBottom: 28 },

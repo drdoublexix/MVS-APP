@@ -27,7 +27,8 @@ create table if not exists public.profiles (
   phone_number text,
   specialty text,
   loyalty_points integer,
-  is_verified boolean not null default false
+  is_verified boolean not null default false,
+  is_vet_approved boolean not null default false
 );
 
 alter table public.profiles
@@ -38,6 +39,7 @@ alter table public.profiles
   add column if not exists specialty text,
   add column if not exists loyalty_points integer,
   add column if not exists is_verified boolean not null default false,
+  add column if not exists is_vet_approved boolean not null default false,
   add column if not exists notification_preferences jsonb
     default '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb;
 

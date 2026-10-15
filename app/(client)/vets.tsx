@@ -100,6 +100,7 @@ export default function VetsScreen() {
           .from('profiles')
           .select(vetDirectoryFields)
           .eq('role', 'vet')
+          .eq('is_vet_approved', true)
           .is('deleted_at', null)
           .order('full_name', { ascending: true });
 
@@ -112,6 +113,7 @@ export default function VetsScreen() {
             .from('profiles')
             .select('id, full_name, role, avatar_url, specialty, clinic, bio, latitude, longitude, city, state, phone_number, deleted_at')
             .eq('role', 'vet')
+            .eq('is_vet_approved', true)
             .is('deleted_at', null)
             .order('full_name', { ascending: true });
           data = fallbackQuery.data as VetProfile[] | null;

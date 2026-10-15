@@ -55,6 +55,7 @@ export default function AdminLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Super Admin' }} />
+      <Stack.Screen name="vet-approvals" options={{ title: 'Vet Approvals' }} />
       <Stack.Screen name="users" options={{ title: 'Manage Users' }} />
       <Stack.Screen name="activity-logs" options={{ title: 'Activity Logs' }} />
       <Stack.Screen name="email-manager" options={{ title: 'Send Email' }} />

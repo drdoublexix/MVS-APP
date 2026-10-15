@@ -32,6 +32,17 @@ export interface AdminUserAccount {
   ban_reason: string | null;
 }
 
+export interface VetApplication {
+  id: string;
+  email: string;
+  full_name: string | null;
+  phone_number: string | null;
+  license_number: string | null;
+  specialty: string | null;
+  created_at: string;
+  is_vet_approved: boolean;
+}
+
 export interface EmailLog {
   id: string;
   recipient_email: string;
@@ -135,6 +146,28 @@ export const setAdminUserBan = async (userId: string, isBanned: boolean, reason 
     p_user_id: userId,
     p_is_banned: isBanned,
     p_reason: reason.trim() || null,
+  });
+  if (error) throw error;
+};
+
+export const fetchVetApplications = async (
+  search = '',
+  isApproved = false,
+): Promise<VetApplication[]> => {
+  const { data, error } = await supabase.rpc('admin_list_vet_applications', {
+    p_search: search.trim() || null,
+    p_is_approved: isApproved,
+    p_limit: 100,
+    p_offset: 0,
+  });
+  if (error) throw error;
+  return (data || []) as VetApplication[];
+};
+
+export const setVetApproval = async (vetId: string, isApproved: boolean) => {
+  const { error } = await supabase.rpc('admin_set_vet_approval', {
+    p_vet_id: vetId,
+    p_is_approved: isApproved,
   });
   if (error) throw error;
 };
