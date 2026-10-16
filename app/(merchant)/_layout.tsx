@@ -58,6 +58,7 @@ export default function MerchantLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="manage-clinic" options={{ href: null }} />
       <Tabs.Screen
         name="community"
         options={{

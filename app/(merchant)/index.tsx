@@ -398,6 +398,21 @@ export default function MerchantDashboardScreen() {
           <MaterialCommunityIcons name="plus" size={21} color="#FFFFFF" />
           <Text style={styles.addText}>{t('dashboard.addProduct')}</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.clinicManageCard}
+          onPress={() => router.push('/(merchant)/manage-clinic')}
+          accessibilityRole="button"
+          accessibilityLabel="Manage your veterinary clinic listing"
+        >
+          <View style={styles.clinicManageIcon}>
+            <MaterialCommunityIcons name="hospital-building" size={24} color="#93C5FD" />
+          </View>
+          <View style={styles.clinicManageCopy}>
+            <Text style={styles.clinicManageTitle}>Veterinary clinic listing</Text>
+            <Text style={styles.clinicManageSubtitle}>Add or edit your clinic details, map pin, and photos.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color="#93C5FD" />
+        </TouchableOpacity>
         <View style={styles.marketplaceHeader}>
           <Text style={styles.sectionTitle}>{t('dashboard.storeInventory')}</Text>
           <TouchableOpacity onPress={() => setMarketplaceBrowseVisible(true)}>
@@ -704,6 +719,11 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   addText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  clinicManageCard: { minHeight: 74, padding: 12, backgroundColor: "#17263B", borderColor: "#2B4A71", borderWidth: 1, borderRadius: 13, flexDirection: "row", alignItems: "center", gap: 11, marginTop: -16, marginBottom: 22 },
+  clinicManageIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#2563EB24", alignItems: "center", justifyContent: "center" },
+  clinicManageCopy: { flex: 1 },
+  clinicManageTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  clinicManageSubtitle: { color: "#BFDBFE", fontSize: 11, lineHeight: 16, marginTop: 3 },
   marketplaceHeader: {
     flexDirection: "row",
     justifyContent: "space-between",

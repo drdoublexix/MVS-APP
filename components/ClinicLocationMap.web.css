@@ -1,0 +1,17 @@
+.mvs-clinic-marker {
+  background: #2563eb;
+  border: 2px solid #ffffff;
+  border-radius: 50% 50% 50% 0;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.35);
+  color: #ffffff;
+  height: 26px;
+  transform: rotate(-45deg);
+  width: 26px;
+}
+
+.mvs-clinic-marker span {
+  display: block;
+  font: 700 16px/22px Arial, sans-serif;
+  text-align: center;
+  transform: rotate(45deg);
+}

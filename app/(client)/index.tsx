@@ -302,6 +302,22 @@ export default function ClientHome() {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity
+          style={styles.clinicBrowseCard}
+          onPress={() => router.push('/(client)/explore-clinics')}
+          accessibilityRole="button"
+          accessibilityLabel="Explore veterinary clinics near you"
+        >
+          <View style={styles.clinicBrowseIcon}>
+            <MaterialCommunityIcons name="hospital-building" size={25} color="#93C5FD" />
+          </View>
+          <View style={styles.clinicBrowseCopy}>
+            <Text style={styles.clinicBrowseTitle}>Explore Vet Clinics</Text>
+            <Text style={styles.clinicBrowseText}>Find nearby clinics on the map and contact a practice.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={23} color="#93C5FD" />
+        </TouchableOpacity>
+
         <HomeAnimalTools
           onContactVendor={() => setMarketplaceBrowseVisible(true)}
           onContactVet={() => router.push('/(client)/vets')}
@@ -554,6 +570,11 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   action: { color: '#3B82F6', fontWeight: '600', fontSize: 13 },
   banner: { backgroundColor: '#10B981', borderRadius: 15, padding: 18, flexDirection: 'row', alignItems: 'center', marginVertical: 26, elevation: 4, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6 },
+  clinicBrowseCard: { backgroundColor: '#17263B', borderColor: '#2B4A71', borderWidth: 1, borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -14, marginBottom: 20 },
+  clinicBrowseIcon: { width: 46, height: 46, borderRadius: 13, backgroundColor: '#2563EB24', alignItems: 'center', justifyContent: 'center' },
+  clinicBrowseCopy: { flex: 1 },
+  clinicBrowseTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  clinicBrowseText: { color: '#BFDBFE', fontSize: 12, lineHeight: 17, marginTop: 3 },
   flex: { flex: 1 },
   bannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   bannerText: { color: '#D1FAE5', marginTop: 4, fontSize: 13 },
