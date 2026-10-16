@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ClinicLocationMap from '../../components/ClinicLocationMap';
 import {
+  getBusinessTypeLabel,
   haversineDistanceKm,
   isValidCoordinate,
   type VeterinaryClinic,
@@ -54,7 +55,7 @@ export default function ClientClinicsScreen() {
       const [clinicsResult, locationResult] = await Promise.all([
         supabase
           .from('veterinary_clinics')
-          .select('id, merchant_id, clinic_name, practice_specialty, practice_specialties, description, phone_number, email, address, city, state, latitude, longitude, profile_photo_url, gallery_photo_urls, created_at, updated_at')
+          .select('id, merchant_id, clinic_name, business_type, business_type_other, practice_specialty, practice_specialties, description, phone_number, email, address, city, state, latitude, longitude, profile_photo_url, gallery_photo_urls, created_at, updated_at')
           .order('clinic_name', { ascending: true }),
         user
           ? supabase.from('profiles').select('latitude, longitude').eq('id', user.id).maybeSingle()
@@ -87,8 +88,8 @@ export default function ClientClinicsScreen() {
     } catch (error) {
       console.error('[Clinics] Failed to load veterinary clinics:', error);
       setClinics([]);
-      setLoadError('Unable to load veterinary clinics from Supabase. Please try again.');
-      Alert.alert('Clinic search unavailable', error instanceof Error ? error.message : 'Unable to load veterinary clinics right now.');
+      setLoadError('Unable to load veterinary and pet-care listings from Supabase. Please try again.');
+      Alert.alert('Business search unavailable', error instanceof Error ? error.message : 'Unable to load nearby listings right now.');
     } finally {
       setLoading(false);
     }
@@ -105,7 +106,7 @@ export default function ClientClinicsScreen() {
     setRatingLoading(true);
     try {
       const user = await getCurrentUser();
-      if (!user) throw new Error('Sign in to rate a veterinary clinic.');
+      if (!user) throw new Error('Sign in to rate this business.');
       const [ratingResult, summaryResult] = await Promise.all([
         supabase
           .from('veterinary_clinic_ratings')
@@ -127,7 +128,7 @@ export default function ClientClinicsScreen() {
     } catch (error) {
       if (requestId !== ratingRequestId.current) return;
       console.error('[Clinics] Failed to load clinic rating:', error);
-      Alert.alert('Rating unavailable', error instanceof Error ? error.message : 'Unable to load this clinic rating.');
+      Alert.alert('Rating unavailable', error instanceof Error ? error.message : 'Unable to load this business rating.');
     } finally {
       if (requestId === ratingRequestId.current) setRatingLoading(false);
     }
@@ -156,7 +157,11 @@ export default function ClientClinicsScreen() {
   };
 
   const closeClinicExplorer = () => {
-    router.navigate('/(client)');
+    setMapVisible(false);
+    router.back();
+    setTimeout(() => {
+      router.replace('/(client)');
+    }, 200);
   };
 
   const rateClinic = async (stars: number) => {
@@ -198,7 +203,8 @@ export default function ClientClinicsScreen() {
 
   const getShareText = (clinic: VeterinaryClinic) => [
     clinic.clinic_name,
-    clinic.practice_specialty,
+    getBusinessTypeLabel(clinic.business_type, clinic.business_type_other),
+    clinic.practice_specialties.join(', '),
     `${clinic.address}, ${clinic.city}, ${clinic.state}`,
     `Phone: ${clinic.phone_number}`,
     `Email: ${clinic.email}`,
@@ -211,17 +217,17 @@ export default function ClientClinicsScreen() {
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         await navigator.share({ title: selectedClinic.clinic_name, text: message });
-        setShareFeedback('Clinic shared successfully.');
+        setShareFeedback('Listing shared successfully.');
       } else if (Platform.OS === 'web') {
         await Clipboard.setStringAsync(message);
-        setShareFeedback('Clinic details copied. You can now paste and share them.');
+        setShareFeedback('Business details copied. You can now paste and share them.');
       } else {
         await Share.share({ message, title: selectedClinic.clinic_name });
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return;
       console.error('[Clinics] Could not share clinic details:', error);
-      setShareFeedback(error instanceof Error ? `Share failed: ${error.message}` : 'Unable to share these clinic details.');
+      setShareFeedback(error instanceof Error ? `Share failed: ${error.message}` : 'Unable to share these business details.');
     }
   };
 
@@ -229,10 +235,10 @@ export default function ClientClinicsScreen() {
     if (!selectedClinic) return;
     try {
       await Clipboard.setStringAsync(getShareText(selectedClinic));
-      setShareFeedback('Clinic details copied to your clipboard.');
+      setShareFeedback('Business details copied to your clipboard.');
     } catch (error) {
       console.error('[Clinics] Could not copy clinic details:', error);
-      setShareFeedback(error instanceof Error ? `Copy failed: ${error.message}` : 'Unable to copy these clinic details.');
+      setShareFeedback(error instanceof Error ? `Copy failed: ${error.message}` : 'Unable to copy these business details.');
     }
   };
 
@@ -256,7 +262,7 @@ export default function ClientClinicsScreen() {
       return;
     }
     if (!user) {
-      Alert.alert('Sign in required', 'Sign in before messaging this clinic.');
+      Alert.alert('Sign in required', 'Sign in before messaging this business.');
       return;
     }
     const conversationId = `conv_${[user.id, selectedClinic.merchant_id].sort().join('_')}`;
@@ -274,6 +280,9 @@ export default function ClientClinicsScreen() {
     });
   };
 
+  const businessTypeLabel = selectedClinic
+    ? getBusinessTypeLabel(selectedClinic.business_type, selectedClinic.business_type_other)
+    : 'Business';
   const locationText = selectedClinic
     ? `${selectedClinic.address}, ${selectedClinic.city}, ${selectedClinic.state}`
     : '';
@@ -285,7 +294,7 @@ export default function ClientClinicsScreen() {
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Finding veterinary clinics...</Text>
+          <Text style={styles.loadingText}>Finding nearby veterinary and pet-care businesses...</Text>
         </View>
       ) : (
         <>
@@ -300,7 +309,7 @@ export default function ClientClinicsScreen() {
             <View style={styles.returnButtonWrap}>
               <TouchableOpacity style={styles.returnButton} onPress={() => setMapVisible(true)}>
                 <MaterialCommunityIcons name="map" size={19} color="#FFFFFF" />
-                <Text style={styles.returnButtonText}>Return to clinic map</Text>
+                <Text style={styles.returnButtonText}>Return to nearby listings</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -322,22 +331,23 @@ export default function ClientClinicsScreen() {
                   <Image source={{ uri: selectedClinic.profile_photo_url }} style={styles.profilePhoto} />
                 ) : (
                   <View style={[styles.profilePhoto, styles.profilePhotoPlaceholder]}>
-                    <MaterialCommunityIcons name="hospital-building" size={44} color="#93C5FD" />
+                    <MaterialCommunityIcons name="store-marker" size={44} color="#93C5FD" />
                   </View>
                 )}
                 <Text style={styles.clinicName}>{selectedClinic.clinic_name}</Text>
+                <Text style={styles.businessType}>{businessTypeLabel}</Text>
                 <Text style={styles.specialty}>{selectedClinic.practice_specialties.join(', ')}</Text>
                 {selectedClinic.description ? <Text style={styles.description}>{selectedClinic.description}</Text> : null}
 
                 <View style={styles.ratingPanel}>
-                  <Text style={styles.ratingTitle}>Rate this clinic</Text>
+                  <Text style={styles.ratingTitle}>Rate this {businessTypeLabel.toLowerCase()}</Text>
                   <View style={styles.stars}>
                     {[1, 2, 3, 4, 5].map((star) => (
                       <TouchableOpacity
                         key={star}
                         onPress={() => { void rateClinic(star); }}
                         disabled={ratingLoading}
-                        accessibilityLabel={`Rate clinic ${star} stars`}
+                        accessibilityLabel={`Rate business ${star} stars`}
                       >
                         <Ionicons name={star <= userRating ? 'star' : 'star-outline'} size={26} color="#F59E0B" />
                       </TouchableOpacity>
@@ -351,7 +361,7 @@ export default function ClientClinicsScreen() {
 
                 {photos.length ? (
                   <>
-                    <Text style={styles.sectionTitle}>Clinic photos</Text>
+                    <Text style={styles.sectionTitle}>Photos</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
                       {photos.map((photoUrl, index) => (
                         <TouchableOpacity key={`${photoUrl}-${index}`} onPress={() => setSelectedPhotoIndex(index)} accessibilityLabel={`View clinic photo ${index + 1}`}>
@@ -377,7 +387,7 @@ export default function ClientClinicsScreen() {
                 <View style={styles.shareActions}>
                   <TouchableOpacity style={styles.shareButton} onPress={() => { void shareClinic(); }}>
                     <MaterialCommunityIcons name="share-variant" size={19} color="#FFFFFF" />
-                    <Text style={styles.shareButtonText}>Share clinic</Text>
+                    <Text style={styles.shareButtonText}>Share listing</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.copyButton} onPress={() => { void copyClinic(); }}>
                     <MaterialCommunityIcons name="content-copy" size={18} color="#93C5FD" />
@@ -460,6 +470,7 @@ const styles = StyleSheet.create({
   profilePhoto: { width: 104, height: 104, borderRadius: 52, backgroundColor: '#334155', marginTop: 2, marginBottom: 12 },
   profilePhotoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   clinicName: { color: '#FFFFFF', fontSize: 21, fontWeight: '800', textAlign: 'center' },
+  businessType: { color: '#CBD5E1', fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 4 },
   specialty: { color: '#93C5FD', fontSize: 14, fontWeight: '600', textAlign: 'center', marginTop: 4 },
   description: { color: '#CBD5E1', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 10 },
   ratingPanel: { width: '100%', alignItems: 'center', paddingVertical: 13, marginTop: 12, backgroundColor: '#0F172A', borderRadius: 11 },

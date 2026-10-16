@@ -306,14 +306,16 @@ export default function ClientHome() {
           style={styles.clinicBrowseCard}
           onPress={() => router.push('/(client)/explore-clinics')}
           accessibilityRole="button"
-          accessibilityLabel="Explore veterinary clinics near you"
+          accessibilityLabel="Explore veterinary and pet-care businesses near you"
         >
           <View style={styles.clinicBrowseIcon}>
             <MaterialCommunityIcons name="hospital-building" size={25} color="#93C5FD" />
           </View>
           <View style={styles.clinicBrowseCopy}>
-            <Text style={styles.clinicBrowseTitle}>Explore Vet Clinics</Text>
-            <Text style={styles.clinicBrowseText}>Find nearby clinics on the map and contact a practice.</Text>
+            <Text style={styles.clinicBrowseTitle}>Explore Vet Institutions &amp; Pet Businesses</Text>
+            <Text style={styles.clinicBrowseText}>
+              Discover nearby vet clinics, hospitals and practices, pet shops, animal-feed and pet-supply stores, groomers, and more.
+            </Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={23} color="#93C5FD" />
         </TouchableOpacity>

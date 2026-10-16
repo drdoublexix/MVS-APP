@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { getProfileRole, getRoleNavPath, supabase } from '../../lib/supabase';
+import { getProfileRole, getRoleNavPath, sendPasswordResetLink, supabase } from '../../lib/supabase';
 import { languageOptions, useLanguage } from '../../lib/language';
 
 type Role = 'client' | 'vet' | 'merchant';
@@ -22,6 +22,13 @@ const getAuthRedirectUrl = () => {
     return `${window.location.origin}/auth?mode=signin`;
   }
   return PRODUCTION_AUTH_URL;
+};
+
+const getPasswordResetRedirectUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return `${window.location.origin}/reset-password`;
+  }
+  return 'https://mvsapp.com.ng/reset-password';
 };
 
 const getWebHashParams = () => {
@@ -72,6 +79,8 @@ export default function AuthScreen() {
   );
   const [error, setError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetNotice, setResetNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   const fullNamePlaceholder = role === 'vet' ? t('auth.vetNameExample') : t('auth.fullName');
 
@@ -115,7 +124,32 @@ export default function AuthScreen() {
 
   const updateMode = (nextMode: AuthMode) => {
     setMode(nextMode);
+    setResetNotice(null);
     router.replace({ pathname: '/auth', params: { mode: nextMode === 'sign-in' ? 'signin' : 'signup' } });
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setResetNotice({ kind: 'error', message: 'Enter your email to receive a password reset link.' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setResetNotice({ kind: 'error', message: 'Enter a valid email address.' });
+      return;
+    }
+
+    setResetLoading(true);
+    setResetNotice(null);
+    try {
+      await sendPasswordResetLink(trimmedEmail, getPasswordResetRedirectUrl());
+      setResetNotice({ kind: 'success', message: 'Password reset instructions were sent. Check your inbox or spam folder.' });
+    } catch (resetError) {
+      const message = resetError instanceof Error ? resetError.message : 'We could not send a password reset link. Please try again.';
+      setResetNotice({ kind: 'error', message });
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const submit = async () => {
@@ -320,6 +354,22 @@ export default function AuthScreen() {
         {mode === 'sign-up' ? <Text style={styles.passwordHint}>{t('auth.passwordHint')}</Text> : null}
         {passwordError ? <Text style={styles.passwordError}>{passwordError}</Text> : null}
 
+        {mode === 'sign-in' ? (
+          <View style={styles.forgotPasswordRow}>
+            <TouchableOpacity onPress={() => void handleForgotPassword()} disabled={resetLoading || !email.trim()}>
+              <Text style={[styles.forgotPasswordText, (resetLoading || !email.trim()) && styles.forgotPasswordTextDisabled]}>
+                {resetLoading ? 'Sending...' : 'Forgot password?'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {resetNotice ? (
+          <Text style={[styles.resetNotice, resetNotice.kind === 'success' ? styles.resetNoticeSuccess : styles.resetNoticeError]}>
+            {resetNotice.message}
+          </Text>
+        ) : null}
+
         <Text style={styles.modeHelper}>
           {mode === 'sign-in' ? t('auth.welcomeBack') : t('auth.fillDetails')}
         </Text>
@@ -389,6 +439,12 @@ const styles = StyleSheet.create({
   selectedRole: { backgroundColor: '#10B981', borderColor: '#10B981' },
   roleText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700', textAlign: 'center', width: '100%' },
   selectedRoleText: { color: '#052E2B' },
+  forgotPasswordRow: { alignItems: 'flex-end', marginTop: -4 },
+  forgotPasswordText: { color: '#6EE7B7', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  forgotPasswordTextDisabled: { opacity: 0.6 },
+  resetNotice: { borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 18, marginTop: 2 },
+  resetNoticeSuccess: { backgroundColor: '#12352F', borderWidth: 1, borderColor: '#10B981', color: '#D1FAE5' },
+  resetNoticeError: { backgroundColor: '#3B1725', borderWidth: 1, borderColor: '#FCA5A5', color: '#FECACA' },
   error: { color: '#FDA4AF', backgroundColor: '#3B1725', borderRadius: 8, padding: 12 },
   message: { color: '#6EE7B7', backgroundColor: '#12352F', borderRadius: 8, padding: 12 },
   primaryButton: { alignItems: 'center', backgroundColor: '#FB7185', borderRadius: 8, paddingVertical: 15, marginTop: 4 },

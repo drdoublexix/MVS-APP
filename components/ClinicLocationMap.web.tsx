@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { VeterinaryClinic } from '../lib/clinics';
+import { getBusinessTypeLabel, type VeterinaryClinic } from '../lib/clinics';
 import './ClinicLocationMap.web.css';
 
 type Props = {
@@ -30,7 +30,7 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.screen}>
         <View style={styles.header}>
-          <Text style={styles.title}>Veterinary clinics</Text>
+          <Text style={styles.title}>Vet Institutions &amp; Pet Businesses</Text>
           <TouchableOpacity onPress={onClose} accessibilityLabel="Close clinic locations map">
             <MaterialCommunityIcons name="close" size={25} color="#FFFFFF" />
           </TouchableOpacity>
@@ -44,9 +44,10 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
                 <Popup>
                   <View style={styles.popup}>
                     <Text style={styles.popupName}>{clinic.clinic_name}</Text>
+                    <Text style={styles.popupSpecialty}>{getBusinessTypeLabel(clinic.business_type, clinic.business_type_other)}</Text>
                     <Text style={styles.popupSpecialty}>{clinic.practice_specialties.join(', ')}</Text>
                     <TouchableOpacity style={styles.popupButton} onPress={() => onSelectClinic(clinic.id)}>
-                      <Text style={styles.popupButtonText}>View clinic</Text>
+                      <Text style={styles.popupButtonText}>View listing</Text>
                     </TouchableOpacity>
                   </View>
                 </Popup>
@@ -63,13 +64,14 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
           </MapContainer>
         </View>
         <ScrollView style={styles.locationList} contentContainerStyle={styles.locationListContent} nestedScrollEnabled showsVerticalScrollIndicator>
-          <Text style={styles.listTitle}>Explore Vet Clinics</Text>
-          {clinics.length === 0 ? <Text style={styles.empty}>No veterinary clinics have been listed yet.</Text> : null}
+          <Text style={styles.listTitle}>Nearby Vet &amp; Pet-Care Businesses</Text>
+          {clinics.length === 0 ? <Text style={styles.empty}>No veterinary or pet-care businesses have been listed yet.</Text> : null}
           {clinics.map((clinic) => (
             <TouchableOpacity key={clinic.id} style={styles.locationRow} onPress={() => onSelectClinic(clinic.id)}>
               <MaterialCommunityIcons name="map-marker" size={20} color="#60A5FA" />
               <View style={styles.locationCopy}>
                 <Text style={styles.clinicName}>{clinic.clinic_name}</Text>
+                <Text style={styles.specialty}>{getBusinessTypeLabel(clinic.business_type, clinic.business_type_other)}</Text>
                 <Text style={styles.specialty}>{clinic.practice_specialties.join(', ')}</Text>
                 <Text style={styles.location}>{formatClinicLocation(clinic)}</Text>
               </View>

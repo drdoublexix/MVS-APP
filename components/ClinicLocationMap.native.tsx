@@ -4,7 +4,7 @@ import { useImage } from 'expo-image';
 import { Component, useState, type ErrorInfo, type ReactNode } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { VeterinaryClinic } from '../lib/clinics';
+import { getBusinessTypeLabel, type VeterinaryClinic } from '../lib/clinics';
 
 type Props = {
   visible: boolean;
@@ -72,7 +72,7 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.screen}>
         <View style={styles.header}>
-          <Text style={styles.title}>Veterinary clinics</Text>
+          <Text style={styles.title}>Vet Institutions &amp; Pet Businesses</Text>
           <TouchableOpacity onPress={onClose} accessibilityLabel="Close clinic locations map">
             <MaterialCommunityIcons name="close" size={25} color="#FFFFFF" />
           </TouchableOpacity>
@@ -89,7 +89,7 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
                   markers={safeClinics.map((clinic) => ({
                     id: clinic.id,
                     coordinates: { latitude: clinic.latitude, longitude: clinic.longitude },
-                    title: `${clinic.clinic_name} - ${clinic.practice_specialties.join(', ')}`,
+                    title: `${clinic.clinic_name} - ${getBusinessTypeLabel(clinic.business_type, clinic.business_type_other)}`,
                     systemImage: 'cross.case.fill',
                     tintColor: '#2563EB',
                   }))}
@@ -109,7 +109,7 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
                     id: clinic.id,
                     coordinates: { latitude: clinic.latitude, longitude: clinic.longitude },
                     title: clinic.clinic_name,
-                    snippet: clinic.practice_specialties.join(', '),
+                    snippet: `${getBusinessTypeLabel(clinic.business_type, clinic.business_type_other)} • ${clinic.practice_specialties.join(', ')}`,
                     showCallout: false,
                     icon: markerIcon,
                     anchor: { x: 0.5, y: 1 },
@@ -132,21 +132,23 @@ export default function ClinicLocationMap({ visible, clinics, onClose, onSelectC
           {previewClinic ? (
             <View style={styles.previewCard}>
               <Text style={styles.previewName}>{previewClinic.clinic_name}</Text>
+              <Text style={styles.previewSpecialty}>{getBusinessTypeLabel(previewClinic.business_type, previewClinic.business_type_other)}</Text>
               <Text style={styles.previewSpecialty}>{previewClinic.practice_specialties.join(', ')}</Text>
               <TouchableOpacity style={styles.previewButton} onPress={() => { setPreviewClinicId(null); onSelectClinic(previewClinic.id); }}>
-                <Text style={styles.previewButtonText}>View clinic</Text>
+              <Text style={styles.previewButtonText}>View listing</Text>
               </TouchableOpacity>
             </View>
           ) : null}
         </View>
         <ScrollView style={styles.locationList} contentContainerStyle={styles.locationListContent} nestedScrollEnabled showsVerticalScrollIndicator>
-          <Text style={styles.listTitle}>Explore Vet Clinics</Text>
-          {clinics.length === 0 ? <Text style={styles.empty}>No veterinary clinics have been listed yet.</Text> : null}
+          <Text style={styles.listTitle}>Nearby Vet &amp; Pet-Care Businesses</Text>
+          {clinics.length === 0 ? <Text style={styles.empty}>No veterinary or pet-care businesses have been listed yet.</Text> : null}
           {clinics.map((clinic) => (
             <TouchableOpacity key={clinic.id} style={styles.locationRow} onPress={() => onSelectClinic(clinic.id)}>
               <MaterialCommunityIcons name="map-marker" size={20} color="#60A5FA" />
               <View style={styles.locationCopy}>
                 <Text style={styles.clinicName}>{clinic.clinic_name}</Text>
+                <Text style={styles.specialty}>{getBusinessTypeLabel(clinic.business_type, clinic.business_type_other)}</Text>
                 <Text style={styles.specialty}>{clinic.practice_specialties.join(', ')}</Text>
                 <Text style={styles.location}>{formatClinicLocation(clinic)}</Text>
               </View>

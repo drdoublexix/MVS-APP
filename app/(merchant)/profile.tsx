@@ -603,7 +603,7 @@ export default function MerchantProfileScreen() {
           <LanguagePreference />
           <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
           <Setting label={t('nav.inventory')} icon="archive" onPress={() => router.push('/inventory')} />
-          <Setting label="Veterinary clinic" icon="hospital-building" onPress={() => router.push('/(merchant)/manage-clinic')} />
+          <Setting label="Vet & pet-care business listings" icon="hospital-building" onPress={() => router.push('/(merchant)/manage-clinic')} />
           <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />
           <Setting label={t('settings.notifications')} icon="bell" onPress={() => setModal('notifications')} />
           <Setting label={t('settings.bankAccount')} icon="bank" onPress={() => setModal('bank')} />

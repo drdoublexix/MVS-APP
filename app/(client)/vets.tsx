@@ -304,14 +304,24 @@ export default function VetsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Nearby Veterinarians</Text>
-        <TouchableOpacity
-          style={styles.mapButton}
-          onPress={() => { void openVetMap(); }}
-          accessibilityLabel="Open veterinarian locations in maps"
-          accessibilityRole="button"
-        >
-          <MaterialCommunityIcons name="map-marker-radius" size={25} color="#10B981" />
-        </TouchableOpacity>
+        <View style={styles.mapActions}>
+          <TouchableOpacity
+            style={styles.mapButton}
+            onPress={() => { void openVetMap(); }}
+            accessibilityLabel="Explore veterinarians on the map"
+            accessibilityRole="button"
+          >
+            <MaterialCommunityIcons name="map-marker-radius" size={25} color="#10B981" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mapButton}
+            onPress={() => router.push('/(client)/explore-clinics')}
+            accessibilityLabel="Explore veterinary and pet-care businesses"
+            accessibilityRole="button"
+          >
+            <Image source={require('../../assets/images/clinic-marker.png')} style={styles.clinicMapIcon} resizeMode="contain" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -489,7 +499,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
   header: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#334155', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700' },
+  mapActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mapButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 21, backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
+  clinicMapIcon: { width: 26, height: 26 },
   list: { padding: 16 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyState: { color: '#94A3B8', marginTop: 20, textAlign: 'center' },

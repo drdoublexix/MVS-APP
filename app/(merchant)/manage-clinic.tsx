@@ -17,14 +17,25 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { VeterinaryClinic } from '../../lib/clinics';
-import { removeClinicImages, uploadClinicImage } from '../../lib/clinics';
+import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
+import {
+  businessTypes,
+  getBusinessTypeLabel,
+  getOfferingLabel,
+  getOfferingOptions,
+  removeClinicImages,
+  uploadClinicImage,
+  type BusinessType,
+  type VeterinaryClinic,
+} from '../../lib/clinics';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
 type ClinicRow = Omit<VeterinaryClinic, 'distanceKm'>;
 
 type ClinicForm = {
   clinicName: string;
+  businessType: BusinessType;
+  businessTypeOther: string;
   specialties: string[];
   customSpecialty: string;
   description: string;
@@ -41,6 +52,8 @@ type ClinicForm = {
 
 const emptyForm: ClinicForm = {
   clinicName: '',
+  businessType: 'veterinary_clinic',
+  businessTypeOther: '',
   specialties: [],
   customSpecialty: '',
   description: '',
@@ -55,46 +68,6 @@ const emptyForm: ClinicForm = {
   galleryPhotoUrls: [],
 };
 
-const specialtyOptions = [
-  'Small animal practice',
-  'Large animal practice',
-  'Mixed animal practice',
-  'Equine medicine',
-  'Farm animal medicine',
-  'Poultry medicine',
-  'Swine medicine',
-  'Cattle and dairy medicine',
-  'Sheep and goat medicine',
-  'Avian and exotic animal medicine',
-  'Wildlife medicine',
-  'Zoo and captive wildlife medicine',
-  'Aquatic animal medicine',
-  'Emergency and critical care',
-  'Internal medicine',
-  'Soft tissue surgery',
-  'Orthopedic surgery',
-  'Dentistry',
-  'Dermatology',
-  'Ophthalmology',
-  'Cardiology',
-  'Neurology',
-  'Oncology',
-  'Reproduction and breeding',
-  'Obstetrics',
-  'Anesthesia and pain management',
-  'Diagnostic imaging',
-  'Laboratory diagnostics',
-  'Pathology',
-  'Preventive care and vaccination',
-  'Animal nutrition',
-  'Animal behavior',
-  'Rehabilitation and physiotherapy',
-  'Parasitology',
-  'Public health and epidemiology',
-  'Food safety and meat inspection',
-  'Animal welfare',
-];
-
 const nigeriaCoordinateBounds = {
   minimumLatitude: 4.2,
   maximumLatitude: 13.9,
@@ -108,6 +81,7 @@ export default function MerchantClinicsScreen() {
   const [clinics, setClinics] = useState<ClinicRow[]>([]);
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [form, setForm] = useState<ClinicForm>(emptyForm);
+  const [businessTypePickerOpen, setBusinessTypePickerOpen] = useState(false);
   const [specialtyPickerOpen, setSpecialtyPickerOpen] = useState(false);
   const [newProfilePhoto, setNewProfilePhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [newGalleryPhotos, setNewGalleryPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
@@ -116,6 +90,7 @@ export default function MerchantClinicsScreen() {
   const [loadingError, setLoadingError] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmationVisible, setDeleteConfirmationVisible] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const selectedClinicId = useRef<string | null>(null);
 
@@ -125,7 +100,7 @@ export default function MerchantClinicsScreen() {
     setLoadingError('');
     try {
       const user = await getCurrentUser();
-      if (!user) throw new Error('Sign in to manage your veterinary clinic.');
+      if (!user) throw new Error('Sign in to manage your veterinary and pet-care listings.');
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -133,7 +108,7 @@ export default function MerchantClinicsScreen() {
         .eq('id', user.id)
         .maybeSingle();
       if (profileError) throw profileError;
-      if (profile?.role !== 'merchant') throw new Error('Only merchant accounts can manage a veterinary clinic.');
+      if (profile?.role !== 'merchant') throw new Error('Only merchant accounts can manage veterinary and pet-care listings.');
 
       setMerchantId(user.id);
       const { data, error } = await supabase
@@ -155,6 +130,8 @@ export default function MerchantClinicsScreen() {
       setClinicId(clinic?.id || null);
       setForm(clinic ? {
         clinicName: clinic.clinic_name,
+        businessType: clinic.business_type || 'veterinary_clinic',
+        businessTypeOther: clinic.business_type_other || '',
         specialties: clinicSpecialties,
         customSpecialty: '',
         description: clinic.description || '',
@@ -171,10 +148,11 @@ export default function MerchantClinicsScreen() {
       setNewProfilePhoto(null);
       setNewGalleryPhotos([]);
       setRemovedGalleryUrls([]);
+      setBusinessTypePickerOpen(false);
       setSpecialtyPickerOpen(false);
     } catch (error) {
       console.error('[Merchant Clinics] Failed to load clinic:', error);
-      const message = error instanceof Error ? error.message : 'Unable to load your clinic right now.';
+      const message = error instanceof Error ? error.message : 'Unable to load your business listings right now.';
       setLoadingError(message);
       Alert.alert('Clinic unavailable', message);
     } finally {
@@ -198,6 +176,8 @@ export default function MerchantClinicsScreen() {
     setClinicId(clinic.id);
     setForm({
       clinicName: clinic.clinic_name,
+      businessType: clinic.business_type || 'veterinary_clinic',
+      businessTypeOther: clinic.business_type_other || '',
       specialties: clinic.practice_specialties?.length
         ? clinic.practice_specialties
         : clinic.practice_specialty.split(',').map((specialty) => specialty.trim()).filter(Boolean),
@@ -216,6 +196,7 @@ export default function MerchantClinicsScreen() {
     setNewProfilePhoto(null);
     setNewGalleryPhotos([]);
     setRemovedGalleryUrls([]);
+    setBusinessTypePickerOpen(false);
     setSuccessMessage('');
   };
 
@@ -226,6 +207,7 @@ export default function MerchantClinicsScreen() {
     setNewProfilePhoto(null);
     setNewGalleryPhotos([]);
     setRemovedGalleryUrls([]);
+    setBusinessTypePickerOpen(false);
     setSpecialtyPickerOpen(false);
     setSuccessMessage('');
   };
@@ -290,7 +272,11 @@ export default function MerchantClinicsScreen() {
     const longitude = Number(form.longitude);
     if (!form.clinicName.trim() || form.specialties.length === 0 || !form.phone.trim() || !form.email.trim()
       || !form.address.trim() || !form.city.trim() || !form.state.trim()) {
-      Alert.alert('Missing clinic details', 'Complete the clinic name, practice, contact, and address fields.');
+      Alert.alert('Missing business details', 'Complete the business name, services or products, contact, and address fields.');
+      return null;
+    }
+    if (form.businessType === 'other' && !form.businessTypeOther.trim()) {
+      Alert.alert('Business type required', 'Enter the type of animal-care business you operate.');
       return null;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
@@ -306,7 +292,7 @@ export default function MerchantClinicsScreen() {
       return null;
     }
     if (!form.profilePhotoUrl && !newProfilePhoto) {
-      Alert.alert('Clinic photo required', 'Add a profile photo for your clinic before publishing it.');
+      Alert.alert('Business photo required', 'Add a profile photo for your business before publishing it.');
       return null;
     }
     if (form.galleryPhotoUrls.length + newGalleryPhotos.length > 5) {
@@ -339,6 +325,8 @@ export default function MerchantClinicsScreen() {
       const clinicDetails = {
           merchant_id: merchantId,
           clinic_name: form.clinicName.trim(),
+          business_type: form.businessType,
+          business_type_other: form.businessType === 'other' ? form.businessTypeOther.trim() : null,
           practice_specialty: form.specialties.join(', '),
           practice_specialties: form.specialties,
           description: form.description.trim() || null,
@@ -375,13 +363,13 @@ export default function MerchantClinicsScreen() {
       setNewProfilePhoto(null);
       setNewGalleryPhotos([]);
       setRemovedGalleryUrls([]);
-      setSuccessMessage(clinicId ? 'Your clinic changes have been saved.' : 'Your clinic is live and available to clients.');
+      setSuccessMessage(clinicId ? 'Your listing changes have been saved.' : 'Your listing is live and available to clients.');
       if (obsoleteImageUrls.length) {
         try {
           await removeClinicImages(obsoleteImageUrls);
         } catch (cleanupError) {
           console.error('[Merchant Clinics] Clinic was saved, but old photos could not be removed:', cleanupError);
-          Alert.alert('Clinic saved', 'Your clinic details were saved, but some old photos could not be removed from storage.');
+          Alert.alert('Listing saved', 'Your business details were saved, but some old photos could not be removed from storage.');
         }
       }
     } catch (error) {
@@ -440,40 +428,45 @@ export default function MerchantClinicsScreen() {
         await removeClinicImages(imageUrls);
       } catch (cleanupError) {
         console.error('[Merchant Clinics] Clinic was deleted, but its photos could not be removed:', cleanupError);
-        Alert.alert('Clinic deleted', 'Your clinic was removed, but some photos could not be cleaned up from storage.');
+        Alert.alert('Listing deleted', 'Your business was removed, but some photos could not be cleaned up from storage.');
         return;
       }
-      setSuccessMessage('Your clinic has been deleted.');
+      setSuccessMessage('Your listing has been deleted.');
     } catch (error) {
       console.error('[Merchant Clinics] Failed to delete clinic:', error);
-      Alert.alert('Delete failed', error instanceof Error ? error.message : 'Unable to delete your clinic right now.');
+      Alert.alert('Delete failed', error instanceof Error ? error.message : 'Unable to delete your business listing right now.');
     } finally {
       setDeleting(false);
     }
   };
 
   const confirmDelete = () => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('Delete your veterinary clinic? This removes it from client search and cannot be undone.')) {
-        void deleteClinic();
-      }
-      return;
-    }
-    Alert.alert('Delete clinic?', 'This removes your clinic from client search and cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete clinic', style: 'destructive', onPress: () => { void deleteClinic(); } },
-    ]);
+    setDeleteConfirmationVisible(true);
   };
 
   const profilePhotoSource = newProfilePhoto?.uri || form.profilePhotoUrl;
+  const offeringOptions = getOfferingOptions(form.businessType);
+  const offeringLabel = getOfferingLabel(form.businessType);
+  const businessLabel = getBusinessTypeLabel(form.businessType, form.businessTypeOther);
 
   return (
     <SafeAreaView style={styles.container}>
+      <LogoutConfirmationModal
+        visible={deleteConfirmationVisible}
+        title={`Delete ${businessLabel.toLowerCase()}?`}
+        message="This removes your business from client discovery and cannot be undone."
+        confirmLabel="Delete listing"
+        onCancel={() => setDeleteConfirmationVisible(false)}
+        onConfirm={() => {
+          setDeleteConfirmationVisible(false);
+          void deleteClinic();
+        }}
+      />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Go back">
           <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.title}>{clinicId ? 'Manage clinic' : 'Add veterinary clinic'}</Text>
+        <Text style={styles.title}>{clinicId ? `Manage ${businessLabel.toLowerCase()}` : 'Add an animal-care business'}</Text>
       </View>
 
       {successMessage ? <Text style={styles.success}>{successMessage}</Text> : null}
@@ -490,13 +483,13 @@ export default function MerchantClinicsScreen() {
       ) : (
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <Text style={styles.intro}>Add accurate clinic details so nearby clients can find, contact, and rate your practice.</Text>
+            <Text style={styles.intro}>List your veterinary or pet-care business so nearby clients can discover, contact, and review it.</Text>
 
             <View style={styles.clinicsHeading}>
-              <Text style={styles.sectionTitle}>Your clinics ({clinics.length})</Text>
+              <Text style={styles.sectionTitle}>Your listings ({clinics.length})</Text>
               <TouchableOpacity style={styles.addClinicButton} onPress={startNewClinic} accessibilityRole="button">
                 <MaterialCommunityIcons name="plus" size={17} color="#FFFFFF" />
-                <Text style={styles.addClinicButtonText}>Add clinic</Text>
+                <Text style={styles.addClinicButtonText}>Add listing</Text>
               </TouchableOpacity>
             </View>
             {clinics.length ? (
@@ -511,6 +504,7 @@ export default function MerchantClinicsScreen() {
                   >
                     <View style={styles.clinicListCopy}>
                       <Text style={styles.clinicListName}>{clinic.clinic_name}</Text>
+                      <Text style={styles.clinicListLocation}>{getBusinessTypeLabel(clinic.business_type, clinic.business_type_other)}</Text>
                       <Text style={styles.clinicListLocation}>{[clinic.city, clinic.state].filter(Boolean).join(', ')}</Text>
                     </View>
                     <MaterialCommunityIcons
@@ -522,10 +516,10 @@ export default function MerchantClinicsScreen() {
                 ))}
               </View>
             ) : (
-              <Text style={styles.clinicsEmpty}>No clinics yet. Add your first clinic below.</Text>
+              <Text style={styles.clinicsEmpty}>No listings yet. Add your first veterinary or pet-care business below.</Text>
             )}
 
-            <Text style={styles.sectionTitle}>Clinic profile photo</Text>
+            <Text style={styles.sectionTitle}>Business profile photo</Text>
             <View style={styles.profilePhotoRow}>
               {profilePhotoSource ? (
                 <Image source={{ uri: profilePhotoSource }} style={styles.profilePhoto} />
@@ -545,18 +539,63 @@ export default function MerchantClinicsScreen() {
               ) : null}
             </View>
 
-            <Text style={styles.sectionTitle}>Clinic details</Text>
-            <Field label="Clinic name" value={form.clinicName} onChangeText={(value) => updateForm('clinicName', value)} placeholder="e.g. Green Paws Veterinary Clinic" />
-            <Text style={styles.label}>Practice specialties</Text>
+            <Text style={styles.sectionTitle}>Business details</Text>
+            <Text style={styles.label}>Business type</Text>
+            <TouchableOpacity
+              style={styles.specialtyPickerButton}
+              onPress={() => setBusinessTypePickerOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityLabel="Choose business type"
+              accessibilityState={{ expanded: businessTypePickerOpen }}
+            >
+              <Text style={styles.specialtyPickerText}>{businessLabel}</Text>
+              <MaterialCommunityIcons name={businessTypePickerOpen ? 'chevron-up' : 'chevron-down'} size={22} color="#93C5FD" />
+            </TouchableOpacity>
+            {businessTypePickerOpen ? (
+              <View style={styles.specialtyPicker}>
+                {businessTypes.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={styles.specialtyOption}
+                    onPress={() => {
+                      updateForm('businessType', option.value);
+                      updateForm('businessTypeOther', '');
+                      updateForm('specialties', []);
+                      setBusinessTypePickerOpen(false);
+                      setSpecialtyPickerOpen(false);
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: form.businessType === option.value }}
+                  >
+                    <MaterialCommunityIcons
+                      name={form.businessType === option.value ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={19}
+                      color={form.businessType === option.value ? '#60A5FA' : '#94A3B8'}
+                    />
+                    <Text style={styles.specialtyOptionText}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+            {form.businessType === 'other' ? (
+              <Field
+                label="Business type name"
+                value={form.businessTypeOther}
+                onChangeText={(value) => updateForm('businessTypeOther', value)}
+                placeholder="e.g. Animal rehabilitation centre"
+              />
+            ) : null}
+            <Field label="Business name" value={form.clinicName} onChangeText={(value) => updateForm('clinicName', value)} placeholder="e.g. Green Paws Animal Care" />
+            <Text style={styles.label}>{offeringLabel}</Text>
             <TouchableOpacity
               style={styles.specialtyPickerButton}
               onPress={() => setSpecialtyPickerOpen((open) => !open)}
               accessibilityRole="button"
-              accessibilityLabel="Choose one or more clinic specialties"
+              accessibilityLabel={`Choose one or more ${offeringLabel.toLowerCase()}`}
               accessibilityState={{ expanded: specialtyPickerOpen }}
             >
               <Text style={[styles.specialtyPickerText, form.specialties.length === 0 && styles.specialtyPlaceholder]}>
-                {form.specialties.length ? `${form.specialties.length} selected` : 'Select practice specialties'}
+                {form.specialties.length ? `${form.specialties.length} selected` : `Select ${offeringLabel.toLowerCase()}`}
               </Text>
               <MaterialCommunityIcons name={specialtyPickerOpen ? 'chevron-up' : 'chevron-down'} size={22} color="#93C5FD" />
             </TouchableOpacity>
@@ -573,7 +612,7 @@ export default function MerchantClinicsScreen() {
             {specialtyPickerOpen ? (
               <View style={styles.specialtyPicker}>
                 <ScrollView nestedScrollEnabled style={styles.specialtyOptions} keyboardShouldPersistTaps="handled">
-                  {specialtyOptions.map((specialty) => {
+                  {offeringOptions.map((specialty) => {
                     const selected = form.specialties.includes(specialty);
                     return (
                       <TouchableOpacity key={specialty} style={styles.specialtyOption} onPress={() => toggleSpecialty(specialty)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
@@ -583,12 +622,12 @@ export default function MerchantClinicsScreen() {
                     );
                   })}
                 </ScrollView>
-                <Text style={styles.customSpecialtyLabel}>Add another specialty</Text>
+                <Text style={styles.customSpecialtyLabel}>Add a custom product, service, or offering</Text>
                 <View style={styles.customSpecialtyRow}>
                   <TextInput
                     value={form.customSpecialty}
                     onChangeText={(value) => updateForm('customSpecialty', value)}
-                    placeholder="Enter a custom specialty"
+                    placeholder="Enter a product, service, or offering"
                     placeholderTextColor="#64748B"
                     style={[styles.input, styles.customSpecialtyInput]}
                     returnKeyType="done"
@@ -600,11 +639,11 @@ export default function MerchantClinicsScreen() {
                 </View>
               </View>
             ) : null}
-            <Field label="About the clinic (optional)" value={form.description} onChangeText={(value) => updateForm('description', value)} placeholder="Services, opening hours, or other useful details" multiline />
+            <Field label="About the business (optional)" value={form.description} onChangeText={(value) => updateForm('description', value)} placeholder="Products, services, opening hours, or other useful details" multiline />
             <Field label="Phone number" value={form.phone} onChangeText={(value) => updateForm('phone', value)} placeholder="+234..." keyboardType="phone-pad" />
-            <Field label="Email address" value={form.email} onChangeText={(value) => updateForm('email', value)} placeholder="clinic@example.com" keyboardType="email-address" autoCapitalize="none" />
+            <Field label="Email address" value={form.email} onChangeText={(value) => updateForm('email', value)} placeholder="business@example.com" keyboardType="email-address" autoCapitalize="none" />
 
-            <Text style={styles.sectionTitle}>Clinic location</Text>
+            <Text style={styles.sectionTitle}>Business location</Text>
             <Field label="Street address" value={form.address} onChangeText={(value) => updateForm('address', value)} placeholder="Street, area, or landmark" />
             <View style={styles.twoColumns}>
               <Field label="City" value={form.city} onChangeText={(value) => updateForm('city', value)} placeholder="City" />
@@ -615,20 +654,20 @@ export default function MerchantClinicsScreen() {
               <Text style={styles.secondaryButtonText}>Use current location for map pin</Text>
             </TouchableOpacity>
             <Text style={styles.locationGuidance}>
-              (Tap this while you are at your clinic to pin its exact live location and help clients navigate to you.)
+              (Tap this while you are at your business to pin its exact location and help clients find you.)
             </Text>
             <View style={styles.twoColumns}>
               <Field label="Latitude" value={form.latitude} onChangeText={(value) => updateForm('latitude', value)} placeholder="e.g. 6.5244" keyboardType="decimal-pad" />
               <Field label="Longitude" value={form.longitude} onChangeText={(value) => updateForm('longitude', value)} placeholder="e.g. 3.3792" keyboardType="decimal-pad" />
             </View>
-            <Text style={styles.hint}>A map pin is required to appear in nearby clinic results. You can adjust the coordinates manually.</Text>
+            <Text style={styles.hint}>A map pin is required to appear in nearby results. You can adjust the coordinates manually.</Text>
 
-            <Text style={styles.sectionTitle}>Clinic photos ({form.galleryPhotoUrls.length + newGalleryPhotos.length}/5)</Text>
+            <Text style={styles.sectionTitle}>Business photos ({form.galleryPhotoUrls.length + newGalleryPhotos.length}/5)</Text>
             <View style={styles.gallery}>
               {form.galleryPhotoUrls.map((url) => (
                 <View key={url} style={styles.galleryItem}>
                   <Image source={{ uri: url }} style={styles.galleryPhoto} />
-                  <TouchableOpacity style={styles.removePhoto} onPress={() => removeGalleryPhoto(url)} accessibilityLabel="Remove clinic photo">
+                  <TouchableOpacity style={styles.removePhoto} onPress={() => removeGalleryPhoto(url)} accessibilityLabel="Remove business photo">
                     <MaterialCommunityIcons name="close-circle" size={22} color="#FCA5A5" />
                   </TouchableOpacity>
                 </View>
@@ -636,7 +675,7 @@ export default function MerchantClinicsScreen() {
               {newGalleryPhotos.map((asset, index) => (
                 <View key={`${asset.uri}-${index}`} style={styles.galleryItem}>
                   <Image source={{ uri: asset.uri }} style={styles.galleryPhoto} />
-                  <TouchableOpacity style={styles.removePhoto} onPress={() => setNewGalleryPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))} accessibilityLabel="Remove selected clinic photo">
+                  <TouchableOpacity style={styles.removePhoto} onPress={() => setNewGalleryPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))} accessibilityLabel="Remove selected business photo">
                     <MaterialCommunityIcons name="close-circle" size={22} color="#FCA5A5" />
                   </TouchableOpacity>
                 </View>
@@ -650,16 +689,16 @@ export default function MerchantClinicsScreen() {
             </View>
 
             <TouchableOpacity style={[styles.saveButton, saving && styles.disabled]} onPress={() => { void saveClinic(); }} disabled={saving || deleting}>
-              {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>{clinicId ? 'Save clinic changes' : 'Publish clinic'}</Text>}
+              {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>{clinicId ? 'Save listing changes' : 'Publish listing'}</Text>}
             </TouchableOpacity>
             {clinicId ? (
               <TouchableOpacity style={[styles.deleteButton, deleting && styles.disabled]} onPress={confirmDelete} disabled={saving || deleting}>
-                {deleting ? <ActivityIndicator color="#FCA5A5" /> : <><MaterialCommunityIcons name="delete-outline" size={19} color="#FCA5A5" /><Text style={styles.deleteText}>Delete clinic</Text></>}
+                {deleting ? <ActivityIndicator color="#FCA5A5" /> : <><MaterialCommunityIcons name="delete-outline" size={19} color="#FCA5A5" /><Text style={styles.deleteText}>Delete listing</Text></>}
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity style={styles.addAnotherClinicButton} onPress={startNewClinic} disabled={saving || deleting}>
               <MaterialCommunityIcons name="plus-circle-outline" size={19} color="#93C5FD" />
-              <Text style={styles.addAnotherClinicText}>Add another clinic</Text>
+              <Text style={styles.addAnotherClinicText}>Add another listing</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
