@@ -437,15 +437,44 @@ function RootAuthGate() {
       const hash = window.location.hash || '';
       const search = window.location.search || '';
       const combined = `${hash}${search}`;
+      const recoveryParams = new URLSearchParams(
+        `${search.replace(/^\?/, '')}&${hash.replace(/^#/, '')}`,
+      );
       const hasRecoveryType = /(?:^|[?&#])type=recovery(?:&|$)/i.test(combined);
-      const hasRecoveryToken = /(?:^|[?&#])token=[^&]+/i.test(combined) || /(?:^|[#?&])access_token=[^&]+/i.test(combined);
+      const hasRecoveryToken = /(?:^|[?&#])(?:token|token_hash|code)=[^&]+/i.test(combined)
+        || /(?:^|[#?&])access_token=[^&]+/i.test(combined);
+      const isResetPasswordRoute = window.location.pathname.replace(/\/+$/, '') === '/reset-password';
 
-      if (hasRecoveryType && hasRecoveryToken) {
-        router.replace('/reset-password');
-        queueMicrotask(() => {
+      if ((hasRecoveryType && hasRecoveryToken)
+        || (isResetPasswordRoute && Boolean(recoveryParams.get('code')))) {
+        const accessToken = recoveryParams.get('access_token');
+        const refreshToken = recoveryParams.get('refresh_token');
+        const tokenHash = recoveryParams.get('token_hash') || recoveryParams.get('token');
+        const code = recoveryParams.get('code');
+
+        void (async () => {
+          let recoveryError: string | undefined;
+          try {
+            const result = accessToken && refreshToken
+              ? await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+              : tokenHash
+                ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+                : code
+                  ? await supabase.auth.exchangeCodeForSession(code)
+                  : { error: new Error('The password reset link is missing recovery credentials.') };
+            if (result.error) throw result.error;
+          } catch (error) {
+            console.error('[Auth] Failed to establish password recovery session:', error);
+            recoveryError = error instanceof Error ? error.message : 'The password reset link could not be verified.';
+          }
+
+          if (!mounted) return;
+          router.replace(recoveryError
+            ? { pathname: '/reset-password', params: { recoveryError } }
+            : '/reset-password');
           if (mounted) setLoading(false);
           void hideSplashSafely();
-        });
+        })();
         return;
       }
     }

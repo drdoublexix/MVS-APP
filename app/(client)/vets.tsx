@@ -315,7 +315,10 @@ export default function VetsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.mapButton}
-            onPress={() => router.push('/(client)/explore-clinics')}
+            onPress={() => router.push({
+              pathname: '/(client)/explore-clinics',
+              params: { returnTo: 'vets' },
+            })}
             accessibilityLabel="Explore veterinary and pet-care businesses"
             accessibilityRole="button"
           >

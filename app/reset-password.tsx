@@ -1,44 +1,75 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../lib/password';
 import { supabase } from '../lib/supabase';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
+  const { recoveryError } = useLocalSearchParams<{ recoveryError?: string }>();
+  const recoveryErrorMessage = Array.isArray(recoveryError) ? recoveryError[0] : recoveryError;
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (recoveryErrorMessage) return;
+
+    let mounted = true;
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) {
+        setErrorMessage(error.message);
+      } else if (!data.session) {
+        setErrorMessage('This password reset link is invalid or expired. Request a new reset link and try again.');
+      }
+    }).catch((error: unknown) => {
+      if (!mounted) return;
+      setErrorMessage(error instanceof Error ? error.message : 'Could not verify the password reset link.');
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [recoveryErrorMessage]);
 
   const handleUpdatePassword = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+
     if (!isValidPassword(newPassword)) {
-      Alert.alert('Invalid password', PASSWORD_REQUIREMENTS);
+      setErrorMessage(`Invalid password. ${PASSWORD_REQUIREMENTS}`);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Passwords do not match', 'Please make sure both password fields match.');
+      setErrorMessage('Passwords do not match. Please make sure both password fields match.');
       return;
     }
 
     setLoading(true);
-    setSuccessMessage('');
 
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) {
+        throw new Error('Your password reset session is missing or expired. Request a new reset link and try again.');
+      }
+
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
 
       setSuccessMessage('Password updated successfully. Redirecting to sign in...');
-      Alert.alert('Password updated', 'Your password was updated successfully.');
       setTimeout(() => {
         router.replace('/auth?mode=signin');
       }, 900);
     } catch (error) {
-      Alert.alert('Could not update password', error instanceof Error ? error.message : 'Please try again.');
+      setErrorMessage(error instanceof Error ? error.message : 'Could not update your password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -54,6 +85,9 @@ export default function ResetPasswordScreen() {
         <Text style={styles.subtitle}>Create a new password for your account.</Text>
 
         {successMessage ? <Text style={styles.successBanner}>{successMessage}</Text> : null}
+        {recoveryErrorMessage || errorMessage
+          ? <Text style={styles.errorBanner}>{recoveryErrorMessage || errorMessage}</Text>
+          : null}
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
@@ -126,6 +160,16 @@ const styles = StyleSheet.create({
     color: '#D1FAE5',
     backgroundColor: '#102E2A',
     borderColor: '#10B981',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 13,
+    marginBottom: 18,
+  },
+  errorBanner: {
+    color: '#FECACA',
+    backgroundColor: '#3B161B',
+    borderColor: '#EF4444',
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,

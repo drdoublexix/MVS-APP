@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +33,7 @@ type ClinicRatingSummary = {
 
 export default function ClientClinicsScreen() {
   const router = useRouter();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const [clinics, setClinics] = useState<VeterinaryClinic[]>([]);
   const [selectedClinic, setSelectedClinic] = useState<VeterinaryClinic | null>(null);
   const [mapVisible, setMapVisible] = useState(false);
@@ -158,10 +159,7 @@ export default function ClientClinicsScreen() {
 
   const closeClinicExplorer = () => {
     setMapVisible(false);
-    router.back();
-    setTimeout(() => {
-      router.replace('/(client)');
-    }, 200);
+    router.replace(returnTo === 'vets' ? '/(client)/vets' : '/(client)');
   };
 
   const rateClinic = async (stars: number) => {

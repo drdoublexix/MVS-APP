@@ -304,7 +304,10 @@ export default function ClientHome() {
 
         <TouchableOpacity
           style={styles.clinicBrowseCard}
-          onPress={() => router.push('/(client)/explore-clinics')}
+          onPress={() => router.push({
+            pathname: '/(client)/explore-clinics',
+            params: { returnTo: 'home' },
+          })}
           accessibilityRole="button"
           accessibilityLabel="Explore veterinary and pet-care businesses near you"
         >
