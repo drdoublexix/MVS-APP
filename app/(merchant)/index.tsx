@@ -409,7 +409,7 @@ export default function MerchantDashboardScreen() {
           </View>
           <View style={styles.clinicManageCopy}>
             <Text style={styles.clinicManageTitle}>Animal-Care Business Listing</Text>
-            <Text style={styles.clinicManageSubtitle}>Add your veterinary or pet-care practice to help clients discover and contact you.</Text>
+            <Text style={styles.clinicManageSubtitle}>Add your veterinary or pet-care service so nearby clients can discover, reach out and contact you.</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={22} color="#93C5FD" />
         </TouchableOpacity>
