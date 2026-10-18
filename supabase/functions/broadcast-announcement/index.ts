@@ -8,12 +8,14 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const allowedAudiences = new Set(["all", "vet", "merchant", "client"]);
+const allowedAudiences = new Set(["all", "vet", "merchant", "client", "single", "test"]);
 const resendUrl = "https://api.resend.com/emails";
 const defaultAppUrl = "https://mvsapp.com.ng";
 
 type AnnouncementPayload = {
   targetAudience?: string;
+  targetEmail?: string;
+  recipientEmails?: string[];
   title?: string;
   body?: string;
   sendEmail?: boolean;
@@ -53,20 +55,20 @@ const buildAnnouncementEmailHtml = (title: string, body: string, appUrl: string)
   const safeAppUrl = escapeHtml(appUrl);
 
   return `
-    <div style="margin:0;padding:32px 16px;background:#0b1224;color:#d7e0ee;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">
-      <div style="width:100%;max-width:560px;margin:0 auto;background:#0f172a;border-radius:18px;overflow:hidden;">
-        <div style="padding:34px 28px 28px;text-align:center;background:#0f172a;">
+    <div style="margin:0;padding:24px 12px;background:#0b1224;color:#d7e0ee;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">
+      <div style="width:100%;max-width:700px;margin:0 auto;">
+        <div style="padding:30px 20px 26px;text-align:center;background:#0f172a;border-radius:12px 12px 0 0;">
           <h1 style="margin:0;color:#ffffff;font-size:28px;line-height:1.2;">${safeTitle}</h1>
           <p style="margin:12px 0 0;color:#94a3b8;font-size:16px;">Mobile Veterinary Services</p>
         </div>
-        <div style="margin:0 24px 24px;padding:30px 28px;background:#1b2a3d;border:1px solid #334155;border-radius:12px;">
+        <div style="margin:0 10px 20px;padding:28px 30px;background:#1b2a3d;border:1px solid #334155;border-radius:0 0 12px 12px;">
           <div style="color:#d7e0ee;font-size:16px;">${safeBody}</div>
           <div style="margin-top:28px;text-align:center;">
             <a href="${safeAppUrl}" style="display:inline-block;padding:13px 24px;background:#00c389;color:#ffffff;border-radius:7px;font-size:16px;font-weight:700;text-decoration:none;">View Dashboard</a>
           </div>
           <p style="margin:28px 0 0;color:#94a3b8;font-size:14px;">This is an automated notification. Please do not reply to this email; this inbox is not monitored.</p>
         </div>
-        <div style="margin:0 24px;padding:22px 0 28px;border-top:1px solid #26364c;text-align:center;color:#64748b;font-size:13px;">
+        <div style="margin:0 10px;padding:18px 0 24px;border-top:1px solid #26364c;text-align:center;color:#64748b;font-size:13px;">
           &copy; Mobile Veterinary Services. All rights reserved.
         </div>
       </div>
@@ -115,9 +117,33 @@ serve(async (req: Request) => {
     const title = typeof payload.title === "string" ? payload.title.trim() : "";
     const body = typeof payload.body === "string" ? payload.body.trim() : "";
     const sendEmailRequested = payload.sendEmail === true;
+    const hasDirectEmailTargets = payload.targetEmail !== undefined || payload.recipientEmails !== undefined;
 
     if (!allowedAudiences.has(targetAudience)) {
-      return jsonResponse({ error: "targetAudience must be all, vet, merchant, or client." }, 400);
+      return jsonResponse({ error: "targetAudience must be all, vet, merchant, client, single, or test." }, 400);
+    }
+    if (payload.targetEmail !== undefined && typeof payload.targetEmail !== "string") {
+      return jsonResponse({ error: "targetEmail must be a string." }, 400);
+    }
+    if (payload.recipientEmails !== undefined && (
+      !Array.isArray(payload.recipientEmails)
+      || payload.recipientEmails.some((email) => typeof email !== "string")
+    )) {
+      return jsonResponse({ error: "recipientEmails must be an array of email addresses." }, 400);
+    }
+
+    const directEmailTargets = [...new Set([
+      ...(payload.targetEmail ? [payload.targetEmail] : []),
+      ...(payload.recipientEmails || []),
+    ].map((email) => email.trim().toLowerCase()).filter(Boolean))];
+    if (hasDirectEmailTargets && (
+      directEmailTargets.length === 0
+      || directEmailTargets.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    )) {
+      return jsonResponse({ error: "Provide at least one valid email address for direct targeting." }, 400);
+    }
+    if ((targetAudience === "single" || targetAudience === "test") && !hasDirectEmailTargets) {
+      return jsonResponse({ error: "targetEmail or recipientEmails is required for single/test announcements." }, 400);
     }
     if (!title || !body) {
       return jsonResponse({ error: "title and body are required." }, 400);
@@ -145,7 +171,11 @@ serve(async (req: Request) => {
     let profilesQuery = supabase
       .from("profiles")
       .select("id, email, full_name, role");
-    if (targetAudience !== "all") profilesQuery = profilesQuery.eq("role", targetAudience);
+    if (hasDirectEmailTargets) {
+      profilesQuery = profilesQuery.in("email", directEmailTargets);
+    } else if (targetAudience !== "all" && targetAudience !== "single" && targetAudience !== "test") {
+      profilesQuery = profilesQuery.eq("role", targetAudience);
+    }
 
     const { data: profiles, error: profilesError } = await profilesQuery;
     if (profilesError) throw profilesError;
