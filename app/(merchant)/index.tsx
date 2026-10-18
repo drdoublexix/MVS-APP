@@ -402,17 +402,20 @@ export default function MerchantDashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.greetingTitle}>{t("home.hello", { name: merchantFirstName })} 👋</Text>
+        <View style={styles.greeting}>
+          <Text style={styles.greetingTitle}>{t("home.hello", { name: merchantFirstName })} 👋</Text>
+          <Text style={styles.greetingSubtitle}>Welcome back to your store workspace</Text>
+        </View>
+        <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)} accessibilityRole="button">
+          <View style={styles.aiIcon}><MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" /></View>
+          <View style={styles.aiCardCopy}>
+            <Text style={styles.assistantCardTitle}>MVS AI Assistant</Text>
+            <Text style={styles.assistantCardText}>Ask questions about animal care and livestock.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
         <Text style={styles.title}>{t('dashboard.store')}</Text>
         <Text style={styles.subtitle}>{t('dashboard.manageStore')}</Text>
-        <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)} accessibilityRole="button">
-          <View style={styles.aiIcon}><MaterialCommunityIcons name="robot-outline" size={26} color="#FFFFFF" /></View>
-          <View style={styles.aiCardCopy}>
-            <Text style={styles.aiCardTitle}>MVS AI Assistant</Text>
-            <Text style={styles.aiCardSubtitle}>Ask questions about animal care and livestock.</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={23} color="#FFFFFF" />
-        </TouchableOpacity>
         <View style={styles.stats}>
           <Stat
             icon="cash"
@@ -702,14 +705,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F172A" },
   modalKeyboard: { flex: 1 },
   content: { padding: 16, paddingBottom: 36 },
-  greetingTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700", marginBottom: 10 },
+  greeting: { marginBottom: 18 },
+  greetingTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
+  greetingSubtitle: { color: "#94A3B8", fontSize: 13, lineHeight: 19, marginTop: 5 },
   title: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },
   subtitle: { color: "#94A3B8", marginTop: 4, marginBottom: 24 },
-  aiCard: { backgroundColor: "#0E7490", borderRadius: 13, padding: 14, flexDirection: "row", alignItems: "center", gap: 11, marginBottom: 20 },
-  aiIcon: { width: 46, height: 46, borderRadius: 13, backgroundColor: "#FFFFFF24", alignItems: "center", justifyContent: "center" },
-  aiCardCopy: { flex: 1 },
-  aiCardTitle: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
-  aiCardSubtitle: { color: "#CFFAFE", fontSize: 11, lineHeight: 16, marginTop: 3 },
+  aiCard: { backgroundColor: "#0E7490", borderRadius: 15, padding: 16, flexDirection: "row", alignItems: "center", marginBottom: 24 },
+  aiIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: "#FFFFFF24", alignItems: "center", justifyContent: "center" },
+  aiCardCopy: { flex: 1, marginHorizontal: 12 },
+  assistantCardTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
+  assistantCardText: { color: "#CFFAFE", fontSize: 12, lineHeight: 18, marginTop: 3 },
   aiOverlay: { flex: 1, backgroundColor: "#00000099", justifyContent: "flex-end" },
   aiModal: { maxHeight: "85%", backgroundColor: "#0F172A", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18 },
   aiHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#334155", paddingBottom: 13 },

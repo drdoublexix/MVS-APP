@@ -646,8 +646,8 @@ export default function MerchantClinicsScreen() {
             <Text style={styles.sectionTitle}>Business location</Text>
             <Field label="Street address" value={form.address} onChangeText={(value) => updateForm('address', value)} placeholder="Street, area, or landmark" />
             <View style={styles.twoColumns}>
-              <Field label="City" value={form.city} onChangeText={(value) => updateForm('city', value)} placeholder="City" />
-              <Field label="State" value={form.state} onChangeText={(value) => updateForm('state', value)} placeholder="State" />
+              <Field column label="City" value={form.city} onChangeText={(value) => updateForm('city', value)} placeholder="City" />
+              <Field column label="State" value={form.state} onChangeText={(value) => updateForm('state', value)} placeholder="State" />
             </View>
             <TouchableOpacity style={styles.locationButton} onPress={() => { void detectCurrentLocation(); }}>
               <MaterialCommunityIcons name="crosshairs-gps" size={18} color="#93C5FD" />
@@ -657,8 +657,8 @@ export default function MerchantClinicsScreen() {
               (Tap this while you are at your business to pin its exact location and help clients find you.)
             </Text>
             <View style={styles.twoColumns}>
-              <Field label="Latitude" value={form.latitude} onChangeText={(value) => updateForm('latitude', value)} placeholder="e.g. 6.5244" keyboardType="decimal-pad" />
-              <Field label="Longitude" value={form.longitude} onChangeText={(value) => updateForm('longitude', value)} placeholder="e.g. 3.3792" keyboardType="decimal-pad" />
+              <Field column label="Latitude" value={form.latitude} onChangeText={(value) => updateForm('latitude', value)} placeholder="e.g. 6.5244" keyboardType="decimal-pad" />
+              <Field column label="Longitude" value={form.longitude} onChangeText={(value) => updateForm('longitude', value)} placeholder="e.g. 3.3792" keyboardType="decimal-pad" />
             </View>
             <Text style={styles.hint}>A map pin is required to appear in nearby results. You can adjust the coordinates manually.</Text>
 
@@ -715,6 +715,7 @@ function Field({
   keyboardType,
   autoCapitalize,
   multiline,
+  column,
 }: {
   label: string;
   value: string;
@@ -723,9 +724,10 @@ function Field({
   keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'decimal-pad';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   multiline?: boolean;
+  column?: boolean;
 }) {
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, column && styles.columnField]}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         value={value}
@@ -785,10 +787,11 @@ const styles = StyleSheet.create({
   customSpecialtyRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   customSpecialtyInput: { flex: 1, marginBottom: 0 },
   addSpecialtyButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563EB', borderRadius: 8 },
-  field: { flex: 1, marginBottom: 12 },
+  field: { marginBottom: 18 },
+  columnField: { flex: 1, minWidth: 0 },
   label: { color: '#CBD5E1', fontSize: 12, fontWeight: '600', marginBottom: 6 },
   input: { minHeight: 45, backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155', borderRadius: 8, paddingHorizontal: 12, color: '#FFFFFF', fontSize: 14 },
-  multiline: { minHeight: 88, paddingTop: 11 },
+  multiline: { minHeight: 104, paddingTop: 11 },
   twoColumns: { flexDirection: 'row', gap: 10 },
   locationButton: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', paddingVertical: 9, marginBottom: 8 },
   locationGuidance: { color: '#94A3B8', fontSize: 11, lineHeight: 16, marginTop: -5, marginBottom: 10 },
