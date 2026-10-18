@@ -36,6 +36,10 @@ import { getCurrentUser, supabase } from "../../lib/supabase";
 import { useLanguage } from "../../lib/language";
 
 const naira = (value: number) => `₦${value.toLocaleString("en-NG")}`;
+const getMerchantFirstName = (fullName?: string | null) => {
+  const name = (fullName || "").trim().replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, "");
+  return name.split(/\s+/).filter(Boolean)[0] || "there";
+};
 
 type AiMessage = { id?: string; role: "user" | "assistant"; content: string };
 type AiSession = { sessionId: string; userId: string };
@@ -59,6 +63,7 @@ export default function MerchantDashboardScreen() {
     activeListings: 0,
     pendingOrders: 0,
   });
+  const [merchantFirstName, setMerchantFirstName] = useState("there");
   const [productOrderStatuses, setProductOrderStatuses] = useState<
     Record<string, string>
   >({});
@@ -78,6 +83,44 @@ export default function MerchantDashboardScreen() {
     });
     return () => cancelAnimationFrame(frameId);
   }, [openMarketplace, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      const loadMerchantGreeting = async () => {
+        try {
+          const user = await getCurrentUser();
+          if (!user) {
+            if (mounted) setMerchantFirstName("there");
+            return;
+          }
+
+          const { data: profile, error } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (error) {
+            console.error("[Merchant Dashboard] Could not load profile name for greeting:", error);
+          }
+
+          const fullName = profile?.full_name
+            || user.user_metadata?.full_name
+            || user.user_metadata?.name
+            || null;
+          if (mounted) setMerchantFirstName(getMerchantFirstName(fullName));
+        } catch (error) {
+          console.error("[Merchant Dashboard] Could not load profile name for greeting:", error);
+          if (mounted) setMerchantFirstName("there");
+        }
+      };
+
+      void loadMerchantGreeting();
+      return () => {
+        mounted = false;
+      };
+    }, [])
+  );
 
   const openWhatsAppSupport = async () => {
     const message =
@@ -359,6 +402,7 @@ export default function MerchantDashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        <Text style={styles.greetingTitle}>{t("home.hello", { name: merchantFirstName })} 👋</Text>
         <Text style={styles.title}>{t('dashboard.store')}</Text>
         <Text style={styles.subtitle}>{t('dashboard.manageStore')}</Text>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)} accessibilityRole="button">
@@ -658,6 +702,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F172A" },
   modalKeyboard: { flex: 1 },
   content: { padding: 16, paddingBottom: 36 },
+  greetingTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700", marginBottom: 10 },
   title: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },
   subtitle: { color: "#94A3B8", marginTop: 4, marginBottom: 24 },
   aiCard: { backgroundColor: "#0E7490", borderRadius: 13, padding: 14, flexDirection: "row", alignItems: "center", gap: 11, marginBottom: 20 },

@@ -33,7 +33,7 @@ type ClinicRatingSummary = {
 
 export default function ClientClinicsScreen() {
   const router = useRouter();
-  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const [clinics, setClinics] = useState<VeterinaryClinic[]>([]);
   const [selectedClinic, setSelectedClinic] = useState<VeterinaryClinic | null>(null);
   const [mapVisible, setMapVisible] = useState(false);
@@ -159,7 +159,24 @@ export default function ClientClinicsScreen() {
 
   const closeClinicExplorer = () => {
     setMapVisible(false);
-    router.replace(returnTo === 'vets' ? '/(client)/vets' : '/(client)');
+    const target = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+    const explicitTarget = target === 'vets'
+      ? '/(client)/vets'
+      : target === 'home'
+        ? '/(client)'
+        : null;
+
+    if (explicitTarget) {
+      router.replace(explicitTarget as '/(client)' | '/(client)/vets');
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/(client)');
   };
 
   const rateClinic = async (stars: number) => {

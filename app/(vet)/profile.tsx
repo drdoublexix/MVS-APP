@@ -30,8 +30,17 @@ import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, sendPasswordResetLink, signOutUser, supabase, updatePassword } from '../../lib/supabase';
 import { useLanguage } from '../../lib/language';
+import {
+  createEmptyVetServicePricing,
+  normalizeVetServicePricing,
+  pricePeriods,
+  veterinaryBundles,
+  veterinaryCarePlans,
+  veterinaryServices,
+  type VetServicePricing,
+} from '../../lib/vetServicePricing';
 
-type SettingsModal = 'profile' | 'password' | 'notifications' | 'bank' | null;
+type SettingsModal = 'profile' | 'pricing' | 'password' | 'notifications' | 'bank' | null;
 
 type NotificationPreferences = {
   orders: boolean;
@@ -84,6 +93,10 @@ export default function VetProfileScreen() {
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [bankSaving, setBankSaving] = useState(false);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [pricingSaving, setPricingSaving] = useState(false);
+  const [pricingError, setPricingError] = useState('');
+  const [servicePricing, setServicePricing] = useState<VetServicePricing>(createEmptyVetServicePricing);
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -270,6 +283,80 @@ export default function VetProfileScreen() {
     setSuccessMessage('Profile updated successfully.');
     setTimeout(() => setSuccessMessage(null), 3000);
     Alert.alert('Profile Updated', 'Your profile changes have been saved.');
+  };
+
+  const openServicePricing = async () => {
+    setModal('pricing');
+    setPricingLoading(true);
+    setPricingError('');
+    try {
+      const user = await getCurrentUser();
+      if (!user) throw new Error('Your session has expired. Please sign in again.');
+      const { data, error } = await supabase
+        .from('vet_service_pricing')
+        .select('service_prices, bundle_prices, care_plan_prices')
+        .eq('vet_id', user.id)
+        .maybeSingle();
+      if (error) throw error;
+      setServicePricing(normalizeVetServicePricing(data));
+    } catch (error) {
+      console.error('[Vet Pricing] Could not load service pricing:', error);
+      setPricingError(error instanceof Error ? error.message : 'Could not load your service pricing.');
+    } finally {
+      setPricingLoading(false);
+    }
+  };
+
+  const saveServicePricing = async () => {
+    if (pricingSaving) return;
+    setPricingSaving(true);
+    setPricingError('');
+    try {
+      const user = await getCurrentUser();
+      if (!user) throw new Error('Your session has expired. Please sign in again.');
+      const { error } = await supabase.from('vet_service_pricing').upsert({
+        vet_id: user.id,
+        service_prices: servicePricing.services,
+        bundle_prices: servicePricing.bundles,
+        care_plan_prices: servicePricing.carePlans,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'vet_id' });
+      if (error) throw error;
+      setModal(null);
+      Alert.alert('Pricing saved', 'Your service and care plan prices are now available to clients in chat.');
+    } catch (error) {
+      console.error('[Vet Pricing] Could not save service pricing:', error);
+      setPricingError(error instanceof Error ? error.message : 'Could not save your service pricing.');
+    } finally {
+      setPricingSaving(false);
+    }
+  };
+
+  const updateServicePrice = (serviceId: string, value: string) => {
+    setServicePricing((current) => ({
+      ...current,
+      services: { ...current.services, [serviceId]: value.replace(/\D/g, '') },
+    }));
+  };
+
+  const updateBundlePrice = (bundleId: string, value: string) => {
+    setServicePricing((current) => ({
+      ...current,
+      bundles: { ...current.bundles, [bundleId]: value.replace(/\D/g, '') },
+    }));
+  };
+
+  const updateCarePlanPrice = (planId: string, period: 'monthly' | 'quarterly' | 'annual', value: string) => {
+    setServicePricing((current) => ({
+      ...current,
+      carePlans: {
+        ...current.carePlans,
+        [planId]: {
+          ...current.carePlans[planId],
+          [period]: value.replace(/\D/g, ''),
+        },
+      },
+    }));
   };
 
   const detectAndSaveLocation = async () => {
@@ -543,6 +630,7 @@ export default function VetProfileScreen() {
           <MVSDiseasePredictor />
           <PulletRearingPlanGenerator audience="vet" tight />
           <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
+          <Setting label="Services & pricing" icon="cash-multiple" onPress={() => void openServicePricing()} />
           <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />
           <Setting label={t('settings.notifications')} icon="bell" onPress={() => setModal('notifications')} />
           <Setting label={t('settings.bankAccount')} icon="bank" onPress={() => setModal('bank')} />
@@ -633,6 +721,118 @@ export default function VetProfileScreen() {
                 <Text style={styles.saveText}>Save Changes</Text>
               </TouchableOpacity>
             </ScrollView>
+            </KeyboardAvoidingView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={modal === 'pricing'} animationType="fade" transparent onRequestClose={() => setModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setModal(null)} disabled={pricingSaving}>
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Services & pricing</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            <KeyboardAvoidingView style={styles.formKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+              <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+                <Text style={styles.pricingHint}>Enter prices in Naira (NGN). Leave anything you do not offer blank; clients only see items with a price. For weight-based treatments, use the animal’s actual weight and confirm the final dose and cost with your supplier.</Text>
+                {pricingLoading ? (
+                  <View style={styles.pricingLoading}>
+                    <ActivityIndicator color="#10B981" />
+                    <Text style={styles.pricingHint}>Loading your saved prices…</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.pricingSectionTitle}>Individual services</Text>
+                    {veterinaryServices.map((service) => (
+                      <View key={service.id} style={styles.pricingItem}>
+                        <Text style={styles.label}>{service.name}</Text>
+                        <Text style={styles.pricingHint}>{service.description}</Text>
+                        {'variants' in service ? service.variants.map((variant) => {
+                          const priceKey = `${service.id}_${variant.id}`;
+                          return (
+                            <View key={priceKey} style={styles.pricingField}>
+                              <Text style={styles.pricingVariant}>{variant.label}</Text>
+                              <TextInput
+                                value={servicePricing.services[priceKey] || ''}
+                                onChangeText={(value) => updateServicePrice(priceKey, value)}
+                                placeholder="Price in NGN"
+                                placeholderTextColor="#64748B"
+                                keyboardType="number-pad"
+                                editable={!pricingSaving}
+                                style={styles.input}
+                                accessibilityLabel={`${service.name} ${variant.label} price in naira`}
+                              />
+                            </View>
+                          );
+                        }) : (
+                          <TextInput
+                            value={servicePricing.services[service.id] || ''}
+                            onChangeText={(value) => updateServicePrice(service.id, value)}
+                            placeholder={service.unit ? `Price in NGN (${service.unit.toLowerCase()})` : 'Price in NGN'}
+                            placeholderTextColor="#64748B"
+                            keyboardType="number-pad"
+                            editable={!pricingSaving}
+                            style={styles.input}
+                            accessibilityLabel={`${service.name} price in naira`}
+                          />
+                        )}
+                      </View>
+                    ))}
+
+                    <Text style={styles.pricingSectionTitle}>Prepaid bundles</Text>
+                    <Text style={styles.pricingHint}>These are one-time packages paid for upfront. Enter the total amount for all services listed in a bundle, and set a price only for packages you offer. Clarify any exclusions with the client.</Text>
+                    {veterinaryBundles.map((bundle) => (
+                      <View key={bundle.id} style={styles.pricingItem}>
+                        <Text style={styles.label}>{bundle.name}</Text>
+                        <Text style={styles.pricingHint}>{bundle.description}</Text>
+                        <TextInput
+                          value={servicePricing.bundles[bundle.id] || ''}
+                          onChangeText={(value) => updateBundlePrice(bundle.id, value)}
+                          placeholder="One-time price in NGN"
+                          placeholderTextColor="#64748B"
+                          keyboardType="number-pad"
+                          editable={!pricingSaving}
+                          style={styles.input}
+                          accessibilityLabel={`${bundle.name} one-time price in naira`}
+                        />
+                      </View>
+                    ))}
+
+                    <Text style={styles.pricingSectionTitle}>Ongoing care plans</Text>
+                    <Text style={styles.pricingHint}>These plans cover continuing care and are priced by billing period. Enter the total charge for each period you offer (monthly, quarterly, or annual); leave unsupported periods blank. Explain any visit limits, exclusions, or renewal terms to clients.</Text>
+                    {veterinaryCarePlans.map((plan) => (
+                      <View key={plan.id} style={styles.pricingItem}>
+                        <Text style={styles.label}>{plan.name}</Text>
+                        <Text style={styles.pricingHint}>{plan.description}</Text>
+                        {pricePeriods.map((period) => (
+                          <View key={period.id} style={styles.pricingField}>
+                            <Text style={styles.pricingVariant}>{period.label}</Text>
+                            <TextInput
+                              value={servicePricing.carePlans[plan.id]?.[period.id] || ''}
+                              onChangeText={(value) => updateCarePlanPrice(plan.id, period.id, value)}
+                              placeholder={`${period.label} price in NGN`}
+                              placeholderTextColor="#64748B"
+                              keyboardType="number-pad"
+                              editable={!pricingSaving}
+                              style={styles.input}
+                              accessibilityLabel={`${plan.name} ${period.label.toLowerCase()} price in naira`}
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                    {pricingError ? <Text style={styles.pricingError}>{pricingError}</Text> : null}
+                    <TouchableOpacity style={styles.save} onPress={() => void saveServicePricing()} disabled={pricingSaving}>
+                      <Text style={styles.saveText}>{pricingSaving ? 'Saving prices…' : 'Save prices'}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                {pricingLoading && pricingError ? <Text style={styles.pricingError}>{pricingError}</Text> : null}
+              </ScrollView>
             </KeyboardAvoidingView>
           </View>
         </View>
@@ -1037,6 +1237,46 @@ const styles = StyleSheet.create({
   },
   modalBodyContent: {
     paddingBottom: 32,
+  },
+  pricingHint: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  pricingLoading: {
+    alignItems: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  pricingSectionTitle: {
+    color: '#6EE7B7',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  pricingItem: {
+    backgroundColor: '#172235',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 12,
+    marginBottom: 12,
+  },
+  pricingField: {
+    gap: 6,
+    marginTop: 10,
+  },
+  pricingVariant: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  pricingError: {
+    color: '#FCA5A5',
+    fontSize: 13,
+    marginVertical: 10,
   },
   formKeyboard: {
     flex: 1,

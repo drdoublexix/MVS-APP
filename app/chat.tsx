@@ -18,7 +18,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { PayWithFlutterwave } from "flutterwave-react-native";
 import { ShieldCheck as LucideShieldCheck, X as LucideX } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import type { ViewStyle } from "react-native";
+import type { NativeScrollEvent, NativeSyntheticEvent, ViewStyle } from "react-native";
 import {
   ActivityIndicator,
   Alert,
@@ -42,6 +42,7 @@ import PetMedicalHistory from "../components/PetMedicalHistory";
 import SwipeableMessage from "../components/SwipeableMessage";
 import VetFarmMedicalLogForm from "../components/VetFarmMedicalLogForm";
 import VetMedicalLogForm from "../components/VetMedicalLogForm";
+import VetServicePricingModal from "../components/VetServicePricingModal";
 import { FLUTTERWAVE_CONFIG, handleFlutterwaveWebPayment, isFlutterwaveCheckoutReady } from "../lib/flutterwave";
 import { sendPushNotification } from "../lib/notifications";
 import { createOfflineRecordId, enqueueOfflineRecord, readOfflineRecords, readOfflineSnapshot, saveOfflineSnapshot, syncOfflineRecords } from "../lib/offlineRecords";
@@ -133,11 +134,17 @@ type Thread = {
 };
 
 type RecipientProfile = {
+  full_name?: string | null;
   avatar_url?: string | null;
   role?: string | null;
   business_name?: string | null;
   location?: string | null;
   phone_number?: string | null;
+  specialty?: string | null;
+  clinic?: string | null;
+  bio?: string | null;
+  city?: string | null;
+  state?: string | null;
 };
 
 type PatientPet = {
@@ -327,9 +334,7 @@ const openSafeExternalUrl = (url: string) => {
 
 const orderStatusSequence: OrderStatus[] = ["pending", "processing", "dispatched", "delivered"];
 
-function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, recipientProfile }: { order: ActiveOrder | null; canUpdate: boolean; canCreate: boolean; onUpdate: (status: OrderStatus | "completed") => Promise<void>; onCreate: () => Promise<void>; recipientProfile?: RecipientProfile | null }) {
-  const isMerchant = recipientProfile?.role === "merchant";
-  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate }: { order: ActiveOrder | null; canUpdate: boolean; canCreate: boolean; onUpdate: (status: OrderStatus | "completed") => Promise<void>; onCreate: () => Promise<void> }) {
   if (!order) {
     return (
       <View style={styles.orderStatusGroup}>
@@ -340,19 +345,6 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, rec
           </TouchableOpacity>
         ) : null}
         <Text style={styles.idleBadge}>No Active Order</Text>
-        {isMerchant ? (
-          <TouchableOpacity style={styles.viewProfileButton} onPress={() => setIsProfileModalVisible(true)}>
-            <MaterialCommunityIcons name="account-card-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.completeButtonText}>View Profile</Text>
-          </TouchableOpacity>
-        ) : null}
-        {isMerchant ? (
-          <MerchantProfileModal
-            visible={isProfileModalVisible}
-            profile={recipientProfile}
-            onClose={() => setIsProfileModalVisible(false)}
-          />
-        ) : null}
       </View>
     );
   }
@@ -385,17 +377,20 @@ function OrderStatusBadge({ order, canUpdate, canCreate, onUpdate, onCreate, rec
   );
 }
 
-function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean; profile?: RecipientProfile; onClose: () => void }) {
+function ParticipantProfileModal({ visible, profile, onClose }: { visible: boolean; profile?: RecipientProfile | null; onClose: () => void }) {
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const avatarUrl = getPublicAvatarUrl(profile?.avatar_url);
+  const isMerchant = profile?.role === "merchant";
+  const displayName = profile?.full_name || profile?.business_name || (isMerchant ? "Merchant" : "Veterinarian");
+  const location = [profile?.city, profile?.state].filter(Boolean).join(", ") || profile?.location;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.profileModalBackdrop}>
-        <View style={styles.profileModal}>
+        <ScrollView style={styles.profileModal} contentContainerStyle={styles.profileModalContent}>
           <View style={styles.profileModalHeader}>
-            <Text style={styles.profileModalTitle}>Merchant Profile</Text>
-            <TouchableOpacity onPress={onClose} accessibilityLabel="Close merchant profile">
+            <Text style={styles.profileModalTitle}>{isMerchant ? "Merchant Profile" : "Veterinarian Profile"}</Text>
+            <TouchableOpacity onPress={onClose} accessibilityLabel="Close participant profile">
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
@@ -403,21 +398,52 @@ function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean;
             style={styles.merchantAvatar}
             onPress={() => setAvatarPreviewVisible(true)}
             disabled={!avatarUrl}
-            accessibilityLabel="View merchant profile photo"
+            accessibilityLabel={`View ${isMerchant ? "merchant" : "veterinarian"} profile photo`}
           >
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.merchantAvatarImage} resizeMode="cover" />
             ) : (
-              <MaterialCommunityIcons name="storefront" size={42} color="#FFFFFF" />
+              <MaterialCommunityIcons name={isMerchant ? "storefront" : "hospital-box"} size={42} color="#FFFFFF" />
             )}
           </TouchableOpacity>
-          <Text style={styles.profileModalLabel}>Business Name</Text>
-          <Text style={styles.profileModalValue}>{profile?.business_name || "N/A"}</Text>
-          <Text style={styles.profileModalLabel}>Location</Text>
-          <Text style={styles.profileModalValue}>{profile?.location || "N/A"}</Text>
-          <Text style={styles.profileModalLabel}>Phone Number</Text>
-          <Text style={styles.profileModalValue}>{profile?.phone_number || "N/A"}</Text>
-        </View>
+          <Text style={styles.profileModalValue}>{displayName}</Text>
+          {isMerchant && profile?.business_name ? (
+            <>
+              <Text style={styles.profileModalLabel}>Business Name</Text>
+              <Text style={styles.profileModalValue}>{profile.business_name}</Text>
+            </>
+          ) : null}
+          {!isMerchant && profile?.specialty ? (
+            <>
+              <Text style={styles.profileModalLabel}>Specialty</Text>
+              <Text style={styles.profileModalValue}>{profile.specialty}</Text>
+            </>
+          ) : null}
+          {!isMerchant && profile?.clinic ? (
+            <>
+              <Text style={styles.profileModalLabel}>Clinic</Text>
+              <Text style={styles.profileModalValue}>{profile.clinic}</Text>
+            </>
+          ) : null}
+          {location ? (
+            <>
+              <Text style={styles.profileModalLabel}>Location</Text>
+              <Text style={styles.profileModalValue}>{location}</Text>
+            </>
+          ) : null}
+          {!isMerchant && profile?.bio ? (
+            <>
+              <Text style={styles.profileModalLabel}>About</Text>
+              <Text style={styles.profileModalValue}>{profile.bio}</Text>
+            </>
+          ) : null}
+          {profile?.phone_number ? (
+            <>
+              <Text style={styles.profileModalLabel}>Phone Number</Text>
+              <Text style={styles.profileModalValue}>{profile.phone_number}</Text>
+            </>
+          ) : null}
+        </ScrollView>
         <AvatarPreviewModal
           imageUrl={avatarUrl}
           visible={avatarPreviewVisible}
@@ -425,6 +451,29 @@ function MerchantProfileModal({ visible, profile, onClose }: { visible: boolean;
         />
       </View>
     </Modal>
+  );
+}
+
+function ParticipantProfileAction({ profile, compact = false }: { profile?: RecipientProfile | null; compact?: boolean }) {
+  const [visible, setVisible] = useState(false);
+  if (!profile || !["merchant", "vet", "veterinarian"].includes(profile.role || "")) return null;
+
+  return (
+    <>
+      <TouchableOpacity
+        style={compact ? styles.profileEyeCompact : styles.profileEyeButton}
+        onPress={(event) => {
+          event.stopPropagation();
+          setVisible(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${profile.role === "merchant" ? "merchant" : "veterinarian"} profile`}
+      >
+        <MaterialCommunityIcons name="eye-outline" size={compact ? 16 : 18} color="#FFFFFF" />
+        {!compact ? <Text style={styles.completeButtonText}>View Profile</Text> : null}
+      </TouchableOpacity>
+      <ParticipantProfileModal visible={visible} profile={profile} onClose={() => setVisible(false)} />
+    </>
   );
 }
 
@@ -540,7 +589,6 @@ const styles = {
   patientButton: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1C2541", borderColor: "#10B981", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   orderStatusGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
-  viewProfileButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   buyerProtectionButton: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#92400E", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   clearThreadAction: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#1F2937", borderColor: "#FCA5A5", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   clearThreadText: { color: "#FCA5A5", fontSize: 12, fontWeight: "700" },
@@ -570,7 +618,8 @@ const styles = {
   deleteModalCancelText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
   messageSelected: { borderWidth: 2, borderColor: "#34D399" },
   profileModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#00000099", padding: 20 },
-  profileModal: { width: "100%", maxWidth: 380, backgroundColor: "#1E293B", borderRadius: 14, padding: 20 },
+  profileModal: { width: "100%", maxWidth: 380, maxHeight: "85%", backgroundColor: "#1E293B", borderRadius: 14 },
+  profileModalContent: { padding: 20 },
   merchantAvatar: { width: 96, height: 96, borderRadius: 48, alignSelf: "center", alignItems: "center", justifyContent: "center", backgroundColor: "#10B981", marginBottom: 14, overflow: "hidden" },
   merchantAvatarImage: { width: "100%", height: "100%" },
   protectionModal: { width: "100%", maxWidth: 420, maxHeight: "88%", backgroundColor: "#1E293B", borderColor: "#92400E", borderWidth: 1, borderRadius: 14, padding: 20 },
@@ -606,7 +655,9 @@ const styles = {
   subtitle: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
   list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 96 },
   messages: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, flexGrow: 1, flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
+  messageListContainer: { flex: 1, minHeight: 0, position: "relative" },
   messageList: { flex: 1, minHeight: 0 },
+  jumpToLatestButton: { position: "absolute", right: 16, bottom: 14, width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#E2E8F0", elevation: 5, shadowColor: "#000000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, zIndex: 5 },
   messageRow: { marginBottom: 6 },
   thread: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: "#1E293B", borderWidth: 1, borderColor: "#334155", borderRadius: 12, marginBottom: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" },
@@ -623,6 +674,9 @@ const styles = {
   messageTimestampRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 5 },
   pendingBubble: { opacity: 0.65, borderColor: "#64748B", borderWidth: 1 },
   muted: { color: "#94A3B8", fontSize: 12, marginTop: 3 },
+  threadRoleRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  profileEyeCompact: { width: 25, height: 24, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  profileEyeButton: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
   message: { color: "#CBD5E1", fontSize: 12, marginTop: 7 },
   empty: { color: "#94A3B8", textAlign: "center", marginTop: 24 },
   bubble: { maxWidth: "84%", padding: 10, borderRadius: 12, marginBottom: 6 },
@@ -1125,7 +1179,7 @@ export default function ChatScreen() {
             allParticipantIds.length > 0
               ? await safeSupabaseCall(() => supabase
                   .from("profiles")
-                  .select("id, full_name, email, role, avatar_url, business_name, location, phone_number")
+                  .select("id, full_name, email, role, avatar_url, business_name, location, phone_number, specialty, clinic, bio, city, state")
                   .in("id", allParticipantIds))
               : [];
           const profileMap = new Map(
@@ -1343,7 +1397,7 @@ export default function ChatScreen() {
                 try {
                   const { data: profile } = await supabase
                     .from("profiles")
-                    .select("id, full_name, email, role, avatar_url, business_name, location, phone_number")
+                    .select("id, full_name, email, role, avatar_url, business_name, location, phone_number, specialty, clinic, bio, city, state")
                     .eq("id", participantId)
                     .maybeSingle();
                   if (!profile) return;
@@ -1469,7 +1523,7 @@ export default function ChatScreen() {
     const loadRecipientProfile = async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("role, avatar_url, business_name, location, phone_number")
+        .select("full_name, role, avatar_url, business_name, location, phone_number, specialty, clinic, bio, city, state")
         .eq("id", active.participantId)
         .maybeSingle();
       if (mounted) setRecipientProfile((data as RecipientProfile | null) || null);
@@ -3451,14 +3505,19 @@ export default function ChatScreen() {
                       </View>
                     ) : null}
                   </View>
-                  <Text style={styles.muted}>
-                    {thread.participantRole === "merchant"
-                      ? "Merchant"
-                      : thread.participantRole === "vet" ||
-                        thread.participantRole === "veterinarian"
-                      ? "Veterinarian"
-                      : "Pet parent"}
-                  </Text>
+                  <View style={styles.threadRoleRow}>
+                    <Text style={styles.muted}>
+                      {thread.participantRole === "merchant"
+                        ? "Merchant"
+                        : thread.participantRole === "vet" ||
+                          thread.participantRole === "veterinarian"
+                        ? "Veterinarian"
+                        : "Pet parent"}
+                    </Text>
+                    {userRole === "client" ? (
+                      <ParticipantProfileAction profile={thread.recipientProfile} compact />
+                    ) : null}
+                  </View>
                   <Text style={styles.message} numberOfLines={1}>
                     {thread.messages[thread.messages.length - 1]?.content}
                   </Text>
@@ -3668,6 +3727,8 @@ function ChatRoom({
   const messagesScrollRef = useRef<ScrollView>(null);
   const initialScrollDone = useRef(false);
   const previousMessageCount = useRef(0);
+  const showJumpToLatestRef = useRef(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
   const mobileWebRootStyle: ViewStyle = {
@@ -3688,9 +3749,18 @@ function ChatRoom({
       });
     });
   };
+  const handleMessagesScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const shouldShowButton = contentSize.height - contentOffset.y - layoutMeasurement.height > 140;
+    if (showJumpToLatestRef.current !== shouldShowButton) {
+      showJumpToLatestRef.current = shouldShowButton;
+      setShowJumpToLatest(shouldShowButton);
+    }
+  };
   useEffect(() => {
     initialScrollDone.current = false;
     previousMessageCount.current = 0;
+    showJumpToLatestRef.current = false;
   }, [active.id]);
   useEffect(() => {
     if (!messages.length) {
@@ -3818,9 +3888,6 @@ function ChatRoom({
             style={styles.headerActions}
             contentContainerStyle={styles.headerActionsContent}
           >
-            {isMerchantConversation ? (
-              <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} recipientProfile={recipientProfile} />
-            ) : null}
             {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
                 <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
@@ -3851,6 +3918,26 @@ function ChatRoom({
                 <Text style={styles.completeButtonText}>Prescribe</Text>
               </TouchableOpacity>
             ) : null}
+            {userRole === "client" && ["merchant", "vet", "veterinarian"].includes(recipientProfile?.role || "") ? (
+              <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
+                <ShieldCheck size={16} stroke="#FFFFFF" />
+                <Text style={styles.completeButtonText}>MVS User Protection</Text>
+              </TouchableOpacity>
+            ) : null}
+            {userRole === "client" ? (
+              <ParticipantProfileAction profile={recipientProfile || active.recipientProfile} />
+            ) : null}
+            {isVetClientThread ? (
+              <VetServicePricingModal
+                vetId={userRole === "client" ? active.participantId : currentUserId}
+                vetName={userRole === "client" ? active.participantName : "Your service pricing"}
+                canBuildBundle={userRole === "client"}
+                onBuildBundle={() => setMessage(`Hi ${active.participantName}, I couldn't find a bundle that fits my needs. Could we build a custom bundle together?`)}
+              />
+            ) : null}
+            {isMerchantConversation ? (
+              <OrderStatusBadge order={activeOrder} canUpdate={userRole === "merchant"} canCreate={userRole === "merchant"} onUpdate={onUpdateOrderStatus} onCreate={onCreateOrder} />
+            ) : null}
             {isVetClientThread && consultationPending ? (
               <Text style={styles.consultationEndedBadge}>Checking consultation...</Text>
             ) : isVetClientThread && consultationStatus === "active" ? (
@@ -3862,19 +3949,13 @@ function ChatRoom({
               </>
             ) : isVetClientThread ? (
               <>
-                <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
                 {isPetParent ? (
                   <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
                     <Text style={styles.completeButtonText}>+ Start Consultation</Text>
                   </TouchableOpacity>
                 ) : null}
+                <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
               </>
-            ) : null}
-            {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
-              <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-                <ShieldCheck size={16} stroke="#FFFFFF" />
-                <Text style={styles.completeButtonText}>MVS User Protection</Text>
-              </TouchableOpacity>
             ) : null}
           </ScrollView>
 
@@ -3996,10 +4077,13 @@ function ChatRoom({
         </View>
       ) : null}
       <View style={styles.chatContent}>
+      <View style={styles.messageListContainer}>
       <ScrollView
         ref={messagesScrollRef}
         style={styles.messageList}
         contentContainerStyle={styles.messages}
+        onScroll={handleMessagesScroll}
+        scrollEventThrottle={16}
       >
         {messages.length === 0 ? (
           <Text style={styles.empty}>
@@ -4113,6 +4197,21 @@ function ChatRoom({
           })
         )}
       </ScrollView>
+      {showJumpToLatest ? (
+        <TouchableOpacity
+          style={styles.jumpToLatestButton}
+          onPress={() => {
+            showJumpToLatestRef.current = false;
+            setShowJumpToLatest(false);
+            scrollToLatest(true);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Jump to latest message"
+        >
+          <MaterialCommunityIcons name="chevron-down" size={25} color="#0F172A" />
+        </TouchableOpacity>
+      ) : null}
+      </View>
       {selectedCount > 0 ? (
         <View style={styles.selectionBar}>
           <Text style={styles.selectionCounter}>{selectedCount} selected</Text>
@@ -5034,6 +5133,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const messagesScrollRef = useRef<ScrollView>(null);
   const initialScrollDone = useRef(false);
   const previousMessageCount = useRef(0);
+  const showJumpToLatestRef = useRef(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const messageLongPressLockRef = useRef<string | null>(null);
   const visualViewportHeight = useVisualViewport();
   const mobileWebRootStyle: ViewStyle = {
@@ -5055,10 +5156,19 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       });
     });
   };
+  const handleMessagesScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const shouldShowButton = contentSize.height - contentOffset.y - layoutMeasurement.height > 140;
+    if (showJumpToLatestRef.current !== shouldShowButton) {
+      showJumpToLatestRef.current = shouldShowButton;
+      setShowJumpToLatest(shouldShowButton);
+    }
+  };
 
   useEffect(() => {
     initialScrollDone.current = false;
     previousMessageCount.current = 0;
+    showJumpToLatestRef.current = false;
   }, [active.id]);
 
   useEffect(() => {
@@ -5191,16 +5301,6 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
             style={styles.headerActions}
             contentContainerStyle={styles.headerActionsContent}
           >
-            {isMerchantConversation ? (
-              <OrderStatusBadge
-                order={activeOrder}
-                canUpdate={userRole === "merchant"}
-                canCreate={userRole === "merchant"}
-                onUpdate={onUpdateOrderStatus}
-                onCreate={onCreateOrder}
-                recipientProfile={recipientProfile}
-              />
-            ) : null}
             {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
                 <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
@@ -5231,6 +5331,32 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                 <Text style={styles.completeButtonText}>Prescribe</Text>
               </TouchableOpacity>
             ) : null}
+            {userRole === "client" && ["merchant", "vet", "veterinarian"].includes(recipientProfile?.role || "") ? (
+              <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
+                <ShieldCheck size={16} color="#FFFFFF" />
+                <Text style={styles.completeButtonText}>MVS User Protection</Text>
+              </TouchableOpacity>
+            ) : null}
+            {userRole === "client" ? (
+              <ParticipantProfileAction profile={recipientProfile || active.recipientProfile} />
+            ) : null}
+            {isVetClientThread ? (
+              <VetServicePricingModal
+                vetId={userRole === "client" ? active.participantId : currentUserId}
+                vetName={userRole === "client" ? active.participantName : "Your service pricing"}
+                canBuildBundle={userRole === "client"}
+                onBuildBundle={() => setMessage(`Hi ${active.participantName}, I couldn't find a bundle that fits my needs. Could we build a custom bundle together?`)}
+              />
+            ) : null}
+            {isMerchantConversation ? (
+              <OrderStatusBadge
+                order={activeOrder}
+                canUpdate={userRole === "merchant"}
+                canCreate={userRole === "merchant"}
+                onUpdate={onUpdateOrderStatus}
+                onCreate={onCreateOrder}
+              />
+            ) : null}
             {isVetClientThread && isPetParent && isConsultActive ? (
               <TouchableOpacity
                 style={[
@@ -5247,22 +5373,16 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
               </TouchableOpacity>
             ) : isVetClientThread ? (
               <>
-                <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
                 {isPetParent ? (
                   <TouchableOpacity style={styles.completeButton} onPress={() => void onStartConsultation()}>
                     <Text style={styles.completeButtonText}>+ Start Consultation</Text>
                   </TouchableOpacity>
                 ) : null}
+                <Text style={styles.consultationEndedBadge}>Consultation Ended</Text>
               </>
             ) : null}
             {isVetClientThread && isConsultActive ? (
               <Text style={styles.headerConsultationStatus}>Active Consultation</Text>
-            ) : null}
-            {userRole === "client" && (recipientProfile?.role === "merchant" || recipientProfile?.role === "vet") ? (
-              <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
-                <ShieldCheck size={16} color="#FFFFFF" />
-                <Text style={styles.completeButtonText}>MVS User Protection</Text>
-              </TouchableOpacity>
             ) : null}
           </ScrollView>
 
@@ -5391,7 +5511,14 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
       ) : null}
 
       <View style={styles.chatContent}>
-      <ScrollView ref={messagesScrollRef} style={styles.messageList} contentContainerStyle={styles.messages}>
+      <View style={styles.messageListContainer}>
+      <ScrollView
+        ref={messagesScrollRef}
+        style={styles.messageList}
+        contentContainerStyle={styles.messages}
+        onScroll={handleMessagesScroll}
+        scrollEventThrottle={16}
+      >
         {messages.length === 0 ? (
           <Text style={styles.empty}>No messages yet. Start the conversation.</Text>
         ) : (
@@ -5499,6 +5626,21 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
           })
         )}
       </ScrollView>
+      {showJumpToLatest ? (
+        <TouchableOpacity
+          style={styles.jumpToLatestButton}
+          onPress={() => {
+            showJumpToLatestRef.current = false;
+            setShowJumpToLatest(false);
+            scrollToLatest(true);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Jump to latest message"
+        >
+          <MaterialCommunityIcons name="chevron-down" size={25} color="#0F172A" />
+        </TouchableOpacity>
+      ) : null}
+      </View>
 
       {selectedCount > 0 ? (
         <View style={styles.selectionBar}>
