@@ -36,6 +36,7 @@ const LEGACY_CHAT_CACHE_KEYS = [
 type AuthProfileState = {
   role?: string | null;
   full_name?: string | null;
+  nin_verified?: boolean | null;
   email?: string | null;
   avatar_url?: string | null;
   deleted_at?: string | null;
@@ -130,6 +131,7 @@ function RootAuthGate() {
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<Session['user'] | null>(null);
   const [profile, setProfile] = useState<AuthProfileState | null>(null);
+  const [ninReminderRole, setNinReminderRole] = useState<'client' | 'vet' | 'merchant' | null>(null);
   const profileRef = useRef(profile);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const previousAuthUserId = useRef<string | null>(null);
@@ -343,7 +345,7 @@ function RootAuthGate() {
         try {
           profileData = await safeSupabaseCall<AuthProfileState | null>(() => supabase
             .from('profiles')
-            .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
+            .select('role, full_name, nin_verified, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
             .eq('id', session.user.id)
             .maybeSingle());
         } catch (profileError) {
@@ -386,6 +388,9 @@ function RootAuthGate() {
         if (!userRole) {
           // If no role exists yet, use metadata only. Profile creation belongs to signup.
           userRole = session.user.user_metadata?.role || pendingRole || 'client';
+        }
+        if (profileData?.nin_verified === false && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+          setNinReminderRole(userRole === 'vet' || userRole === 'veterinarian' ? 'vet' : userRole === 'merchant' ? 'merchant' : 'client');
         }
 
         if (pendingManualRole && Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
@@ -508,11 +513,15 @@ function RootAuthGate() {
         if (event === 'SIGNED_IN') void logActivity('user_login', session.user.id);
         void safeSupabaseCall<AuthProfileState | null>(() => supabase
           .from('profiles')
-          .select('role, full_name, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
+          .select('role, full_name, nin_verified, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
           .eq('id', session.user.id)
           .maybeSingle())
           .then(async (data) => {
             if (mounted) setProfile(data || null);
+            if (mounted && event === 'SIGNED_IN' && data?.nin_verified === false) {
+              const role = data.role === 'vet' || data.role === 'veterinarian' ? 'vet' : data.role === 'merchant' ? 'merchant' : 'client';
+              setNinReminderRole(role);
+            }
             if (data?.preferred_language) {
               await applyAccountLanguage(normalizeAppLanguage(data.preferred_language));
             }
@@ -596,6 +605,31 @@ function RootAuthGate() {
           }
         }}
       />
+      <Modal visible={Boolean(ninReminderRole)} transparent animationType="fade" onRequestClose={() => setNinReminderRole(null)}>
+        <View style={styles.ninReminderBackdrop}>
+          <View style={styles.ninReminderCard}>
+            <Text style={styles.ninReminderTitle}>Verify your NIN</Text>
+            <Text style={styles.ninReminderBody}>Add and verify your NIN in your profile to confirm your legal name. Your NIN and name will be locked to your account after verification.</Text>
+            <View style={styles.ninReminderActions}>
+              <TouchableOpacity style={styles.ninReminderLater} onPress={() => setNinReminderRole(null)}>
+                <Text style={styles.ninReminderLaterText}>Later</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.ninReminderButton}
+                onPress={() => {
+                  const role = ninReminderRole;
+                  setNinReminderRole(null);
+                  if (role === 'vet') router.push({ pathname: '/(vet)/profile', params: { openNin: '1' } });
+                  else if (role === 'merchant') router.push({ pathname: '/(merchant)/profile', params: { openNin: '1' } });
+                  else router.push({ pathname: '/(client)/profile', params: { openNin: '1' } });
+                }}
+              >
+                <Text style={styles.ninReminderButtonText}>Add NIN</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -755,6 +789,15 @@ function NotificationCenter({ notifications, onRead }: { notifications: StoredNo
 }
 
 const styles = StyleSheet.create({
+  ninReminderBackdrop: { flex: 1, backgroundColor: '#000000A6', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  ninReminderCard: { width: '100%', maxWidth: 420, backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, borderRadius: 16, padding: 22 },
+  ninReminderTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', marginBottom: 8 },
+  ninReminderBody: { color: '#CBD5E1', fontSize: 14, lineHeight: 21 },
+  ninReminderActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 22 },
+  ninReminderLater: { paddingHorizontal: 16, paddingVertical: 11 },
+  ninReminderLaterText: { color: '#CBD5E1', fontSize: 14, fontWeight: '700' },
+  ninReminderButton: { backgroundColor: '#10B981', borderRadius: 9, paddingHorizontal: 18, paddingVertical: 11 },
+  ninReminderButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   rootSafeArea: {
     flex: 1,
     backgroundColor: '#0B132B',

@@ -4,7 +4,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import Constants from 'expo-constants';
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
     Alert,
@@ -31,6 +31,7 @@ import PulletRearingPlanGenerator from "../../components/PulletRearingPlanGenera
 import EditPetModal, { type EditablePet } from "../../components/EditPetModal";
 import FarmMedicalHistory from "../../components/FarmMedicalHistory";
 import PetMedicalHistory from "../../components/PetMedicalHistory";
+import NinVerificationFields from "../../components/NinVerificationFields";
 import { formatDateInput, parseDateInput } from "../../lib/dateFormat";
 import { isSuperAdmin } from "../../lib/admin";
 import { requestDeviceLocation } from "../../lib/location";
@@ -142,6 +143,7 @@ const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null
 export default function ProfileScreen() {
   const { t } = useLanguage();
   const router = useRouter();
+  const { openNin } = useLocalSearchParams<{ openNin?: string }>();
   const [modal, setModal] = useState<SettingsModal>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -154,6 +156,7 @@ export default function ProfileScreen() {
     name?: string;
     phone?: string;
     email?: string;
+    nin_verified?: boolean;
     avatar_url?: string;
     latitude?: number | null;
     longitude?: number | null;
@@ -163,6 +166,13 @@ export default function ProfileScreen() {
     vip_discount_active_until?: string | null;
   } | null>(null);
   const [storedAvatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [pendingNinVerification, setPendingNinVerification] = useState<{
+    verificationId: string;
+    firstName: string;
+    middleName: string;
+    lastName: string;
+    ninSuffix: string;
+  } | null>(null);
   const [user, setUser] = useState<any>(null);
   const profile = {
     name: profileState?.name || "",
@@ -215,6 +225,12 @@ export default function ProfileScreen() {
   const [notifications, setNotifications] = useState<NotificationPreferences>(
     buildDefaultNotificationPreferences()
   );
+
+  useEffect(() => {
+    if (openNin !== "1") return;
+    const timer = setTimeout(() => setModal("profile"), 0);
+    return () => clearTimeout(timer);
+  }, [openNin]);
 
   const loadPets = async (ownerId: string) => {
     const { data } = await supabase
@@ -360,6 +376,7 @@ export default function ProfileScreen() {
             cachedUser.user_metadata?.phone ||
             "",
           email: cachedUser.email || cachedProfile?.email || "",
+          nin_verified: cachedProfile?.nin_verified === true,
           avatar_url: cachedAvatar || "",
           loyalty_points: Number(cachedProfile?.loyalty_points) || 0,
           vip_discount_active_until:
@@ -377,7 +394,7 @@ export default function ProfileScreen() {
       const { data: profileData } = await supabase
         .from("profiles")
         .select(
-          "avatar_url, phone_number, loyalty_points, vip_discount_active_until"
+          "full_name, nin_verified, avatar_url, phone_number, loyalty_points, vip_discount_active_until"
         )
         .eq("id", currentUser.id)
         .single();
@@ -391,12 +408,14 @@ export default function ProfileScreen() {
       setProfile((current) => ({
         ...(current || {}),
         name:
+          profileData?.full_name ||
           currentUser.user_metadata?.full_name ||
           currentUser.user_metadata?.name ||
           "Pet Owner",
         phone:
           profileData?.phone_number || currentUser.user_metadata?.phone || "",
         email: currentUser.email || "",
+        nin_verified: profileData?.nin_verified === true,
         avatar_url:
           profileData?.avatar_url ||
           currentUser.user_metadata?.avatar_url ||
@@ -618,7 +637,6 @@ export default function ProfileScreen() {
   const saveProfile = async () => {
     const user = await getCurrentUser();
     if (!user || !profile) return;
-    const cleanName = sanitizeInput(profile.name);
     const cleanCity = sanitizeInput(profile.city);
     const cleanState = sanitizeInput(profile.state);
     const formattedPhoneNumber = sanitizeInput(profile.phone).replace(
@@ -635,7 +653,6 @@ export default function ProfileScreen() {
     const { error } = await supabase
       .from("profiles")
       .update({
-        full_name: cleanName,
         phone_number: formattedPhoneNumber,
         latitude: profile.latitude,
         longitude: profile.longitude,
@@ -654,16 +671,30 @@ export default function ProfileScreen() {
       );
       return;
     }
-    await supabase.auth.updateUser({
-      data: {
-        ...user.user_metadata,
-        full_name: cleanName,
-        phone: formattedPhoneNumber,
-      },
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: { ...user.user_metadata, phone: formattedPhoneNumber },
     });
+    if (metadataError) {
+      Alert.alert("Profile partially updated", `Your profile was saved, but account metadata could not be updated: ${metadataError.message}`);
+      return;
+    }
+    if (pendingNinVerification) {
+      const { data: identity, error: identityError } = await supabase.functions.invoke('verify-nin', {
+        body: { mode: 'attach', verificationId: pendingNinVerification.verificationId },
+      });
+      if (identityError) {
+        Alert.alert("Could not save verified NIN", identityError.message);
+        return;
+      }
+      setPendingNinVerification(null);
+      setProfile((current) => ({
+        ...current,
+        name: identity.full_name,
+        nin_verified: true,
+      }));
+    }
     setProfile((current) => ({
       ...current,
-      name: cleanName,
       phone: formattedPhoneNumber,
       city: cleanCity,
       state: cleanState,
@@ -1425,11 +1456,18 @@ export default function ProfileScreen() {
                   void saveProfile();
                 }}
               >
+                <NinVerificationFields
+                  verified={profileState?.nin_verified === true}
+                  fullName={profile.name}
+                  onVerified={setPendingNinVerification}
+                />
                 <Field
-                  label="Full Name"
+                  label="Legal Name (Protected)"
                   value={profile.name}
                   onChangeText={(name) => setProfile({ ...profile, name })}
+                  editable={false}
                 />
+                <Text style={styles.muted}>Your legal name and any verified NIN are locked and cannot be changed.</Text>
                 <Field
                   label="Phone Number"
                   value={profile.phone}
@@ -1667,6 +1705,7 @@ function Field({
   secureTextEntry,
   keyboardType,
   multiline,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -1675,6 +1714,7 @@ function Field({
   secureTextEntry?: boolean;
   keyboardType?: "default" | "phone-pad" | "number-pad";
   multiline?: boolean;
+  editable?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -1693,6 +1733,7 @@ function Field({
             placeholder={placeholder}
             placeholderTextColor="#64748B"
             secureTextEntry={!visible}
+            editable={editable}
             keyboardType={keyboardType}
             style={{
               flex: 1,
@@ -1721,6 +1762,7 @@ function Field({
           placeholder={placeholder}
           placeholderTextColor="#64748B"
           keyboardType={keyboardType}
+          editable={editable}
           multiline={multiline}
           numberOfLines={multiline ? 4 : undefined}
           textAlignVertical={multiline ? "top" : "auto"}

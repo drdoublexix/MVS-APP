@@ -31,6 +31,18 @@ To install or update its database policies and audit triggers, run `npx supabase
 
 Scheduled pet-care tips require the same dedicated `PET_TIPS_CRON_SECRET` Edge Function secret and `pet_tips_cron_secret` Vault secret. Configure both before applying the migration that creates the Monday/Wednesday/Friday 09:00 UTC schedule. The sender supports an authenticated `{ "dry_run": true }` request for checking eligible animal profiles and push targets without creating notifications or sending pushes.
 
+## NIN-verified account registration
+
+Sign-up uses Prembly's NIN Basic endpoint through the `verify-nin` Supabase Edge Function. Apply the database migration and deploy the function, then configure a newly rotated Prembly Secret Key as the Supabase Edge Function secret `PREMBLY_SECRET_KEY`. Never add the Prembly Secret Key to Expo environment variables, app code, or client requests.
+
+```bash
+npx supabase db push
+npx supabase secrets set "PREMBLY_SECRET_KEY=YOUR_ROTATED_SECRET"
+npx supabase functions deploy verify-nin
+```
+
+The function rate-limits NIN lookups, stores a short-lived verification result server-side, and the auth database trigger consumes it once during account creation. Existing users without a verified NIN are prompted at sign-in and can verify it from Edit Profile; the verified result is attached once to their account. The NIN and consent timestamp are stored in a private, non-API-exposed schema; provider-returned first, middle, and last names are saved to the user's profile. Identity fields are locked in both auth metadata and the profile database. Other profile fields remain editable. The Edge Function disables gateway JWT verification so pre-authentication sign-up can call it; profile verification and attachment validate the user's bearer token within the function.
+
 The audit trail starts when the migration is applied. It records sign-ins/sign-outs and database inserts, updates, and deletes on account, pet/farm, consultation/prescription, chat/community, order/invoice, product, notification, rating, loyalty, and submission tables. Database triggers do not record historical activity, read-only browsing, failed sign-ins, or storage-only access.
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).

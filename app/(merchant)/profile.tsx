@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
-import { router, useRouter } from 'expo-router';
+import { router, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
 import LanguagePreference from '../../components/LanguagePreference';
+import NinVerificationFields from '../../components/NinVerificationFields';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { isValidPassword, PASSWORD_REQUIREMENTS } from '../../lib/password';
 import { sanitizeInput } from '../../lib/sanitize';
@@ -168,16 +169,25 @@ const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null
 export default function MerchantProfileScreen() {
   const { t } = useLanguage();
   const router = useRouter();
+  const { openNin } = useLocalSearchParams<{ openNin?: string }>();
   const [modal, setModal] = useState<SettingsModal>(null);
   const [bankPickerVisible, setBankPickerVisible] = useState(false);
   const [bankSaving, setBankSaving] = useState(false);
   const [deleteConfirmationVisible, setDeleteConfirmationVisible] = useState(false);
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingNinVerification, setPendingNinVerification] = useState<{
+    verificationId: string;
+    firstName: string;
+    middleName: string;
+    lastName: string;
+    ninSuffix: string;
+  } | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const [profile, setProfile] = useState({
     name: 'Merchant',
+    ninVerified: false,
     email: '',
     phone: '',
     business: '',
@@ -198,6 +208,12 @@ export default function MerchantProfileScreen() {
   ];
 
   const [notifications, setNotifications] = useState<NotificationPreferences>(buildDefaultNotificationPreferences());
+
+  useEffect(() => {
+    if (openNin !== '1') return;
+    const timer = setTimeout(() => setModal('profile'), 0);
+    return () => clearTimeout(timer);
+  }, [openNin]);
 
   const requestNotificationPermission = async (userId: string) => {
     await registerForPushNotifications(userId);
@@ -239,6 +255,7 @@ export default function MerchantProfileScreen() {
         setAvatarUrl(cachedAvatar);
         setProfile({
           name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Merchant',
+          ninVerified: cachedProfile?.nin_verified === true,
           email: cachedUser.email || cachedProfile?.email || '',
           phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
           business: cachedProfile?.business_name || cachedUser.user_metadata?.business || '',
@@ -258,7 +275,7 @@ export default function MerchantProfileScreen() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('avatar_url, business_name, location, cac_reg_number, phone_number')
+        .select('full_name, nin_verified, avatar_url, business_name, location, cac_reg_number, phone_number')
         .eq('id', user.id)
         .single();
 
@@ -270,7 +287,8 @@ export default function MerchantProfileScreen() {
 
       setAvatarUrl(activeAvatar);
       setProfile({
-        name: user.user_metadata?.full_name || user.user_metadata?.name || 'Merchant',
+        name: profileData?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || 'Merchant',
+        ninVerified: profileData?.nin_verified === true,
         email: user.email || '',
         phone: profileData?.phone_number || user.user_metadata?.phone || '',
         business: profileData?.business_name || user.user_metadata?.business || '',
@@ -318,7 +336,6 @@ export default function MerchantProfileScreen() {
   const saveProfile = async () => {
     const user = await getCurrentUser();
     if (!user) return;
-    const cleanName = sanitizeInput(profile.name);
     const cleanBusiness = sanitizeInput(profile.business);
     const cleanLocation = sanitizeInput(profile.location);
     const cleanCacRegNumber = sanitizeInput(profile.cacRegNumber);
@@ -353,13 +370,24 @@ export default function MerchantProfileScreen() {
     await supabase.auth.updateUser({
       data: {
         ...user.user_metadata,
-        full_name: cleanName,
         phone: formattedPhoneNumber,
         business: cleanBusiness,
         location: cleanLocation,
         cac_reg_number: cleanCacRegNumber,
       },
     });
+
+    if (pendingNinVerification) {
+      const { data: identity, error: identityError } = await supabase.functions.invoke('verify-nin', {
+        body: { mode: 'attach', verificationId: pendingNinVerification.verificationId },
+      });
+      if (identityError) {
+        Alert.alert('Could not save verified NIN', identityError.message);
+        return;
+      }
+      setPendingNinVerification(null);
+      setProfile((current) => ({ ...current, name: identity.full_name, ninVerified: true }));
+    }
 
     setProfile((current) => ({ ...current, phone: formattedPhoneNumber }));
     setModal(null);
@@ -644,7 +672,13 @@ export default function MerchantProfileScreen() {
 
             <KeyboardAvoidingView style={styles.formKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
             <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-              <Field label="Full Name" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} placeholder="Your Name" />
+              <NinVerificationFields
+                verified={profile.ninVerified}
+                fullName={profile.name}
+                onVerified={setPendingNinVerification}
+              />
+              <Field label="Legal Name (Protected)" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} editable={false} />
+              <Text style={styles.muted}>Your legal name and any verified NIN are locked and cannot be changed.</Text>
               <Field label="Email" value={profile.email} onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))} editable={false} />
               <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
               <Field label="Business Name" value={profile.business} onChangeText={(text) => setProfile((prev) => ({ ...prev, business: text }))} placeholder="Your business name" />

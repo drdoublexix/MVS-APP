@@ -1,14 +1,23 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getProfileRole, getRoleNavPath, sendPasswordResetLink, supabase } from '../../lib/supabase';
 import { languageOptions, useLanguage } from '../../lib/language';
+import { getNinVerificationErrorMessage } from '../../lib/ninVerification';
 
 type Role = 'client' | 'vet' | 'merchant';
 type AuthMode = 'sign-in' | 'sign-up';
+type VerifiedIdentity = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  fullName: string;
+  verificationId: string;
+};
 const VERIFIED_NOTICE_KEY = 'mvs_verified_auth_notice';
 const PRODUCTION_AUTH_URL = 'https://mvsapp.com.ng/auth?mode=signin';
+const PRIVACY_POLICY_URL = 'https://www.mvsc.com.ng/privacyPolicy';
 
 const normalizeNigerianPhoneInput = (value: string) => {
   let digits = value.replace(/\D/g, '');
@@ -68,7 +77,11 @@ export default function AuthScreen() {
   const [licenseNumber, setLicenseNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [fullName, setFullName] = useState('');
+  const [nin, setNin] = useState('');
+  const [ninConsent, setNinConsent] = useState(false);
+  const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [verifiedIdentity, setVerifiedIdentity] = useState<VerifiedIdentity | null>(null);
+  const [ninLoading, setNinLoading] = useState(false);
   const [loading, setLoading] = useState(Boolean(code || hasHashSession));
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; title: string; message: string } | null>(
     suspended === '1'
@@ -81,8 +94,6 @@ export default function AuthScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetNotice, setResetNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
-
-  const fullNamePlaceholder = role === 'vet' ? t('auth.vetNameExample') : t('auth.fullName');
 
   useEffect(() => {
     const hashValues = getWebHashParams();
@@ -128,6 +139,56 @@ export default function AuthScreen() {
     router.replace({ pathname: '/auth', params: { mode: nextMode === 'sign-in' ? 'signin' : 'signup' } });
   };
 
+  const verifyNin = async () => {
+    const cleanNin = nin.replace(/\D/g, '');
+    if (!ninConsent) {
+      setError('Please consent to NIN verification before continuing.');
+      return;
+    }
+    if (!/^\d{11}$/.test(cleanNin)) {
+      setError('Enter your 11-digit NIN to continue.');
+      return;
+    }
+
+    setNinLoading(true);
+    setError('');
+    setVerifiedIdentity(null);
+    try {
+      const { data, error: verificationError } = await supabase.functions.invoke('verify-nin', {
+        body: { nin: cleanNin, consent: true },
+      });
+      if (verificationError) throw verificationError;
+      if (
+        !data ||
+        typeof data.verificationId !== 'string' ||
+        typeof data.firstName !== 'string' ||
+        typeof data.lastName !== 'string'
+      ) {
+        throw new Error('NIN verification returned incomplete identity details. Please try again.');
+      }
+
+      const firstName = data.firstName.trim();
+      const middleName = typeof data.middleName === 'string' ? data.middleName.trim() : '';
+      const lastName = data.lastName.trim();
+      if (!firstName || !lastName) {
+        throw new Error('The NIN record did not include a first and last name.');
+      }
+
+      setNin(cleanNin);
+      setVerifiedIdentity({
+        firstName,
+        middleName,
+        lastName,
+        fullName: [firstName, middleName, lastName].filter(Boolean).join(' '),
+        verificationId: data.verificationId,
+      });
+    } catch (verificationError) {
+      setError(getNinVerificationErrorMessage(verificationError));
+    } finally {
+      setNinLoading(false);
+    }
+  };
+
   const handleForgotPassword = async () => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
@@ -161,6 +222,12 @@ export default function AuthScreen() {
     try {
       const cleanEmail = email.trim();
       if (!cleanEmail || !password) throw new Error(t('auth.emailRequired'));
+      if (mode === 'sign-up' && !policyAccepted) {
+        throw new Error('Please accept the Terms and Policy before creating an account.');
+      }
+      if (mode === 'sign-up' && (!verifiedIdentity || !ninConsent)) {
+        throw new Error('Verify your NIN before creating your account.');
+      }
       if (mode === 'sign-up' && !/^[789]\d{9}$/.test(phoneNumber)) {
         throw new Error(t('auth.invalidPhone'));
       }
@@ -179,7 +246,11 @@ export default function AuthScreen() {
           password,
           options: {
             data: {
-              full_name: fullName.trim(),
+              full_name: verifiedIdentity!.fullName,
+              first_name: verifiedIdentity!.firstName,
+              middle_name: verifiedIdentity!.middleName,
+              last_name: verifiedIdentity!.lastName,
+              nin_verification_id: verifiedIdentity!.verificationId,
               phone_number: `+234${phoneNumber}`,
               role,
               preferred_language: language,
@@ -286,6 +357,68 @@ export default function AuthScreen() {
         {mode === 'sign-up' ? <Text style={styles.registrationPrompt}>{t('auth.registrationType')}</Text> : null}
 
         {mode === 'sign-up' ? (
+          <View style={styles.ninVerification}>
+            <Text style={styles.ninLabel}>National Identification Number (NIN)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your 11-digit NIN"
+              placeholderTextColor="#718096"
+              value={verifiedIdentity ? `•••••••${nin.slice(-4)}` : nin}
+              onChangeText={(value) => {
+                setNin(value.replace(/\D/g, '').slice(0, 11));
+                setVerifiedIdentity(null);
+                setError('');
+              }}
+              editable={!ninLoading && !verifiedIdentity}
+              keyboardType="number-pad"
+              maxLength={11}
+              accessibilityLabel="National Identification Number"
+            />
+            <TouchableOpacity
+              style={styles.ninConsent}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: ninConsent }}
+              onPress={() => {
+                if (ninConsent) {
+                  setNinConsent(false);
+                  setVerifiedIdentity(null);
+                  setNin('');
+                } else {
+                  setNinConsent(true);
+                }
+              }}
+            >
+              <View style={[styles.ninConsentCheck, ninConsent && styles.ninConsentChecked]}>
+                {ninConsent ? <Text style={styles.ninConsentCheckmark}>✓</Text> : null}
+              </View>
+              <Text style={styles.ninConsentText}>
+                I consent to checking my NIN with Prembly and storing my NIN and verified legal name in my MVS profile.
+              </Text>
+            </TouchableOpacity>
+            {verifiedIdentity ? (
+              <View style={styles.verifiedIdentity}>
+                <Text style={styles.verifiedIdentityLabel}>Verified legal name</Text>
+                <Text style={styles.verifiedIdentityName}>{verifiedIdentity.fullName}</Text>
+                <Text style={styles.verifiedIdentityHint}>This name and NIN are locked to your account.</Text>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setVerifiedIdentity(null);
+                    setNin('');
+                  }}
+                >
+                  <Text style={styles.changeNinText}>Use a different NIN</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.verifyNinButton} onPress={() => void verifyNin()} disabled={ninLoading || !ninConsent}>
+                {ninLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.verifyNinText}>Verify NIN</Text>}
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
+
+        {mode === 'sign-up' && verifiedIdentity ? (
           <View style={styles.roles}>
             {(['client', 'vet', 'merchant'] as Role[]).map((roleOption) => (
               <TouchableOpacity key={roleOption} style={[styles.role, role === roleOption && styles.selectedRole]} onPress={() => setRole(roleOption)}>
@@ -295,17 +428,8 @@ export default function AuthScreen() {
           </View>
         ) : null}
 
-        {mode === 'sign-up' ? (
-          <TextInput
-            style={styles.input}
-            placeholder={fullNamePlaceholder}
-            placeholderTextColor="#718096"
-            value={fullName}
-            onChangeText={setFullName}
-          />
-        ) : null}
-        <TextInput style={styles.input} placeholder={t('auth.email')} placeholderTextColor="#718096" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
-        {mode === 'sign-up' ? (
+        {(mode === 'sign-in' || verifiedIdentity) ? <TextInput style={styles.input} placeholder={t('auth.email')} placeholderTextColor="#718096" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} /> : null}
+        {mode === 'sign-up' && verifiedIdentity ? (
           <View style={styles.phoneInputContainer}>
             <View style={styles.countryCode}>
               <Text style={styles.countryCodeText}>+234</Text>
@@ -321,7 +445,7 @@ export default function AuthScreen() {
             />
           </View>
         ) : null}
-        {mode === 'sign-up' && role === 'vet' ? (
+        {mode === 'sign-up' && verifiedIdentity && role === 'vet' ? (
           <TextInput
             accessibilityLabel="Veterinary Council of Nigeria (VCN) number"
             style={styles.input}
@@ -331,7 +455,7 @@ export default function AuthScreen() {
             onChangeText={setLicenseNumber}
           />
         ) : null}
-        <View style={styles.passwordInputContainer}>
+        {(mode === 'sign-in' || verifiedIdentity) ? <View style={styles.passwordInputContainer}>
           <TextInput
             style={styles.passwordInput}
             placeholder={t('auth.password')}
@@ -350,8 +474,8 @@ export default function AuthScreen() {
           >
             {showPassword ? <EyeOff size={21} /> : <Eye size={21} />}
           </TouchableOpacity>
-        </View>
-        {mode === 'sign-up' ? <Text style={styles.passwordHint}>{t('auth.passwordHint')}</Text> : null}
+        </View> : null}
+        {mode === 'sign-up' && verifiedIdentity ? <Text style={styles.passwordHint}>{t('auth.passwordHint')}</Text> : null}
         {passwordError ? <Text style={styles.passwordError}>{passwordError}</Text> : null}
 
         {mode === 'sign-in' ? (
@@ -370,14 +494,43 @@ export default function AuthScreen() {
           </Text>
         ) : null}
 
+        {mode === 'sign-up' && verifiedIdentity ? (
+          <TouchableOpacity
+            style={styles.policyConsent}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: policyAccepted }}
+            onPress={() => setPolicyAccepted((accepted) => !accepted)}
+          >
+            <View style={[styles.ninConsentCheck, policyAccepted && styles.ninConsentChecked]}>
+              {policyAccepted ? <Text style={styles.ninConsentCheckmark}>✓</Text> : null}
+            </View>
+            <Text style={styles.ninConsentText}>
+              I have read and agree to the{' '}
+              <Text
+                style={styles.policyLink}
+                accessibilityRole="link"
+                onPress={() => {
+                  void Linking.openURL(PRIVACY_POLICY_URL).catch((linkError) => {
+                    console.error('[Auth] Could not open privacy policy:', linkError);
+                    setError('The Privacy Policy could not be opened. Please try again.');
+                  });
+                }}
+              >
+                Terms and Policy
+              </Text>
+              .
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         <Text style={styles.modeHelper}>
           {mode === 'sign-in' ? t('auth.welcomeBack') : t('auth.fillDetails')}
         </Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <TouchableOpacity style={styles.primaryButton} onPress={() => void submit()} disabled={loading}>
+        {(mode === 'sign-in' || verifiedIdentity) ? <TouchableOpacity style={styles.primaryButton} onPress={() => void submit()} disabled={loading || (mode === 'sign-up' && !policyAccepted)}>
           <Text style={styles.primaryText}>{mode === 'sign-up' ? t('auth.submitSignUp') : t('auth.submitSignIn')}</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
         </View>
       </ScrollView>
 
@@ -400,6 +553,22 @@ const styles = StyleSheet.create({
   keyboardRoot: { flex: 1, backgroundColor: '#08111F' },
   scrollContent: { backgroundColor: '#08111F', flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: 40 },
   content: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: 14 },
+  ninVerification: { gap: 10 },
+  policyConsent: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 2 },
+  ninLabel: { color: '#E2E8F0', fontSize: 14, fontWeight: '700' },
+  ninConsent: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  ninConsentCheck: { width: 20, height: 20, borderColor: '#94A3B8', borderWidth: 1, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  ninConsentChecked: { backgroundColor: '#0F766E', borderColor: '#0F766E' },
+  ninConsentCheckmark: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  ninConsentText: { flex: 1, color: '#CBD5E1', fontSize: 12, lineHeight: 18 },
+  policyLink: { color: '#6EE7B7', textDecorationLine: 'underline', fontWeight: '700' },
+  verifyNinButton: { backgroundColor: '#0F766E', borderRadius: 10, padding: 14, alignItems: 'center' },
+  verifyNinText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  verifiedIdentity: { backgroundColor: '#0F2C2B', borderColor: '#10B981', borderWidth: 1, borderRadius: 10, padding: 14, gap: 4 },
+  verifiedIdentityLabel: { color: '#6EE7B7', fontSize: 12, fontWeight: '700' },
+  verifiedIdentityName: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  verifiedIdentityHint: { color: '#CBD5E1', fontSize: 12 },
+  changeNinText: { color: '#6EE7B7', fontSize: 13, fontWeight: '700', marginTop: 6 },
   logoFrame: { alignSelf: 'center', backgroundColor: '#08111F', borderRadius: 62, height: 124, overflow: 'hidden', width: 124 },
   logo: { borderRadius: 62, height: 124, width: 124 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(2, 6, 23, 0.72)', justifyContent: 'center', alignItems: 'center', padding: 24 },

@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import LogoutConfirmationModal from '../../components/LogoutConfirmationModal';
 import LanguagePreference from '../../components/LanguagePreference';
+import NinVerificationFields from '../../components/NinVerificationFields';
 import MVSDiseasePredictor from '../../components/MVSDiseasePredictor';
 import MVSFeedCalculator from '../../components/MVSFeedCalculator';
 import PulletRearingPlanGenerator from '../../components/PulletRearingPlanGenerator';
@@ -87,6 +88,7 @@ const NIGERIAN_BANKS = [
 export default function VetProfileScreen() {
   const { t } = useLanguage();
   const router = useRouter();
+  const { openNin } = useLocalSearchParams<{ openNin?: string }>();
   const role = 'vet';
   const [modal, setModal] = useState<SettingsModal>(null);
   const [bankPickerVisible, setBankPickerVisible] = useState(false);
@@ -99,6 +101,13 @@ export default function VetProfileScreen() {
   const [servicePricing, setServicePricing] = useState<VetServicePricing>(createEmptyVetServicePricing);
   const [bankNotice, setBankNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingNinVerification, setPendingNinVerification] = useState<{
+    verificationId: string;
+    firstName: string;
+    middleName: string;
+    lastName: string;
+    ninSuffix: string;
+  } | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const [logoutConfirmationVisible, setLogoutConfirmationVisible] = useState(false);
@@ -106,6 +115,7 @@ export default function VetProfileScreen() {
 
   const [profile, setProfile] = useState({
     name: 'Veterinarian',
+    ninVerified: false,
     email: '',
     phone: '',
     specialty: '',
@@ -134,6 +144,12 @@ export default function VetProfileScreen() {
   ];
 
   const [notifications, setNotifications] = useState<NotificationPreferences>(buildDefaultNotificationPreferences());
+
+  useEffect(() => {
+    if (openNin !== '1') return;
+    const timer = setTimeout(() => setModal('profile'), 0);
+    return () => clearTimeout(timer);
+  }, [openNin]);
 
   const loadNotificationPreferences = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('notification_preferences').eq('id', userId).maybeSingle();
@@ -167,6 +183,7 @@ export default function VetProfileScreen() {
         setAvatarUrl(cachedAvatar);
         setProfile((current) => ({
           name: cachedProfile?.full_name || cachedUser.user_metadata?.full_name || cachedUser.user_metadata?.name || 'Veterinarian',
+          ninVerified: cachedProfile?.nin_verified === true,
           email: cachedUser.email || cachedProfile?.email || '',
           phone: cachedProfile?.phone_number || cachedUser.user_metadata?.phone || '',
           specialty: cachedProfile?.specialty || cachedUser.user_metadata?.specialty || '',
@@ -190,7 +207,7 @@ export default function VetProfileScreen() {
       const user = await getCurrentUser();
       if (!user) return;
 
-      const { data: profileData, error: profileError } = await supabase.from('profiles').select('full_name, avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio, is_vet_approved').eq('id', user.id).single();
+      const { data: profileData, error: profileError } = await supabase.from('profiles').select('full_name, nin_verified, avatar_url, phone_number, latitude, longitude, city, state, clinic, specialty, license_number, bio, is_vet_approved').eq('id', user.id).single();
       if (profileError) {
         console.error('[Vet Profile] Could not load profile and license verification status:', profileError);
       }
@@ -199,6 +216,7 @@ export default function VetProfileScreen() {
 
       setProfile((current) => ({
         name: profileData?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || 'Veterinarian',
+        ninVerified: profileData?.nin_verified === true,
         email: user.email || '',
         phone: profileData?.phone_number || user.user_metadata?.phone || '',
         specialty: profileData?.specialty || user.user_metadata?.specialty || '',
@@ -233,7 +251,6 @@ export default function VetProfileScreen() {
   const saveProfile = async () => {
     const user = await getCurrentUser();
     if (!user) return;
-    const cleanName = sanitizeInput(profile.name);
     const cleanSpecialty = sanitizeInput(profile.specialty);
     const cleanClinic = sanitizeInput(profile.clinic);
     const cleanBio = sanitizeInput(profile.bio).slice(0, 238);
@@ -248,7 +265,6 @@ export default function VetProfileScreen() {
     }
 
     const { error: profileError } = await supabase.from('profiles').update({
-      full_name: cleanName,
       phone_number: formattedPhoneNumber,
       clinic: cleanClinic,
       specialty: cleanSpecialty,
@@ -269,7 +285,6 @@ export default function VetProfileScreen() {
     await supabase.auth.updateUser({
       data: {
         ...user.user_metadata,
-        full_name: cleanName,
         phone: formattedPhoneNumber,
         specialty: cleanSpecialty,
         clinic: cleanClinic,
@@ -277,6 +292,18 @@ export default function VetProfileScreen() {
         bio: cleanBio,
       },
     });
+
+    if (pendingNinVerification) {
+      const { data: identity, error: identityError } = await supabase.functions.invoke('verify-nin', {
+        body: { mode: 'attach', verificationId: pendingNinVerification.verificationId },
+      });
+      if (identityError) {
+        Alert.alert('Could not save verified NIN', identityError.message);
+        return;
+      }
+      setPendingNinVerification(null);
+      setProfile((current) => ({ ...current, name: identity.full_name, ninVerified: true }));
+    }
 
     setProfile((current) => ({ ...current, phone: formattedPhoneNumber, clinic: cleanClinic, specialty: cleanSpecialty, licenseNumber: cleanLicenseNumber, bio: cleanBio }));
     setModal(null);
@@ -684,7 +711,13 @@ export default function VetProfileScreen() {
 
             <KeyboardAvoidingView style={styles.formKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
             <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-              <Field label="Full Name" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} placeholder="Dr. Your Name" />
+              <NinVerificationFields
+                verified={profile.ninVerified}
+                fullName={profile.name}
+                onVerified={setPendingNinVerification}
+              />
+              <Field label="Legal Name (Protected)" value={profile.name} onChangeText={(text) => setProfile((prev) => ({ ...prev, name: text }))} editable={false} />
+              <Text style={styles.muted}>Your legal name and any verified NIN are locked and cannot be changed.</Text>
               <Field label="Email" value={profile.email} onChangeText={(text) => setProfile((prev) => ({ ...prev, email: text }))} editable={false} />
               <Field label="Phone" value={profile.phone} onChangeText={(text) => setProfile((prev) => ({ ...prev, phone: text }))} placeholder="+234 XXX XXX XXXX" />
               {role === 'vet' ? (
