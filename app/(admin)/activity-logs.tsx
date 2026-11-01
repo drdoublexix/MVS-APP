@@ -4,7 +4,7 @@ import { fetchActivityLogs, fetchAdminUserCount, type ActivityLog } from '../../
 
 const PAGE_SIZE = 50;
 const roleOptions = ['All roles', 'client', 'vet', 'merchant'];
-const actionOptions = ['All activity', 'insert', 'update', 'delete', 'user_login', 'user_logout'];
+const actionOptions = ['All activity', 'insert', 'update', 'delete', 'user_login', 'user_logout', 'admin_viewed_user_nin'];
 const dateOptions = [
   { label: '7 days', days: 7 },
   { label: '30 days', days: 30 },
@@ -131,7 +131,8 @@ export default function ActivityLogsScreen() {
       <View style={styles.chips}>
         {actionOptions.map((option) => {
           const value = option === 'All activity' ? '' : option;
-          return <FilterChip key={option} label={option.replaceAll('_', ' ')} selected={action === value} onPress={() => setAction(value)} />;
+          const label = option === 'admin_viewed_user_nin' ? 'Viewed user NIN' : option.replaceAll('_', ' ');
+          return <FilterChip key={option} label={label} selected={action === value} onPress={() => setAction(value)} />;
         })}
       </View>
       <Text style={styles.filterLabel}>When</Text>

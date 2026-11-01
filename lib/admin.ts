@@ -32,6 +32,11 @@ export interface AdminUserAccount {
   ban_reason: string | null;
 }
 
+export interface AdminUserNin {
+  nin: string | null;
+  consent_at: string | null;
+}
+
 export interface VetApplication {
   id: string;
   email: string;
@@ -139,6 +144,22 @@ export const fetchAdminUserAccounts = async (search = ''): Promise<AdminUserAcco
   });
   if (error) throw error;
   return (data || []) as AdminUserAccount[];
+};
+
+export const fetchAdminUserNin = async (userId: string): Promise<AdminUserNin> => {
+  const { data, error } = await supabase.rpc('admin_get_user_nin', {
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  const result = Array.isArray(data) ? data[0] : null;
+  if (
+    !result ||
+    (result.nin !== null && typeof result.nin !== 'string') ||
+    (result.consent_at !== null && typeof result.consent_at !== 'string')
+  ) {
+    throw new Error('The NIN details returned an invalid response.');
+  }
+  return result as AdminUserNin;
 };
 
 export const setAdminUserBan = async (userId: string, isBanned: boolean, reason = '') => {

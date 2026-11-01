@@ -1,12 +1,16 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { fetchAdminUserAccounts, setAdminUserBan, type AdminUserAccount } from '../../lib/admin';
+import { fetchAdminUserAccounts, fetchAdminUserNin, setAdminUserBan, type AdminUserAccount, type AdminUserNin } from '../../lib/admin';
 
 export default function AdminUsersScreen() {
   const [users, setUsers] = useState<AdminUserAccount[]>([]);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<AdminUserAccount | null>(null);
+  const [ninUser, setNinUser] = useState<AdminUserAccount | null>(null);
+  const [userNin, setUserNin] = useState<AdminUserNin | null>(null);
+  const [ninLoading, setNinLoading] = useState(false);
+  const [ninError, setNinError] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -47,10 +51,31 @@ export default function AdminUsersScreen() {
     }
   };
 
+  const loadUserNin = async (user: AdminUserAccount) => {
+    setNinUser(user);
+    setUserNin(null);
+    setNinError('');
+    setNinLoading(true);
+    try {
+      setUserNin(await fetchAdminUserNin(user.id));
+    } catch (loadError) {
+      console.error('[Admin Users] Could not retrieve user NIN:', loadError);
+      setNinError(loadError instanceof Error ? loadError.message : 'Could not retrieve this NIN.');
+    } finally {
+      setNinLoading(false);
+    }
+  };
+
+  const closeNin = () => {
+    setNinUser(null);
+    setUserNin(null);
+    setNinError('');
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.heading}>Manage users</Text>
-      <Text style={styles.subtitle}>Suspend accounts to block sign-in, or restore access when appropriate.</Text>
+      <Text style={styles.subtitle}>Manage accounts and review verified NINs. Every NIN view is recorded in the audit log.</Text>
       <View style={styles.searchBox}>
         <MaterialCommunityIcons name="magnify" size={20} color="#94A3B8" />
         <TextInput
@@ -78,6 +103,15 @@ export default function AdminUsersScreen() {
             <Text style={styles.email}>{user.email}</Text>
             <Text style={styles.role}>{user.role || 'Unknown role'} · {user.is_banned ? 'Suspended' : 'Active'}</Text>
             {user.is_banned && user.ban_reason ? <Text style={styles.reason}>Reason: {user.ban_reason}</Text> : null}
+            <Pressable
+              onPress={() => void loadUserNin(user)}
+              accessibilityRole="button"
+              accessibilityLabel={`View verified NIN for ${user.email}`}
+              style={styles.viewNinButton}
+              disabled={ninLoading}
+            >
+              <Text style={styles.viewNinText}>View NIN</Text>
+            </Pressable>
           </View>
           <Pressable
             style={[styles.userAction, user.is_banned && styles.restoreAction]}
@@ -90,6 +124,42 @@ export default function AdminUsersScreen() {
         </View>
       ))}
       {!loading && users.length === 100 ? <Text style={styles.limitNote}>Showing the first 100 matching accounts. Refine your search to find a specific user.</Text> : null}
+
+      <Modal visible={ninUser !== null} transparent animationType="fade" onRequestClose={closeNin}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Sensitive identity information</Text>
+            <Text style={styles.modalCopy}>
+              {ninUser?.full_name || 'Name unavailable'} · {ninUser?.email}
+            </Text>
+            <Text style={styles.ninAuditNotice}>This access is recorded in the administrator audit log.</Text>
+            {ninLoading ? (
+              <ActivityIndicator color="#00C853" style={styles.loader} />
+            ) : ninError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{ninError}</Text>
+                <Pressable onPress={() => ninUser && void loadUserNin(ninUser)}>
+                  <Text style={styles.retry}>Retry</Text>
+                </Pressable>
+              </View>
+            ) : userNin?.nin ? (
+              <>
+                <Text style={styles.ninValue} selectable>{userNin.nin}</Text>
+                <Text style={styles.ninConsent}>
+                  Consent recorded {userNin.consent_at ? new Date(userNin.consent_at).toLocaleString() : '—'}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.modalCopy}>No verified NIN is stored for this account.</Text>
+            )}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.cancelButton} onPress={closeNin}>
+                <Text style={styles.cancelText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={selectedUser !== null} transparent animationType="fade" onRequestClose={() => setSelectedUser(null)}>
         <View style={styles.modalOverlay}>
@@ -146,6 +216,8 @@ const styles = StyleSheet.create({
   name: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   email: { color: '#CBD5E1', fontSize: 12, marginTop: 3 },
   role: { color: '#8A9BA8', fontSize: 11, textTransform: 'capitalize', marginTop: 5 },
+  viewNinButton: { alignSelf: 'flex-start', marginTop: 7, paddingVertical: 3 },
+  viewNinText: { color: '#6EE7B7', fontSize: 12, fontWeight: '700' },
   reason: { color: '#FCA5A5', fontSize: 11, marginTop: 5 },
   userAction: { backgroundColor: '#7F1D1D', borderRadius: 8, paddingHorizontal: 11, paddingVertical: 9 },
   userActionText: { color: '#FECACA', fontSize: 12, fontWeight: '700' },
@@ -161,6 +233,9 @@ const styles = StyleSheet.create({
   modal: { backgroundColor: '#0F1C2E', borderColor: '#334155', borderWidth: 1, borderRadius: 14, padding: 18 },
   modalTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '700' },
   modalCopy: { color: '#CBD5E1', fontSize: 13, lineHeight: 19, marginTop: 9 },
+  ninAuditNotice: { color: '#FBBF24', fontSize: 12, lineHeight: 18, marginTop: 12 },
+  ninValue: { color: '#FFFFFF', fontSize: 22, fontWeight: '700', letterSpacing: 2, marginTop: 18 },
+  ninConsent: { color: '#8A9BA8', fontSize: 11, marginTop: 8 },
   inputLabel: { color: '#CBD5E1', fontSize: 12, fontWeight: '600', marginTop: 17, marginBottom: 7 },
   reasonInput: { minHeight: 82, backgroundColor: '#07111F', borderColor: '#334155', borderWidth: 1, borderRadius: 9, padding: 11, color: '#FFFFFF', textAlignVertical: 'top' },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },

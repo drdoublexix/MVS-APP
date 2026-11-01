@@ -54,7 +54,7 @@ serve(async (req) => {
         business_mobile: phone || "08000000000",
         country: "NG",
         split_type: "percentage",
-        split_value: 0.10,
+        split_value: 0.05,
       }),
     });
 

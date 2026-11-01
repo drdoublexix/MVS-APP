@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addMarketplaceProduct } from '../../lib/marketplace';
-import { addPlatformFee, parsePriceInput } from '../../lib/price';
+import { addPlatformFee, parsePriceInput, PLATFORM_FEE_PERCENT } from '../../lib/price';
 import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
 import { sanitizeInput } from '../../lib/sanitize';
 import { getCurrentUser, supabase, uploadProductImage } from '../../lib/supabase';
@@ -159,7 +159,7 @@ export default function AddProductScreen() {
                 editable={!loading}
                 keyboardType="decimal-pad"
               />
-              {price.trim() && Number.isFinite(parsePriceInput(price)) ? <Text style={styles.uploadText}>Marketplace price: ₦ {addPlatformFee(parsePriceInput(price)).toLocaleString('en-NG')}</Text> : null}
+              {price.trim() && Number.isFinite(parsePriceInput(price)) ? <Text style={styles.uploadText}>Marketplace price (includes {PLATFORM_FEE_PERCENT}% platform fee): ₦ {addPlatformFee(parsePriceInput(price)).toLocaleString('en-NG')}</Text> : null}
             </View>
             <View style={[styles.inputGroup, styles.flex]}>
               <Text style={styles.label}>Quantity *</Text>

@@ -28,7 +28,7 @@ import {
     fetchMarketplaceProducts,
     useMarketplace,
 } from "../../lib/marketplace";
-import { addPlatformFee, parsePriceInput } from "../../lib/price";
+import { addPlatformFee, parsePriceInput, PLATFORM_FEE_PERCENT } from "../../lib/price";
 import { isProductCategory, PRODUCT_CATEGORIES } from "../../lib/productCategories";
 import { sanitizeInput } from "../../lib/sanitize";
 import { requestAiAssistant } from "../../lib/aiAssistant";
@@ -630,7 +630,7 @@ export default function MerchantDashboardScreen() {
             />
             {form.price.trim() && Number.isFinite(parsePriceInput(form.price)) ? (
               <Text style={styles.label}>
-                Marketplace price: {naira(addPlatformFee(parsePriceInput(form.price)))}
+                Marketplace price (includes {PLATFORM_FEE_PERCENT}% platform fee): {naira(addPlatformFee(parsePriceInput(form.price)))}
               </Text>
             ) : null}
             <Text style={styles.label}>Stock Quantity</Text>

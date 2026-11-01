@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchMarketplaceProducts } from '../../lib/marketplace';
-import { addPlatformFee, parsePriceInput } from '../../lib/price';
+import { addPlatformFee, parsePriceInput, PLATFORM_FEE_PERCENT } from '../../lib/price';
 import { isProductCategory, PRODUCT_CATEGORIES } from '../../lib/productCategories';
 import { getCurrentUser, supabase } from '../../lib/supabase';
 
@@ -204,7 +204,7 @@ export default function MerchantInventoryScreen() {
               <TextInput value={editDraft.description} onChangeText={(description) => setEditDraft((current) => ({ ...current, description }))} style={[styles.input, styles.descriptionInput]} placeholder="Product description" placeholderTextColor="#64748B" multiline />
               <Text style={styles.label}>Your price in NGN</Text>
               <TextInput value={editDraft.price} onChangeText={(price) => setEditDraft((current) => ({ ...current, price }))} style={styles.input} placeholder="e.g. 50,000" placeholderTextColor="#64748B" keyboardType="decimal-pad" />
-              {editDraft.price.trim() && Number.isFinite(parsePriceInput(editDraft.price)) ? <Text style={styles.pricePreview}>Marketplace price: ₦ {addPlatformFee(parsePriceInput(editDraft.price)).toLocaleString('en-NG')}</Text> : null}
+              {editDraft.price.trim() && Number.isFinite(parsePriceInput(editDraft.price)) ? <Text style={styles.pricePreview}>Marketplace price (includes {PLATFORM_FEE_PERCENT}% platform fee): ₦ {addPlatformFee(parsePriceInput(editDraft.price)).toLocaleString('en-NG')}</Text> : null}
               <Text style={styles.label}>Category</Text>
               <View style={styles.categories}>{PRODUCT_CATEGORIES.map((category) => <TouchableOpacity key={category} onPress={() => setEditDraft((current) => ({ ...current, category }))} style={[styles.category, editDraft.category === category && styles.selected]}><Text style={[styles.categoryText, editDraft.category === category && styles.selectedText]}>{category}</Text></TouchableOpacity>)}</View>
               <TouchableOpacity style={styles.saveButton} onPress={() => void saveEdit()} disabled={savingEdit}><Text style={styles.saveText}>{savingEdit ? 'Saving...' : 'Save Changes'}</Text></TouchableOpacity>
