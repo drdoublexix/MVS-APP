@@ -50,6 +50,7 @@ import { createOfflineMessageId, enqueueOfflineMessage, readOfflineMessages, rem
 import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { addPlatformFee, PLATFORM_FEE_PERCENT } from "../lib/price";
 import { sanitizeInput } from "../lib/sanitize";
+import { formatVetDisplayName } from "../lib/vetDisplayName";
 import {
   deleteMessageForEveryone,
   ensureConsultationRecord,
@@ -246,19 +247,20 @@ type InvoiceItem = { id: string; description: string; amount: number };
 type Category = "Online Consultation" | "Emergency Request" | "Vaccination" | "Routine Checks" | "General Inquiry" | "Others";
 
 const getCategoryInitialMessage = (category: Category, vetName: string) => {
+  const addressedVet = formatVetDisplayName(vetName, "vet");
   switch (category) {
     case "Online Consultation":
-      return `Hello ${vetName}, I would like to book an online consultation for my `;
+      return `Hello ${addressedVet}, I would like to book an online consultation for my `;
     case "Emergency Request":
-      return `Hello ${vetName}, I have an urgent medical emergency regarding my pet: `;
+      return `Hello ${addressedVet}, I have an urgent medical emergency regarding my pet: `;
     case "Vaccination":
-      return `Hello ${vetName}, I would like to inquire about vaccination services for my `;
+      return `Hello ${addressedVet}, I would like to inquire about vaccination services for my `;
     case "Routine Checks":
-      return `Hello ${vetName}, I would like to schedule a routine health check for my `;
+      return `Hello ${addressedVet}, I would like to schedule a routine health check for my `;
     case "General Inquiry":
-      return `Hello ${vetName}, I have a general consultation inquiry regarding `;
+      return `Hello ${addressedVet}, I have a general consultation inquiry regarding `;
     case "Others":
-      return `Hello ${vetName}, I would like to consult with you regarding `;
+      return `Hello ${addressedVet}, I would like to consult with you regarding `;
   }
 };
 
@@ -381,7 +383,10 @@ function ParticipantProfileModal({ visible, profile, onClose }: { visible: boole
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const avatarUrl = getPublicAvatarUrl(profile?.avatar_url);
   const isMerchant = profile?.role === "merchant";
-  const displayName = profile?.full_name || profile?.business_name || (isMerchant ? "Merchant" : "Veterinarian");
+  const displayName = formatVetDisplayName(
+    profile?.full_name || profile?.business_name || (isMerchant ? "Merchant" : "Veterinarian"),
+    profile?.role,
+  );
   const location = [profile?.city, profile?.state].filter(Boolean).join(", ") || profile?.location;
 
   return (
@@ -1228,7 +1233,9 @@ export default function ChatScreen() {
             return {
               id: conversationId,
               participantId,
-              participantName: profile?.full_name || profile?.email || "Contact",
+              participantName: profile?.full_name
+                ? formatVetDisplayName(profile.full_name, profile.role)
+                : profile?.email || "Contact",
               participantRole: profile?.role || "user",
               recipientProfile: profile as RecipientProfile,
               consultation_status: consultationStatusMap.get(conversationId),
@@ -1404,7 +1411,9 @@ export default function ChatScreen() {
                   const nextThread: Thread = {
                     id: incoming.conversation_id || conversationIdFor(currentUserId, participantId),
                     participantId,
-                    participantName: profile.full_name || profile.email || "Contact",
+                    participantName: profile.full_name
+                      ? formatVetDisplayName(profile.full_name, profile.role)
+                      : profile.email || "Contact",
                     participantRole: profile.role || "user",
                     recipientProfile: profile as RecipientProfile,
                     messages: [incoming],
@@ -1472,7 +1481,9 @@ export default function ChatScreen() {
     }
     openedRoute.current = routeKey;
     let cancelled = false;
-    const participantName = merchantNameParam || vetParam || "Merchant";
+    const participantName = vetParam
+      ? formatVetDisplayName(vetParam, "vet")
+      : merchantNameParam || "Merchant";
     const resolvedConversationId = conversationIdParam || conversationIdFor(currentUserId, routeRecipient);
     const existingThread = threads.find((thread) => thread.id === resolvedConversationId);
     const nextActive: Thread = {

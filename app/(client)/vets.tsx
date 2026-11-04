@@ -7,6 +7,7 @@ import AvatarPreviewModal from '../../components/AvatarPreviewModal';
 import VetLocationMap from '../../components/VetLocationMap';
 import { requestDeviceLocation } from '../../lib/location';
 import { ensureConsultationRecord, getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
+import { formatVetDisplayName } from '../../lib/vetDisplayName';
 
 type VetProfile = {
   id: string;
@@ -130,7 +131,7 @@ export default function VetsScreen() {
         if (error) throw error;
         const sortedVets = ((data || []) as VetProfile[]).map((vet) => ({
           ...vet,
-          full_name: vet.full_name || 'Veterinarian',
+          full_name: formatVetDisplayName(vet.full_name || 'Veterinarian', 'vet'),
           specialty: vet.specialty || '',
           city: vet.city || null,
           state: vet.state || null,
@@ -268,7 +269,7 @@ export default function VetsScreen() {
       params: {
         conversationId,
         category,
-        vet: intakeVet.full_name,
+        vet: formatVetDisplayName(intakeVet.full_name, 'vet'),
         clinic: intakeVet.clinic || 'Veterinary Clinic',
         receiver_id: doctorId,
         vet_id: doctorId,
@@ -358,7 +359,7 @@ export default function VetsScreen() {
                       )}
                     </View>
                     <View style={styles.flex}>
-                      <Text style={styles.doctor}>{vet.full_name}</Text>
+                      <Text style={styles.doctor}>{formatVetDisplayName(vet.full_name, 'vet')}</Text>
                       <Text style={styles.clinic}>{specialty}</Text>
                       <Text style={styles.distanceBadge}>
                         {location || 'Location Pending'}
@@ -433,7 +434,7 @@ export default function VetsScreen() {
                     );
                   })()}
                 </TouchableOpacity>
-                <Text style={styles.modalDoctor}>{selectedVet.full_name}</Text>
+                <Text style={styles.modalDoctor}>{formatVetDisplayName(selectedVet.full_name, 'vet')}</Text>
                 <View style={styles.ratingSection}>
                   <View style={styles.stars}>
                     {[1, 2, 3, 4, 5].map((star) => (
