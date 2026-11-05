@@ -32,6 +32,7 @@ export default function VetLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: t('nav.dashboard'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="view-dashboard" color={color} size={size} /> }} />
+      <Tabs.Screen name="appointments" options={{ title: 'Appointments', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="calendar-check" color={color} size={size} /> }} />
       <Tabs.Screen name="community" options={{ title: t('nav.community'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="account-group" color={color} size={size} /> }} />
       <Tabs.Screen name="chat" listeners={{ tabPress: () => router.navigate('/chat') }} options={{ title: t('nav.chat'), tabBarBadge: totalUnreadCount > 0 ? (totalUnreadCount > 99 ? '99+' : totalUnreadCount) : undefined, tabBarBadgeStyle: { backgroundColor: '#EF4444', color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' }, tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="message-text" color={color} size={size} /> }} />
       <Tabs.Screen name="profile" options={{ title: t('nav.profile'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="account-circle" color={color} size={size} /> }} />

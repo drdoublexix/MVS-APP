@@ -48,6 +48,7 @@ export default function ClientLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="appointments" options={{ href: null, title: 'My appointments' }} />
       <Tabs.Screen name="explore-clinics" options={{ href: null }} />
       <Tabs.Screen
         name="community"

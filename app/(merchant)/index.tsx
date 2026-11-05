@@ -705,7 +705,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F172A" },
   modalKeyboard: { flex: 1 },
   content: { padding: 16, paddingBottom: 36 },
-  greeting: { marginBottom: 18 },
+  greeting: { marginBottom: 18, paddingRight: 156 },
   greetingTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
   greetingSubtitle: { color: "#94A3B8", fontSize: 13, lineHeight: 19, marginTop: 5 },
   title: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },

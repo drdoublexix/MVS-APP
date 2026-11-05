@@ -30,7 +30,7 @@ interface AiSession {
 
 const getVetGreetingName = (fullName?: string | null) => {
   const nameParts = (fullName || '').trim().replace(/^dr\.?\s+/i, '').split(/\s+/).filter(Boolean);
-  const lastName = nameParts.at(-1);
+  const lastName = nameParts[nameParts.length - 1];
   return lastName ? `Dr. ${lastName.toLocaleUpperCase()}` : 'Dr.';
 };
 
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   aiText: { color: '#CFFAFE', fontSize: 12, lineHeight: 18, marginTop: 3 },
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 36 },
-  greeting: { marginBottom: 18 },
+  greeting: { marginBottom: 18, paddingRight: 156 },
   greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
   greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' },

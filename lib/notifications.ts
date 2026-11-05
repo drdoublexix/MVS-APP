@@ -174,7 +174,8 @@ export const sendPushNotification = async (
   recipientUserId: string,
   title: string,
   body: string,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
+  options?: { persistNotification?: boolean }
 ): Promise<void> => {
   try {
     if (!recipientUserId || !title || !body) {
@@ -205,6 +206,7 @@ export const sendPushNotification = async (
       chat: ['chat', 'mvsai_chat_messages', 'messages'],
       consults: ['consults', 'consultations', 'consultation_updates'],
       orders: ['orders', 'order_updates', 'new_orders'],
+      appointments: ['appointments', 'appointment_updates'],
     };
 
     const aliasKeys = preferenceAliases[preferenceKey] || [preferenceKey];
@@ -222,6 +224,7 @@ export const sendPushNotification = async (
         title,
         body,
         data,
+        persistNotification: options?.persistNotification !== false,
       },
     });
     if (error) {

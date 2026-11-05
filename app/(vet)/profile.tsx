@@ -49,6 +49,7 @@ type NotificationPreferences = {
   consultations: boolean;
   reminders: boolean;
   payouts: boolean;
+  appointments: boolean;
 };
 
 const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
@@ -57,6 +58,7 @@ const buildDefaultNotificationPreferences = (): NotificationPreferences => ({
   consultations: true,
   reminders: true,
   payouts: true,
+  appointments: true,
 });
 
 const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null): NotificationPreferences => ({
@@ -65,6 +67,7 @@ const normalizeNotificationPreferences = (prefs?: Record<string, unknown> | null
   consultations: typeof prefs?.consultations === 'boolean' ? prefs.consultations : true,
   reminders: typeof prefs?.reminders === 'boolean' ? prefs.reminders : true,
   payouts: typeof prefs?.payouts === 'boolean' ? prefs.payouts : true,
+  appointments: typeof prefs?.appointments === 'boolean' ? prefs.appointments : true,
 });
 
 const NIGERIAN_BANKS = [
@@ -139,6 +142,7 @@ export default function VetProfileScreen() {
 
   const notificationOptions: { key: keyof NotificationPreferences; label: string }[] = [
     { key: 'consultations', label: 'Consultation Updates / New Consult Requests' },
+    { key: 'appointments', label: 'Appointment Requests & Updates' },
     { key: 'chat', label: 'Chat Messages / Patient Messages' },
     { key: 'payouts', label: 'Payout Notifications / Payout & Earnings' },
   ];

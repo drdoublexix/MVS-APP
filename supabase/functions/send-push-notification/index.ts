@@ -15,6 +15,7 @@ interface PushPayload {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  persistNotification?: boolean;
 }
 
 serve(async (req) => {
@@ -66,23 +67,27 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { data: storedNotification, error: notificationError } = await supabaseAdmin
-      .from('notifications')
-      .insert({
-        user_id: recipientId,
-        title,
-        body,
-        read_status: false,
-      })
-      .select('id')
-      .single();
+    let notificationId: string | null = null;
+    if (requestBody.persistNotification !== false) {
+      const { data: storedNotification, error: notificationError } = await supabaseAdmin
+        .from('notifications')
+        .insert({
+          user_id: recipientId,
+          title,
+          body,
+          read_status: false,
+        })
+        .select('id')
+        .single();
 
-    if (notificationError) {
-      console.error('Failed to persist notification before push delivery:', notificationError);
-      return new Response(JSON.stringify({ error: 'Notification could not be saved.' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      if (notificationError) {
+        console.error('Failed to persist notification before push delivery:', notificationError);
+        return new Response(JSON.stringify({ error: 'Notification could not be saved.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      notificationId = storedNotification.id;
     }
 
     const { data: profileRows, error: profileError } = await supabaseAdmin
@@ -107,9 +112,9 @@ serve(async (req) => {
 
     const notificationData = {
       ...(payloadData || {}),
-      notificationId: storedNotification.id,
       url: payloadData?.url || '/',
     };
+    if (notificationId) notificationData.notificationId = notificationId;
 
     if (profile.expo_push_token) {
       const pushResponse = await fetch(EXPO_PUSH_URL, {

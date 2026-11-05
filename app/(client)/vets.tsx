@@ -1,10 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AvatarPreviewModal from '../../components/AvatarPreviewModal';
+import AppointmentDateTimePicker from '../../components/AppointmentDateTimePicker';
 import VetLocationMap from '../../components/VetLocationMap';
+import { appointmentDateTimeToIso, formatAppointmentDateTime, getAppointmentDates, getAppointmentTimeOptions, sendAppointmentNotification } from '../../lib/appointments';
 import { requestDeviceLocation } from '../../lib/location';
 import { ensureConsultationRecord, getCurrentUser, normalizeUuid, supabase } from '../../lib/supabase';
 import { formatVetDisplayName } from '../../lib/vetDisplayName';
@@ -29,6 +31,27 @@ type VetProfile = {
 
 type Category = 'Online Consultation' | 'Emergency Request' | 'Vaccination' | 'Routine Checks' | 'General Inquiry' | 'Others';
 type VetModalProfile = Pick<VetProfile, 'bio' | 'clinic' | 'specialty' | 'phone_number' | 'city' | 'state'>;
+type AppointmentAnimal = {
+  id: string;
+  type: 'pet' | 'farm';
+  name: string;
+  details: string;
+};
+
+const getAppointmentAnimalIcon = (animal?: AppointmentAnimal) => {
+  if (!animal) return 'paw';
+  const species = `${animal.name} ${animal.details}`.toLowerCase();
+  if (/\b(cat|feline)\b/.test(species)) return 'cat';
+  if (/\b(dog|canine)\b/.test(species)) return 'dog';
+  if (/\b(duck|waterfowl)\b/.test(species)) return 'duck';
+  if (/\b(turkey|turkeys)\b/.test(species)) return 'turkey';
+  if (/\b(avian|poultry|chicken|chickens|bird|birds)\b/.test(species)) return 'bird';
+  if (/\b(caprine|goat|goats|sheep|ovine)\b/.test(species)) return 'sheep';
+  if (/\b(cattle|cow|cows|bovine|calf|calves)\b/.test(species)) return 'cow';
+  if (/\b(pig|pigs|swine|porcine)\b/.test(species)) return 'pig';
+  if (/\b(horse|horses|equine)\b/.test(species)) return 'horse';
+  return animal.type === 'farm' ? 'cow' : 'paw';
+};
 
 const categories: Category[] = ['Online Consultation', 'Emergency Request', 'Vaccination', 'Routine Checks', 'General Inquiry', 'Others'];
 const getPublicAvatarUrl = (avatarPath?: string | null): string | null => {
@@ -55,6 +78,7 @@ const haversineDistanceKm = (latitudeOne: number, longitudeOne: number, latitude
 
 export default function VetsScreen() {
   const router = useRouter();
+  const { openMap, returnTo } = useLocalSearchParams<{ openMap?: string; returnTo?: string }>();
   const [vets, setVets] = useState<VetProfile[]>([]);
   const [selectedVet, setSelectedVet] = useState<VetProfile | null>(null);
   const [selectedVetProfile, setSelectedVetProfile] = useState<VetModalProfile | null>(null);
@@ -63,6 +87,7 @@ export default function VetsScreen() {
   const [intakeMode, setIntakeMode] = useState('Online Consultation');
   const [loading, setLoading] = useState(true);
   const navigationKey = useRef(0);
+  const openMapOnLoad = useRef(openMap === 'true');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userRating, setUserRating] = useState(0);
   const [averageRating, setAverageRating] = useState(0);
@@ -71,6 +96,17 @@ export default function VetsScreen() {
   const [failedAvatarIds, setFailedAvatarIds] = useState<Record<string, boolean>>({});
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(null);
   const [mapVisible, setMapVisible] = useState(false);
+  const [bookingVisible, setBookingVisible] = useState(false);
+  const [bookingVet, setBookingVet] = useState<VetProfile | null>(null);
+  const [bookingDate, setBookingDate] = useState(() => getAppointmentDates(1)[0]);
+  const [bookingTime, setBookingTime] = useState('');
+  const [bookingAnimals, setBookingAnimals] = useState<AppointmentAnimal[]>([]);
+  const [selectedBookingAnimalKey, setSelectedBookingAnimalKey] = useState<string | null>(null);
+  const [bookingAnimalsLoading, setBookingAnimalsLoading] = useState(false);
+  const [animalPickerExpanded, setAnimalPickerExpanded] = useState(false);
+  const [bookingReason, setBookingReason] = useState('');
+  const [bookingType, setBookingType] = useState<'in_person' | 'online'>('in_person');
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -150,6 +186,15 @@ export default function VetsScreen() {
           return 0;
         });
         setVets(sortedVets);
+        if (openMapOnLoad.current) {
+          openMapOnLoad.current = false;
+          if (sortedVets.some((vet) => isValidCoordinate(vet.latitude, -90, 90) && isValidCoordinate(vet.longitude, -180, 180))) {
+            setMapVisible(true);
+          } else {
+            Alert.alert('Locations unavailable', 'No veterinarian locations are available yet.');
+          }
+          router.setParams({ openMap: undefined });
+        }
       } catch (error) {
         console.warn('Failed to fetch vet directory', error);
         if (isMounted) setVets([]);
@@ -160,7 +205,7 @@ export default function VetsScreen() {
 
     void loadVets();
     return () => { isMounted = false; };
-  }, []);
+  }, [router]);
 
   const openIntake = (vet: VetProfile, mode: string) => {
     setSelectedVet(null);
@@ -282,6 +327,109 @@ export default function VetsScreen() {
     openIntake(vet, 'Online Consultation');
   };
 
+  const openAppointmentBooking = async (vet: VetProfile) => {
+    const firstChoice = getAppointmentDates().find((date) => getAppointmentTimeOptions(date).length > 0);
+    if (!firstChoice) {
+      Alert.alert('No times available', 'There are no appointment request times available in the next 30 days.');
+      return;
+    }
+    setBookingAnimalsLoading(true);
+    setBookingVisible(true);
+    setBookingVet(vet);
+    setBookingDate(firstChoice);
+    setBookingTime(getAppointmentTimeOptions(firstChoice)[0].value);
+    setBookingAnimals([]);
+    setSelectedBookingAnimalKey(null);
+    setAnimalPickerExpanded(false);
+    setBookingReason('');
+    setBookingType('in_person');
+    try {
+      const user = await getCurrentUser();
+      if (!user) throw new Error('Sign in to request an appointment.');
+      const [petsResult, farmRecordsResult] = await Promise.all([
+        supabase
+          .from('pets')
+          .select('id, name, type, breed')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('farm_records')
+          .select('id, species, breed, flock_size')
+          .eq('client_id', user.id)
+          .order('created_at', { ascending: false }),
+      ]);
+      if (petsResult.error) throw petsResult.error;
+      if (farmRecordsResult.error) throw farmRecordsResult.error;
+
+      const pets: AppointmentAnimal[] = (petsResult.data || []).map((pet) => ({
+        id: pet.id,
+        type: 'pet',
+        name: pet.name,
+        details: [pet.type, pet.breed].filter(Boolean).join(' · ') || 'Pet',
+      }));
+      const farmRecords: AppointmentAnimal[] = (farmRecordsResult.data || []).map((farm) => ({
+        id: farm.id,
+        type: 'farm',
+        name: `${farm.species}${farm.flock_size !== null ? ` herd/flock (${farm.flock_size})` : ' herd/flock'}`,
+        details: [farm.breed, farm.flock_size !== null ? `${farm.flock_size} animals` : null].filter(Boolean).join(' · ') || 'Farm herd',
+      }));
+      const animals = [...pets, ...farmRecords];
+      setBookingAnimals(animals);
+      if (animals.length > 0) setSelectedBookingAnimalKey(`${animals[0].type}:${animals[0].id}`);
+      if (animals.length === 0) {
+        Alert.alert('Add a pet or farm herd first', 'Save a pet or farm record to your client profile before requesting an appointment.');
+      }
+    } catch (error) {
+      console.error('[Appointments] Could not load the client’s saved animals:', error);
+      setBookingVisible(false);
+      Alert.alert('Animals unavailable', error instanceof Error ? error.message : 'Could not load pets and farm records from your account.');
+    } finally {
+      setBookingAnimalsLoading(false);
+    }
+  };
+
+  const submitAppointmentRequest = async () => {
+    if (!bookingVet || !bookingTime || bookingSubmitting) return;
+    const selectedAnimal = bookingAnimals.find((animal) => `${animal.type}:${animal.id}` === selectedBookingAnimalKey);
+    if (!selectedAnimal || bookingReason.trim().length < 3) {
+      Alert.alert('Complete appointment details', 'Select a saved pet or farm herd and describe what needs help.');
+      return;
+    }
+
+    setBookingSubmitting(true);
+    try {
+      const { data: appointmentId, error } = await supabase.rpc('book_veterinary_appointment', {
+        p_vet_id: bookingVet.id,
+        p_animal_type: selectedAnimal.type,
+        p_pet_id: selectedAnimal.type === 'pet' ? selectedAnimal.id : null,
+        p_farm_record_id: selectedAnimal.type === 'farm' ? selectedAnimal.id : null,
+        p_appointment_type: bookingType,
+        p_reason: bookingReason.trim(),
+        p_scheduled_at: appointmentDateTimeToIso(bookingDate, bookingTime),
+      });
+      if (error) throw error;
+
+      void sendAppointmentNotification(
+        bookingVet.id,
+        'vet',
+        String(appointmentId),
+        'New appointment request',
+        `A client requested an appointment for ${selectedAnimal.name} on ${formatAppointmentDateTime(appointmentDateTimeToIso(bookingDate, bookingTime))}.`,
+      );
+      setBookingVisible(false);
+      setSelectedVet(null);
+      Alert.alert(
+        'Request sent',
+        `Your appointment request was sent to ${formatVetDisplayName(bookingVet.full_name, 'vet')}. It is not confirmed until the veterinarian responds.`,
+      );
+    } catch (error) {
+      console.error('[Appointments] Could not submit appointment request:', error);
+      Alert.alert('Request not sent', error instanceof Error ? error.message : 'Unable to request this appointment. Please try again.');
+    } finally {
+      setBookingSubmitting(false);
+    }
+  };
+
   const vetsWithCoordinates = vets.filter((vet) =>
     isValidCoordinate(vet.latitude, -90, 90) && isValidCoordinate(vet.longitude, -180, 180),
   );
@@ -301,31 +449,45 @@ export default function VetsScreen() {
     void openVetProfile(vet);
   };
 
+  const closeVetMap = () => {
+    setMapVisible(false);
+    if (returnTo === 'dashboard' && router.canGoBack()) {
+      router.back();
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Nearby Veterinarians</Text>
-        <View style={styles.mapActions}>
-          <TouchableOpacity
-            style={styles.mapButton}
-            onPress={() => { void openVetMap(); }}
-            accessibilityLabel="Explore veterinarians on the map"
-            accessibilityRole="button"
-          >
-            <MaterialCommunityIcons name="map-marker-radius" size={25} color="#10B981" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.mapButton}
-            onPress={() => router.push({
-              pathname: '/(client)/explore-clinics',
-              params: { returnTo: 'vets' },
-            })}
-            accessibilityLabel="Explore veterinary and pet-care businesses"
-            accessibilityRole="button"
-          >
-            <Image source={require('../../assets/images/clinic-marker.png')} style={styles.clinicMapIcon} resizeMode="contain" />
-          </TouchableOpacity>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>Nearby Veterinarians</Text>
+          <View style={styles.mapActions}>
+            <TouchableOpacity
+              style={styles.mapButton}
+              onPress={() => { void openVetMap(); }}
+              accessibilityLabel="Explore veterinarians on the map"
+              accessibilityRole="button"
+            >
+              <MaterialCommunityIcons name="map-marker-radius" size={25} color="#10B981" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.mapButton}
+              onPress={() => router.push({
+                pathname: '/(client)/explore-clinics',
+                params: { returnTo: 'vets' },
+              })}
+              accessibilityLabel="Explore veterinary and pet-care businesses"
+              accessibilityRole="button"
+            >
+              <Image source={require('../../assets/images/clinic-marker.png')} style={styles.clinicMapIcon} resizeMode="contain" />
+            </TouchableOpacity>
+          </View>
         </View>
+        <TouchableOpacity style={styles.myAppointmentsLink} onPress={() => router.push('/(client)/appointments')} accessibilityRole="button">
+          <MaterialCommunityIcons name="calendar-check-outline" size={17} color="#93C5FD" />
+          <Text style={styles.myAppointmentsText}>My appointments</Text>
+          <MaterialCommunityIcons name="chevron-right" size={17} color="#93C5FD" />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -400,7 +562,7 @@ export default function VetsScreen() {
           latitude: vet.latitude!,
           longitude: vet.longitude!,
         }))}
-        onClose={() => setMapVisible(false)}
+        onClose={closeVetMap}
         onSelectVet={openVetFromMap}
       />
 
@@ -463,9 +625,142 @@ export default function VetsScreen() {
                   <TouchableOpacity style={styles.online} onPress={() => openIntake(selectedVet, 'Online Consultation')}>
                     <Text style={styles.actionText}>Online Consultation</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity style={styles.bookAppointment} onPress={() => openAppointmentBooking(selectedVet)}>
+                    <MaterialCommunityIcons name="calendar-plus" size={18} color="#FFFFFF" />
+                    <Text style={styles.actionText}>Book an appointment</Text>
+                  </TouchableOpacity>
                 </View>
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={bookingVisible} animationType="slide" transparent onRequestClose={() => setBookingVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.bookingModal}>
+            <View style={styles.bookingHeader}>
+              <View style={styles.bookingHeadingCopy}>
+                <Text style={styles.bookingTitle}>Request an appointment</Text>
+                <Text style={styles.bookingSubtitle}>
+                  {bookingVet ? formatVetDisplayName(bookingVet.full_name, 'vet') : 'Veterinarian'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setBookingVisible(false)} accessibilityLabel="Close appointment form">
+                <MaterialCommunityIcons name="close" size={24} color="#CBD5E1" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.bookingContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+              <Text style={styles.bookingLabel}>Appointment type</Text>
+              <View style={styles.bookingTypeRow}>
+                {([
+                  { value: 'in_person', label: 'In person', icon: 'hospital-marker' },
+                  { value: 'online', label: 'Online', icon: 'video-outline' },
+                ] as const).map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.bookingTypeButton, bookingType === option.value && styles.bookingTypeSelected]}
+                    onPress={() => setBookingType(option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: bookingType === option.value }}
+                  >
+                    <MaterialCommunityIcons name={option.icon} size={19} color={bookingType === option.value ? '#FFFFFF' : '#94A3B8'} />
+                    <Text style={[styles.bookingTypeText, bookingType === option.value && styles.bookingSelectedText]}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.bookingLabel}>Select a pet or farm herd</Text>
+              <TouchableOpacity
+              style={styles.animalPicker}
+              onPress={() => setAnimalPickerExpanded((expanded) => !expanded)}
+              disabled={bookingAnimalsLoading || bookingAnimals.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Choose a saved pet or farm herd"
+              accessibilityState={{ expanded: animalPickerExpanded }}
+              >
+              {bookingAnimalsLoading
+                ? <ActivityIndicator size="small" color="#93C5FD" />
+                : <MaterialCommunityIcons name={getAppointmentAnimalIcon(bookingAnimals.find((animal) => `${animal.type}:${animal.id}` === selectedBookingAnimalKey))} size={19} color="#93C5FD" />}
+              <View style={styles.animalPickerCopy}>
+                <Text style={styles.animalPickerName}>
+                  {bookingAnimalsLoading
+                    ? 'Loading your saved animals…'
+                    : bookingAnimals.find((animal) => `${animal.type}:${animal.id}` === selectedBookingAnimalKey)?.name || 'Choose a saved pet or farm herd'}
+                </Text>
+                {bookingAnimals.find((animal) => `${animal.type}:${animal.id}` === selectedBookingAnimalKey) ? (
+                  <Text style={styles.animalPickerDetails}>{bookingAnimals.find((animal) => `${animal.type}:${animal.id}` === selectedBookingAnimalKey)?.details}</Text>
+                ) : null}
+              </View>
+              <MaterialCommunityIcons name={animalPickerExpanded ? 'chevron-up' : 'chevron-down'} size={22} color="#CBD5E1" />
+              </TouchableOpacity>
+              {animalPickerExpanded ? (
+              <ScrollView
+                style={styles.animalPickerList}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+              >
+                {bookingAnimals.map((animal) => {
+                  const selected = `${animal.type}:${animal.id}` === selectedBookingAnimalKey;
+                  return (
+                    <TouchableOpacity
+                      key={`${animal.type}:${animal.id}`}
+                      style={[styles.animalOption, selected && styles.animalOptionSelected]}
+                      onPress={() => {
+                        setSelectedBookingAnimalKey(`${animal.type}:${animal.id}`);
+                        setAnimalPickerExpanded(false);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <MaterialCommunityIcons name={getAppointmentAnimalIcon(animal)} size={19} color={selected ? '#93C5FD' : '#94A3B8'} />
+                      <View style={styles.animalPickerCopy}>
+                        <Text style={styles.animalPickerName}>{animal.name}</Text>
+                        <Text style={styles.animalPickerDetails}>{animal.type === 'farm' ? 'Farm record' : animal.details}</Text>
+                      </View>
+                      {selected ? <MaterialCommunityIcons name="check-circle" size={18} color="#60A5FA" /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+                {!bookingAnimalsLoading && bookingAnimals.length === 0 ? (
+                  <Text style={styles.noAnimalsText}>Add a pet or farm herd in your client profile first.</Text>
+                ) : null}
+              </ScrollView>
+              ) : null}
+              {!bookingAnimalsLoading && bookingAnimals.length === 0 ? (
+              <Text style={styles.animalHelper}>Your saved pets and farm records will appear here.</Text>
+              ) : null}
+
+              <AppointmentDateTimePicker
+                selectedDate={bookingDate}
+                selectedTime={bookingTime}
+                onSelectDate={setBookingDate}
+                onSelectTime={setBookingTime}
+              />
+
+              <Text style={styles.bookingLabel}>What does this pet or farm herd need help with?</Text>
+              <TextInput
+                value={bookingReason}
+                onChangeText={setBookingReason}
+                placeholder="Describe what this pet or herd needs help with"
+                placeholderTextColor="#64748B"
+                multiline
+                maxLength={2000}
+                textAlignVertical="top"
+                style={[styles.bookingInput, styles.bookingReasonInput]}
+                accessibilityLabel="Appointment reason"
+              />
+              <TouchableOpacity
+                style={[styles.submitBookingButton, (bookingSubmitting || bookingAnimalsLoading || !selectedBookingAnimalKey || !bookingTime) && styles.disabledBookingButton]}
+                onPress={() => void submitAppointmentRequest()}
+                disabled={bookingSubmitting || bookingAnimalsLoading || !selectedBookingAnimalKey || !bookingTime}
+                accessibilityRole="button"
+              >
+                {bookingSubmitting ? <ActivityIndicator color="#FFFFFF" /> : <MaterialCommunityIcons name="calendar-check" size={19} color="#FFFFFF" />}
+                <Text style={styles.submitBookingText}>{bookingSubmitting ? 'Sending request…' : 'Send appointment request'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -501,11 +796,14 @@ export default function VetsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  header: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#334155', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#334155', gap: 10 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700' },
   mapActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mapButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 21, backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
   clinicMapIcon: { width: 26, height: 26 },
+  myAppointmentsLink: { minHeight: 34, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 9, backgroundColor: '#172554', paddingHorizontal: 10 },
+  myAppointmentsText: { color: '#BFDBFE', fontSize: 12, fontWeight: '700' },
   list: { padding: 16 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyState: { color: '#94A3B8', marginTop: 20, textAlign: 'center' },
@@ -535,8 +833,35 @@ const styles = StyleSheet.create({
   modalClinic: { color: '#94A3B8', textAlign: 'center', marginTop: 4 },
   aboutTitle: { color: '#FFFFFF', fontWeight: '700', marginTop: 22 },
   bio: { color: '#E2E8F0', lineHeight: 22, marginTop: 8 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  online: { flex: 1, backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  actions: { gap: 10, marginTop: 24 },
+  online: { backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  bookAppointment: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#2563EB', borderRadius: 10, paddingVertical: 12 },
+  bookingModal: { width: '100%', maxWidth: 540, maxHeight: '92%', backgroundColor: '#1E293B', borderRadius: 18, borderWidth: 1, borderColor: '#334155', padding: 18 },
+  bookingHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  bookingHeadingCopy: { flex: 1 },
+  bookingTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
+  bookingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 4 },
+  bookingContent: { paddingBottom: 6 },
+  bookingLabel: { color: '#E2E8F0', fontSize: 13, fontWeight: '700', marginTop: 16, marginBottom: 8 },
+  bookingTypeRow: { flexDirection: 'row', gap: 10 },
+  bookingTypeButton: { flex: 1, minHeight: 44, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#0F172A', borderRadius: 10, borderWidth: 1, borderColor: '#334155' },
+  bookingTypeSelected: { backgroundColor: '#0E7490', borderColor: '#22D3EE' },
+  bookingTypeText: { color: '#CBD5E1', fontSize: 13, fontWeight: '700' },
+  bookingSelectedText: { color: '#FFFFFF' },
+  animalPicker: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, borderWidth: 1, borderColor: '#475569', backgroundColor: '#0F172A', paddingHorizontal: 12, paddingVertical: 8 },
+  animalPickerCopy: { flex: 1 },
+  animalPickerName: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  animalPickerDetails: { color: '#94A3B8', fontSize: 11, marginTop: 3 },
+  animalPickerList: { maxHeight: 190, borderRadius: 10, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0B132B', marginTop: 7, overflow: 'hidden' },
+  animalOption: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1E293B' },
+  animalOptionSelected: { backgroundColor: '#172554' },
+  noAnimalsText: { color: '#FBBF24', fontSize: 12, lineHeight: 18, padding: 12 },
+  animalHelper: { color: '#94A3B8', fontSize: 11, lineHeight: 17, marginTop: 6 },
+  bookingInput: { minHeight: 46, borderRadius: 10, borderWidth: 1, borderColor: '#475569', backgroundColor: '#0F172A', color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
+  bookingReasonInput: { minHeight: 96, paddingTop: 12 },
+  submitBookingButton: { minHeight: 48, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 9, backgroundColor: '#2563EB', borderRadius: 11, marginTop: 20 },
+  disabledBookingButton: { opacity: 0.6 },
+  submitBookingText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   actionText: { color: '#FFFFFF', fontWeight: '700' },
   intake: { width: '100%', maxWidth: 500, maxHeight: '85%', backgroundColor: '#1E293B', borderRadius: 14, padding: 20 },
   category: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 10, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#334155' },

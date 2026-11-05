@@ -1,3 +1,4 @@
+import '../lib/polyfills';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
@@ -5,7 +6,7 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-get-random-values';
 import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
@@ -135,7 +136,10 @@ function RootAuthGate() {
   const profileRef = useRef(profile);
   const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
   const previousAuthUserId = useRef<string | null>(null);
+  const pushRegisteredUserId = useRef<string | null>(null);
   const router = useRouter();
+  const routerRef = useRef(router);
+  const applyAccountLanguageRef = useRef(applyAccountLanguage);
   const routePathname = usePathname();
   const segments = useSegments();
   const segmentsRef = useRef<string[]>(segments);
@@ -179,6 +183,11 @@ function RootAuthGate() {
   useEffect(() => {
     routePathnameRef.current = routePathname;
   }, [routePathname]);
+
+  useEffect(() => {
+    routerRef.current = router;
+    applyAccountLanguageRef.current = applyAccountLanguage;
+  }, [router, applyAccountLanguage]);
 
   useEffect(() => {
     const userId = authUser?.id;
@@ -301,7 +310,7 @@ function RootAuthGate() {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.removeItem('mvs_logout_requested');
         }
-        if (mounted) router.replace('/auth?mode=signin');
+        if (mounted) routerRef.current.replace('/auth?mode=signin');
         void finalizeLoading();
         return;
       }
@@ -335,7 +344,7 @@ function RootAuthGate() {
         }
         if (isAuthPage) return;
         if (mounted) {
-          router.replace('/auth?mode=signin');
+          routerRef.current.replace('/auth?mode=signin');
         }
         return;
       }
@@ -357,7 +366,7 @@ function RootAuthGate() {
           if (mounted) {
             setAuthUser(null);
             setProfile(null);
-            router.replace('/auth?mode=signin');
+            routerRef.current.replace('/auth?mode=signin');
           }
           return;
         }
@@ -369,7 +378,7 @@ function RootAuthGate() {
           if (mounted) {
             setAuthUser(null);
             setProfile(null);
-            router.replace('/auth?mode=signin&suspended=1');
+            routerRef.current.replace('/auth?mode=signin&suspended=1');
           }
           return;
         }
@@ -377,7 +386,7 @@ function RootAuthGate() {
         console.log('[AUTH ROUTER] Profile query result:', { profileData });
         const resolvedProfile = profileData || cachedProfile || null;
         if (resolvedProfile?.preferred_language) {
-          await applyAccountLanguage(normalizeAppLanguage(resolvedProfile.preferred_language));
+          await applyAccountLanguageRef.current(normalizeAppLanguage(resolvedProfile.preferred_language));
         }
         const pendingManualRole = Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
           ? window.localStorage.getItem('mvs_pending_signup_role')
@@ -407,9 +416,12 @@ function RootAuthGate() {
           });
         }
 
-        void registerForPushNotifications(session.user.id).catch((error) => {
-          console.warn('[Notifications] Push registration failed:', error);
-        });
+        if (pushRegisteredUserId.current !== session.user.id) {
+          pushRegisteredUserId.current = session.user.id;
+          void registerForPushNotifications(session.user.id).catch((error) => {
+            console.warn('[Notifications] Push registration failed:', error);
+          });
+        }
 
         if (!mounted) return;
 
@@ -425,7 +437,7 @@ function RootAuthGate() {
             ? '(merchant)'
             : '(client)';
         if (currentRootSegment !== expectedRootSegment) {
-          router.replace(`/${expectedRootSegment}` as '/(client)' | '/(vet)' | '/(merchant)');
+          routerRef.current.replace(`/${expectedRootSegment}` as '/(client)' | '/(vet)' | '/(merchant)');
         }
       } catch (err) {
         console.error('[Auth Layout] Error in auth layout guard:', err);
@@ -434,7 +446,7 @@ function RootAuthGate() {
           void finalizeLoading();
           return;
         }
-        if (mounted) router.replace('/auth?mode=signin');
+        if (mounted) routerRef.current.replace('/auth?mode=signin');
       }
     };
 
@@ -474,7 +486,7 @@ function RootAuthGate() {
           }
 
           if (!mounted) return;
-          router.replace(recoveryError
+          routerRef.current.replace(recoveryError
             ? { pathname: '/reset-password', params: { recoveryError } }
             : '/reset-password');
           if (mounted) setLoading(false);
@@ -489,6 +501,7 @@ function RootAuthGate() {
 
       if (event === 'SIGNED_OUT') {
         previousAuthUserId.current = null;
+        pushRegisteredUserId.current = null;
         if (mounted) {
           setAuthUser(null);
           setProfile(null);
@@ -496,44 +509,30 @@ function RootAuthGate() {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.setItem('mvs_logout_requested', '1');
         }
-        if (mounted) router.replace('/auth?mode=signin');
+        if (mounted) routerRef.current.replace('/auth?mode=signin');
         if (mounted) setLoading(false);
         void hideSplashSafely();
         return;
       }
 
       if (event === 'PASSWORD_RECOVERY') {
-        if (mounted) router.replace('/reset-password');
+        if (mounted) routerRef.current.replace('/reset-password');
         if (mounted) setLoading(false);
+        return;
+      }
+
+      if (event === 'TOKEN_REFRESHED' && session?.user?.id === previousAuthUserId.current) {
         return;
       }
 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         previousAuthUserId.current = session.user.id;
         if (event === 'SIGNED_IN') void logActivity('user_login', session.user.id);
-        void safeSupabaseCall<AuthProfileState | null>(() => supabase
-          .from('profiles')
-          .select('role, full_name, nin_verified, email, avatar_url, has_seen_welcome, deleted_at, is_banned, preferred_language')
-          .eq('id', session.user.id)
-          .maybeSingle())
-          .then(async (data) => {
-            if (mounted) setProfile(data || null);
-            if (mounted && event === 'SIGNED_IN' && data?.nin_verified === false) {
-              const role = data.role === 'vet' || data.role === 'veterinarian' ? 'vet' : data.role === 'merchant' ? 'merchant' : 'client';
-              setNinReminderRole(role);
-            }
-            if (data?.preferred_language) {
-              await applyAccountLanguage(normalizeAppLanguage(data.preferred_language));
-            }
-            await writeCachedAuthState(session.user, data || session.user.user_metadata || null);
-          })
-          .catch((error) => {
-            console.warn('[Auth Layout] Profile refresh unavailable; retaining cached auth state:', error);
+        if (event === 'SIGNED_IN') {
+          void syncProfileVerificationStatus(session.user.id).catch((error) => {
+            console.warn('[Auth Layout] Verification sync failed after auth event:', error);
           });
-
-        void syncProfileVerificationStatus(session.user.id).catch((error) => {
-          console.warn('[Auth Layout] Verification sync failed after auth event:', error);
-        });
+        }
       }
 
       if (event !== 'INITIAL_SESSION' && event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED') {
@@ -554,7 +553,7 @@ function RootAuthGate() {
       })
       .catch((error) => {
         console.error('[Auth Layout] Initial session lookup failed:', error);
-        if (mounted) router.replace('/auth?mode=signin');
+        if (mounted) routerRef.current.replace('/auth?mode=signin');
       })
       .finally(() => {
         void finalizeLoading();
@@ -567,7 +566,7 @@ function RootAuthGate() {
       }
       authListener.subscription.unsubscribe();
     };
-  }, [router, applyAccountLanguage]);
+  }, []);
 
   if (loading) {
     return (
@@ -596,6 +595,7 @@ function RootAuthGate() {
       <OfflineSyncBanner userId={authUser?.id} />
       <NotificationCenter
         notifications={authUser && routePathname === '/' ? pendingNotifications : []}
+        dashboardRole={routePathname === '/' ? profile?.role || authUser?.user_metadata?.role || null : null}
         onRead={async (notificationId) => {
           try {
             await markNotificationRead(notificationId);
@@ -747,17 +747,62 @@ function NetworkStatusBanner() {
   );
 }
 
-function NotificationCenter({ notifications, onRead }: { notifications: StoredNotification[]; onRead: (notificationId: string) => Promise<void> }) {
+function NotificationCenter({
+  notifications,
+  dashboardRole,
+  onRead,
+}: {
+  notifications: StoredNotification[];
+  dashboardRole: string | null;
+  onRead: (notificationId: string) => Promise<void>;
+}) {
   const [visible, setVisible] = useState(false);
   const insets = useSafeAreaInsets();
-  if (notifications.length === 0) return null;
+  const router = useRouter();
+  const showProviderMapShortcuts = dashboardRole === 'vet'
+    || dashboardRole === 'veterinarian'
+    || dashboardRole === 'merchant';
+  const dashboardQuickActionsPosition = Platform.OS === 'web' ? 'fixed' : 'absolute';
+  if (notifications.length === 0 && !showProviderMapShortcuts) return null;
 
   return (
     <>
-      <TouchableOpacity style={[styles.notificationBell, { top: insets.top + 10 }]} onPress={() => setVisible(true)} accessibilityLabel={`${notifications.length} unread notifications`}>
-        <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
-        <View style={styles.notificationCount}><Text style={styles.notificationCountText}>{notifications.length > 99 ? '99+' : notifications.length}</Text></View>
-      </TouchableOpacity>
+      <View
+        style={[
+          styles.dashboardQuickActions,
+          {
+            top: insets.top + 10,
+            position: dashboardQuickActionsPosition,
+          },
+        ]}
+      >
+        {notifications.length > 0 ? (
+          <TouchableOpacity style={styles.notificationBell} onPress={() => setVisible(true)} accessibilityLabel={`${notifications.length} unread notifications`} accessibilityRole="button">
+            <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
+            <View style={styles.notificationCount}><Text style={styles.notificationCountText}>{notifications.length > 99 ? '99+' : notifications.length}</Text></View>
+          </TouchableOpacity>
+        ) : null}
+        {showProviderMapShortcuts ? (
+          <>
+            <TouchableOpacity
+              style={styles.dashboardMapButton}
+              onPress={() => router.push({ pathname: '/(client)/vets', params: { openMap: 'true', returnTo: 'dashboard' } })}
+              accessibilityLabel="Explore veterinarian locations on the map"
+              accessibilityRole="button"
+            >
+              <MaterialCommunityIcons name="map-marker-radius" size={23} color="#10B981" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dashboardMapButton}
+              onPress={() => router.push('/(client)/explore-clinics')}
+              accessibilityLabel="Explore veterinary institutions and pet businesses on the map"
+              accessibilityRole="button"
+            >
+              <Image source={require('../assets/images/clinic-marker.png')} style={styles.dashboardClinicMapIcon} resizeMode="contain" />
+            </TouchableOpacity>
+          </>
+        ) : null}
+      </View>
       <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
         <Pressable style={[styles.notificationBackdrop, { paddingTop: insets.top + 58 }]} onPress={() => setVisible(false)}>
           <Pressable style={styles.notificationPanel} onPress={(event) => event.stopPropagation()}>
@@ -884,10 +929,6 @@ const styles = StyleSheet.create({
   offlineSyncText: { color: '#D1FAE5', fontSize: 11, lineHeight: 16 },
   offlineSyncAction: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', paddingHorizontal: 4 },
   notificationBell: {
-    position: 'absolute',
-    top: 14,
-    right: 16,
-    zIndex: 110,
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -897,6 +938,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#67E8F9',
   },
+  dashboardQuickActions: { position: 'absolute', right: 16, zIndex: 110, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dashboardMapButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
+  dashboardClinicMapIcon: { width: 25, height: 25 },
   notificationCount: {
     position: 'absolute',
     top: -4,
