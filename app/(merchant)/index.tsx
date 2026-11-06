@@ -23,6 +23,7 @@ import KnowledgeHubSection from "../../components/KnowledgeHubSection";
 import MarketplaceBrowseModal from "../../components/MarketplaceBrowseModal";
 import ProductImageCarousel from "../../components/ProductImageCarousel";
 import WelcomeModal from "../../components/WelcomeModal";
+import DashboardQuickActions from "../../components/DashboardQuickActions";
 import {
     addMarketplaceProduct,
     fetchMarketplaceProducts,
@@ -402,9 +403,12 @@ export default function MerchantDashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.greeting}>
-          <Text style={styles.greetingTitle}>{t("home.hello", { name: merchantFirstName })} 👋</Text>
-          <Text style={styles.greetingSubtitle}>Welcome back to your store workspace</Text>
+        <View style={styles.dashboardHeader}>
+          <View style={styles.greeting}>
+            <Text style={styles.greetingTitle}>{t("home.hello", { name: merchantFirstName })} 👋</Text>
+            <Text style={styles.greetingSubtitle}>Welcome back to your store workspace</Text>
+          </View>
+          <DashboardQuickActions showInstitutionMap />
         </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)} accessibilityRole="button">
           <View style={styles.aiIcon}><MaterialCommunityIcons name="robot-outline" size={28} color="#FFFFFF" /></View>
@@ -705,7 +709,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F172A" },
   modalKeyboard: { flex: 1 },
   content: { padding: 16, paddingBottom: 36 },
-  greeting: { marginBottom: 18, paddingRight: 156 },
+  dashboardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 18 },
+  greeting: { flex: 1, marginBottom: 0 },
   greetingTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
   greetingSubtitle: { color: "#94A3B8", fontSize: 13, lineHeight: 19, marginTop: 5 },
   title: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },

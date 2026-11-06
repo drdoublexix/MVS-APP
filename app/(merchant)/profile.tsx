@@ -618,18 +618,23 @@ export default function MerchantProfileScreen() {
           onClose={() => setAvatarPreviewVisible(false)}
         />
 
-        <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.section}
+          activeOpacity={0.85}
+          onPress={() => setModal('profile')}
+          accessibilityRole="button"
+          accessibilityLabel="Edit business information"
+        >
           <Text style={styles.sectionTitle}>{t('settings.businessInfo')}</Text>
           <InfoRow icon="storefront" label="Business Name" value={profile.business || 'Not set'} />
           <InfoRow icon="map-marker" label="Location" value={profile.location || 'Not set'} />
           <InfoRow icon="file-document" label="CAC Reg Number" value={profile.cacRegNumber || 'Not set'} />
           <InfoRow icon="phone" label="Phone" value={profile.phone || 'Not set'} />
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
           <LanguagePreference />
-          <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
           <Setting label={t('nav.inventory')} icon="archive" onPress={() => router.push('/inventory')} />
           <Setting label="Vet & pet-care business listings" icon="hospital-building" onPress={() => router.push('/(merchant)/manage-clinic')} />
           <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />

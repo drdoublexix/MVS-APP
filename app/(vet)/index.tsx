@@ -10,6 +10,7 @@ import PulletRearingPlanGenerator from '../../components/PulletRearingPlanGenera
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
+import DashboardQuickActions from '../../components/DashboardQuickActions';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
@@ -326,9 +327,12 @@ export default function VetDashboardScreen() {
     <SafeAreaView style={styles.container}>
       <WelcomeModal />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.greeting}>
-          <Text style={styles.greetingTitle}>{t('home.hello', { name: vetGreetingName })} 👋</Text>
-          <Text style={styles.greetingSubtitle}>{t('dashboard.vetGreetingSubtitle')}</Text>
+        <View style={styles.dashboardHeader}>
+          <View style={styles.greeting}>
+            <Text style={styles.greetingTitle}>{t('home.hello', { name: vetGreetingName })} 👋</Text>
+            <Text style={styles.greetingSubtitle}>{t('dashboard.vetGreetingSubtitle')}</Text>
+          </View>
+          <DashboardQuickActions showVeterinarianMap showInstitutionMap />
         </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>
@@ -553,7 +557,8 @@ const styles = StyleSheet.create({
   aiText: { color: '#CFFAFE', fontSize: 12, lineHeight: 18, marginTop: 3 },
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16, paddingBottom: 36 },
-  greeting: { marginBottom: 18, paddingRight: 156 },
+  dashboardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 },
+  greeting: { flex: 1, marginBottom: 0 },
   greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
   greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   title: { color: '#FFFFFF', fontSize: 26, fontWeight: '700' },

@@ -1,19 +1,19 @@
 import '../lib/polyfills';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { ActivityIndicator, AppState, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-get-random-values';
-import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { markNotificationRead, syncPendingNotifications, type StoredNotification } from '../lib/notifications';
+import { SafeAreaView as ContextSafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import { syncPendingNotifications, type StoredNotification } from '../lib/notifications';
 import { readOfflineRecords, subscribeToOfflineQueue, syncOfflineRecords } from '../lib/offlineRecords';
 import { logActivity, isSuperAdmin } from '../lib/admin';
 import { clearCachedAuthState, readCachedAuthState, safeSupabaseCall, signOutUser, subscribeToNetworkStatus, supabase, syncProfileVerificationStatus, writeCachedAuthState } from '../lib/supabase';
 import { LanguageProvider, normalizeAppLanguage, useLanguage } from '../lib/language';
+import { DashboardNotificationsProvider, useDashboardNotifications } from '../components/DashboardQuickActions';
 
 const registerForPushNotifications = async (userId: string) => {
   const { registerForPushNotifications: register } = await import('../lib/notifications');
@@ -134,7 +134,7 @@ function RootAuthGate() {
   const [profile, setProfile] = useState<AuthProfileState | null>(null);
   const [ninReminderRole, setNinReminderRole] = useState<'client' | 'vet' | 'merchant' | null>(null);
   const profileRef = useRef(profile);
-  const [pendingNotifications, setPendingNotifications] = useState<StoredNotification[]>([]);
+  const { setNotifications: setPendingNotifications } = useDashboardNotifications();
   const previousAuthUserId = useRef<string | null>(null);
   const pushRegisteredUserId = useRef<string | null>(null);
   const router = useRouter();
@@ -263,7 +263,7 @@ function RootAuthGate() {
       appStateSubscription.remove();
       void supabase.removeChannel(notificationChannel);
     };
-  }, [authUser?.id]);
+  }, [authUser?.id, setPendingNotifications]);
 
   useEffect(() => {
     let mounted = true;
@@ -505,6 +505,7 @@ function RootAuthGate() {
         if (mounted) {
           setAuthUser(null);
           setProfile(null);
+          setPendingNotifications([]);
         }
         if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
           window.localStorage.setItem('mvs_logout_requested', '1');
@@ -566,7 +567,7 @@ function RootAuthGate() {
       }
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [setPendingNotifications]);
 
   if (loading) {
     return (
@@ -593,18 +594,6 @@ function RootAuthGate() {
   return (
     <>
       <OfflineSyncBanner userId={authUser?.id} />
-      <NotificationCenter
-        notifications={authUser && routePathname === '/' ? pendingNotifications : []}
-        dashboardRole={routePathname === '/' ? profile?.role || authUser?.user_metadata?.role || null : null}
-        onRead={async (notificationId) => {
-          try {
-            await markNotificationRead(notificationId);
-            setPendingNotifications((current) => current.filter((notification) => notification.id !== notificationId));
-          } catch (error) {
-            console.warn('[Notifications] Failed to mark notification as read:', error);
-          }
-        }}
-      />
       <Modal visible={Boolean(ninReminderRole)} transparent animationType="fade" onRequestClose={() => setNinReminderRole(null)}>
         <View style={styles.ninReminderBackdrop}>
           <View style={styles.ninReminderCard}>
@@ -711,19 +700,21 @@ export default function RootLayout() {
     <ErrorBoundary>
       <SafeAreaProvider style={{ flex: 1, width: '100%', height: '100%', backgroundColor: '#0B132B' }}>
         <LanguageProvider>
-          <ContextSafeAreaView style={styles.rootSafeArea} edges={[]}>
-            <RootAuthGate />
-            <NetworkStatusBanner />
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
-              <Stack.Screen name="auth" options={{ headerShown: false }} />
-              <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-              <Stack.Screen name="passport/[id]" options={{ headerShown: false }} />
-              <Stack.Screen name="(client)" options={{ headerShown: false }} />
-              <Stack.Screen name="(vet)" options={{ headerShown: false }} />
-              <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
-            </Stack>
-          </ContextSafeAreaView>
+          <DashboardNotificationsProvider>
+            <ContextSafeAreaView style={styles.rootSafeArea} edges={[]}>
+              <RootAuthGate />
+              <NetworkStatusBanner />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" options={{ title: 'MVS - Splash' }} />
+                <Stack.Screen name="auth" options={{ headerShown: false }} />
+                <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+                <Stack.Screen name="passport/[id]" options={{ headerShown: false }} />
+                <Stack.Screen name="(client)" options={{ headerShown: false }} />
+                <Stack.Screen name="(vet)" options={{ headerShown: false }} />
+                <Stack.Screen name="(merchant)" options={{ headerShown: false }} />
+              </Stack>
+            </ContextSafeAreaView>
+          </DashboardNotificationsProvider>
         </LanguageProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
@@ -744,92 +735,6 @@ function NetworkStatusBanner() {
         {status === 'retrying' ? 'Connection hiccup. Retrying...' : 'Connection unavailable. Your saved session is still active.'}
       </Text>
     </View>
-  );
-}
-
-function NotificationCenter({
-  notifications,
-  dashboardRole,
-  onRead,
-}: {
-  notifications: StoredNotification[];
-  dashboardRole: string | null;
-  onRead: (notificationId: string) => Promise<void>;
-}) {
-  const [visible, setVisible] = useState(false);
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const showProviderMapShortcuts = dashboardRole === 'vet'
-    || dashboardRole === 'veterinarian'
-    || dashboardRole === 'merchant';
-  const dashboardQuickActionsPosition = Platform.OS === 'web' ? 'fixed' : 'absolute';
-  if (notifications.length === 0 && !showProviderMapShortcuts) return null;
-
-  return (
-    <>
-      <View
-        style={[
-          styles.dashboardQuickActions,
-          {
-            top: insets.top + 10,
-            position: dashboardQuickActionsPosition,
-          },
-        ]}
-      >
-        {notifications.length > 0 ? (
-          <TouchableOpacity style={styles.notificationBell} onPress={() => setVisible(true)} accessibilityLabel={`${notifications.length} unread notifications`} accessibilityRole="button">
-            <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
-            <View style={styles.notificationCount}><Text style={styles.notificationCountText}>{notifications.length > 99 ? '99+' : notifications.length}</Text></View>
-          </TouchableOpacity>
-        ) : null}
-        {showProviderMapShortcuts ? (
-          <>
-            <TouchableOpacity
-              style={styles.dashboardMapButton}
-              onPress={() => router.push({ pathname: '/(client)/vets', params: { openMap: 'true', returnTo: 'dashboard' } })}
-              accessibilityLabel="Explore veterinarian locations on the map"
-              accessibilityRole="button"
-            >
-              <MaterialCommunityIcons name="map-marker-radius" size={23} color="#10B981" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.dashboardMapButton}
-              onPress={() => router.push('/(client)/explore-clinics')}
-              accessibilityLabel="Explore veterinary institutions and pet businesses on the map"
-              accessibilityRole="button"
-            >
-              <Image source={require('../assets/images/clinic-marker.png')} style={styles.dashboardClinicMapIcon} resizeMode="contain" />
-            </TouchableOpacity>
-          </>
-        ) : null}
-      </View>
-      <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
-        <Pressable style={[styles.notificationBackdrop, { paddingTop: insets.top + 58 }]} onPress={() => setVisible(false)}>
-          <Pressable style={styles.notificationPanel} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.notificationHeader}>
-              <Text style={styles.notificationTitle}>Notifications</Text>
-              <TouchableOpacity onPress={() => setVisible(false)} accessibilityLabel="Close notifications">
-                <MaterialCommunityIcons name="close" size={22} color="#CBD5E1" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.notificationList}
-              contentContainerStyle={styles.notificationListContent}
-              showsVerticalScrollIndicator
-              keyboardShouldPersistTaps="handled"
-            >
-              {notifications.map((notification) => (
-                <TouchableOpacity key={notification.id} style={styles.notificationItem} onPress={() => void onRead(notification.id)}>
-                  <Text style={styles.notificationItemTitle}>{notification.title}</Text>
-                  <Text style={styles.notificationItemBody}>{notification.body}</Text>
-                  <Text style={styles.notificationItemTime}>{new Date(notification.created_at).toLocaleString()}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </>
   );
 }
 
@@ -928,40 +833,4 @@ const styles = StyleSheet.create({
   offlineSyncCopy: { flex: 1 },
   offlineSyncText: { color: '#D1FAE5', fontSize: 11, lineHeight: 16 },
   offlineSyncAction: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', paddingHorizontal: 4 },
-  notificationBell: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0E7490',
-    borderWidth: 1,
-    borderColor: '#67E8F9',
-  },
-  dashboardQuickActions: { position: 'absolute', right: 16, zIndex: 110, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dashboardMapButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
-  dashboardClinicMapIcon: { width: 25, height: 25 },
-  notificationCount: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EF4444',
-  },
-  notificationCountText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
-  notificationBackdrop: { flex: 1, alignItems: 'flex-end', paddingTop: 64, paddingHorizontal: 16, backgroundColor: '#00000066' },
-  notificationPanel: { width: '100%', maxWidth: 380, height: '75%', minHeight: 180, maxHeight: 560, backgroundColor: '#1E293B', borderRadius: 12, borderWidth: 1, borderColor: '#475569', padding: 14, overflow: 'hidden' },
-  notificationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#334155' },
-  notificationList: { flex: 1, minHeight: 0 },
-  notificationListContent: { paddingBottom: 4 },
-  notificationTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
-  notificationItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
-  notificationItemTitle: { color: '#6EE7B7', fontSize: 13, fontWeight: '800' },
-  notificationItemBody: { color: '#E2E8F0', fontSize: 13, lineHeight: 19, marginTop: 4 },
-  notificationItemTime: { color: '#94A3B8', fontSize: 10, marginTop: 6 },
 });

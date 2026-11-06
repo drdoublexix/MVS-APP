@@ -10,6 +10,7 @@ import PulletRearingPlanGenerator from '../../components/PulletRearingPlanGenera
 import MarketplaceBrowseModal from '../../components/MarketplaceBrowseModal';
 import ProductImageCarousel from '../../components/ProductImageCarousel';
 import WelcomeModal from '../../components/WelcomeModal';
+import DashboardQuickActions from '../../components/DashboardQuickActions';
 import { requestAiAssistant } from '../../lib/aiAssistant';
 import { requestDeviceLocation } from '../../lib/location';
 import { fetchMarketplaceProducts, useMarketplace } from '../../lib/marketplace';
@@ -275,9 +276,12 @@ export default function ClientHome() {
     <SafeAreaView style={styles.container}>
       <WelcomeModal />
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.greeting}>
-          <Text style={styles.greetingTitle}>{t('home.hello', { name: firstName })} 👋</Text>
-          <Text style={styles.greetingSubtitle}>{t('home.subtitle')}</Text>
+        <View style={styles.dashboardHeader}>
+          <View style={styles.greeting}>
+            <Text style={styles.greetingTitle}>{t('home.hello', { name: firstName })} 👋</Text>
+            <Text style={styles.greetingSubtitle}>{t('home.subtitle')}</Text>
+          </View>
+          <DashboardQuickActions />
         </View>
         <TouchableOpacity style={styles.aiCard} onPress={() => setAiVisible(true)}>
           <View style={styles.aiIcon}>
@@ -554,7 +558,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 16 },
   contentContainer: { paddingBottom: 96 },
-  greeting: { marginBottom: 18 },
+  dashboardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 },
+  greeting: { flex: 1, marginBottom: 0 },
   greetingTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
   greetingSubtitle: { color: '#94A3B8', fontSize: 13, marginTop: 5 },
   aiCard: { backgroundColor: '#0E7490', borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 24, elevation: 4, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6 },

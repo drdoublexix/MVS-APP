@@ -644,14 +644,20 @@ export default function VetProfileScreen() {
         />
 
         {/* Practice Information */}
-        <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.section}
+          activeOpacity={0.85}
+          onPress={() => setModal('profile')}
+          accessibilityRole="button"
+          accessibilityLabel="Edit practice information"
+        >
           <Text style={styles.sectionTitle}>{t('settings.practiceInfo')}</Text>
           <InfoRow icon="hospital-box" label="Clinic" value={profile.clinic || 'Not set'} />
           <InfoRow icon="briefcase" label="Specialty" value={profile.specialty || 'Not set'} />
           {role === 'vet' ? <InfoRow icon="text-box-outline" label="Bio" value={profile.bio || 'Add a short bio'} /> : null}
           <InfoRow icon="card-account-details" label="License Number" value={profile.licenseNumber || 'Not set'} verified={profile.isVetApproved ?? undefined} />
           <InfoRow icon="phone" label="Phone" value={profile.phone || 'Not set'} />
-        </View>
+        </TouchableOpacity>
 
         {/* Account Settings */}
         <View style={styles.section}>
@@ -660,7 +666,6 @@ export default function VetProfileScreen() {
           <MVSFeedCalculator onContactVendor={() => router.replace({ pathname: '/(vet)', params: { openMarketplace: 'true' } })} />
           <MVSDiseasePredictor />
           <PulletRearingPlanGenerator audience="vet" tight />
-          <Setting label={t('settings.editProfile')} icon="pencil" onPress={() => setModal('profile')} />
           <Setting label="Services & pricing" icon="cash-multiple" onPress={() => void openServicePricing()} />
           <Setting label={t('settings.changePassword')} icon="lock" onPress={() => setModal('password')} />
           <Setting label={t('settings.notifications')} icon="bell" onPress={() => setModal('notifications')} />
