@@ -6,7 +6,7 @@ import { getProfileRole, getRoleNavPath, sendPasswordResetLink, supabase } from 
 import { languageOptions, useLanguage } from '../../lib/language';
 import { getNinVerificationErrorMessage } from '../../lib/ninVerification';
 
-type Role = 'client' | 'vet' | 'merchant';
+type Role = 'client' | 'vet' | 'paravet' | 'merchant';
 type AuthMode = 'sign-in' | 'sign-up';
 type VerifiedIdentity = {
   firstName: string;
@@ -231,8 +231,8 @@ export default function AuthScreen() {
       if (mode === 'sign-up' && !/^[789]\d{9}$/.test(phoneNumber)) {
         throw new Error(t('auth.invalidPhone'));
       }
-      if (mode === 'sign-up' && role === 'vet' && !licenseNumber.trim()) {
-        throw new Error(t('auth.vcnRequired'));
+      if (mode === 'sign-up' && (role === 'vet' || role === 'paravet') && !licenseNumber.trim()) {
+        throw new Error(t(role === 'vet' ? 'auth.vcnRequired' : 'auth.paravetLicenseRequired'));
       }
       if (mode === 'sign-up' && !/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])/.test(password)) {
         const validationMessage = 'Password must include an uppercase letter, lowercase letter, number, and special symbol (@$!%*?&).';
@@ -254,7 +254,7 @@ export default function AuthScreen() {
               phone_number: `+234${phoneNumber}`,
               role,
               preferred_language: language,
-              ...(role === 'vet' ? { license_number: licenseNumber.trim() } : {}),
+              ...(role === 'vet' || role === 'paravet' ? { license_number: licenseNumber.trim() } : {}),
             },
             emailRedirectTo: getAuthRedirectUrl(),
           },
@@ -420,9 +420,9 @@ export default function AuthScreen() {
 
         {mode === 'sign-up' && verifiedIdentity ? (
           <View style={styles.roles}>
-            {(['client', 'vet', 'merchant'] as Role[]).map((roleOption) => (
+            {(['client', 'vet', 'paravet', 'merchant'] as Role[]).map((roleOption) => (
               <TouchableOpacity key={roleOption} style={[styles.role, role === roleOption && styles.selectedRole]} onPress={() => setRole(roleOption)}>
-                <Text style={[styles.roleText, role === roleOption && styles.selectedRoleText]}>{t(roleOption === 'client' ? 'auth.petOwner' : roleOption === 'vet' ? 'auth.veterinarian' : 'auth.merchant')}</Text>
+                <Text style={[styles.roleText, role === roleOption && styles.selectedRoleText]}>{t(roleOption === 'client' ? 'auth.petOwner' : roleOption === 'vet' ? 'auth.veterinarian' : roleOption === 'paravet' ? 'auth.paravet' : 'auth.merchant')}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -445,11 +445,11 @@ export default function AuthScreen() {
             />
           </View>
         ) : null}
-        {mode === 'sign-up' && verifiedIdentity && role === 'vet' ? (
+        {mode === 'sign-up' && verifiedIdentity && (role === 'vet' || role === 'paravet') ? (
           <TextInput
-            accessibilityLabel="Veterinary Council of Nigeria (VCN) number"
+            accessibilityLabel={role === 'vet' ? 'Veterinary Council of Nigeria (VCN) number' : 'Veterinary paraprofessional license number'}
             style={styles.input}
-            placeholder={t('auth.vcn')}
+            placeholder={t(role === 'vet' ? 'auth.vcn' : 'auth.paravetLicense')}
             placeholderTextColor="#718096"
             value={licenseNumber}
             onChangeText={setLicenseNumber}
@@ -603,8 +603,8 @@ const styles = StyleSheet.create({
   passwordToggle: { paddingHorizontal: 14, paddingVertical: 12 },
   passwordHint: { color: '#94A3B8', fontSize: 12, marginTop: -6 },
   passwordError: { color: '#FDA4AF', fontSize: 12, marginTop: -6 },
-  roles: { flexDirection: 'row', gap: 8 },
-  role: { flex: 1, borderColor: '#334155', borderRadius: 8, borderWidth: 1, padding: 12, alignItems: 'center', justifyContent: 'center' },
+  roles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  role: { flexBasis: '48%', flexGrow: 1, borderColor: '#334155', borderRadius: 8, borderWidth: 1, padding: 12, alignItems: 'center', justifyContent: 'center' },
   selectedRole: { backgroundColor: '#10B981', borderColor: '#10B981' },
   roleText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700', textAlign: 'center', width: '100%' },
   selectedRoleText: { color: '#052E2B' },

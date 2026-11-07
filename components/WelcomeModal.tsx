@@ -6,12 +6,14 @@ import { getCurrentUser, supabase } from '../lib/supabase';
 
 type WelcomeProfile = {
   role?: string | null;
+  full_name?: string | null;
   has_seen_welcome?: boolean | null;
 };
 
 const getProfileRoute = (role?: string | null) => {
   switch (role) {
     case 'vet':
+    case 'paravet':
       return '/(vet)/profile';
     case 'merchant':
       return '/(merchant)/profile';
@@ -21,15 +23,18 @@ const getProfileRoute = (role?: string | null) => {
   }
 };
 
-const getWelcomeCopy = (role?: string | null) => {
+const getWelcomeCopy = (role?: string | null, fullName?: string | null) => {
+  const firstName = fullName?.trim().split(/\s+/)[0];
+  const greeting = firstName ? `Welcome, ${firstName}!` : 'Welcome!';
   switch (role) {
     case 'vet':
-      return "Welcome, Doctor! To enable full functionality and seamless payments, please update your practice information and bank account details via the \"Edit Profile\" & \"Bank account\" section.";
+    case 'paravet':
+      return `${greeting} To enable full functionality and seamless payments, please update your practice information and bank account details via the "Edit Profile" & "Bank account" section.`;
     case 'merchant':
-      return 'Welcome! To enable full functionality and seamless payments, please update your business information and bank account details via the \"Edit Profile\" & \"Bank account\" section.';
+      return `${greeting} To enable full functionality and seamless payments, please update your business information and bank account details via the "Edit Profile" & "Bank account" section.`;
     case 'client':
     default:
-      return 'Welcome Critter custodian! To enable full functionality and personalized animal care, please complete your profile information and update your phone number in the "Edit Profile" section.\n\nAlso don\'t forget to add your pets and farm records, on your profile page to keep track of their health journey! Enjoy 🎉';
+      return `${greeting} To get started with personalized animal care, complete your profile and phone number in the "Edit Profile" section. You can also add your pets and farm records to keep track of their health journey.`;
   }
 };
 
@@ -52,7 +57,7 @@ export default function WelcomeModal() {
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('role, has_seen_welcome')
+          .select('role, full_name, has_seen_welcome')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -65,13 +70,17 @@ export default function WelcomeModal() {
           return;
         }
 
-        const metadataRole = user.user_metadata?.role === 'vet' || user.user_metadata?.role === 'merchant' || user.user_metadata?.role === 'client'
+        const metadataRole = user.user_metadata?.role === 'vet' || user.user_metadata?.role === 'paravet' || user.user_metadata?.role === 'merchant' || user.user_metadata?.role === 'client'
           ? user.user_metadata.role
           : null;
-        const selectedRole = metadataRole;
+        const selectedRole = data?.role || metadataRole;
         const nextProfile = data
           ? { ...data, role: selectedRole || data.role }
-          : (selectedRole ? { role: selectedRole, has_seen_welcome: false } : null);
+          : (selectedRole ? {
+            role: selectedRole,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+            has_seen_welcome: false,
+          } : null);
         if (!nextProfile) {
           setVisible(false);
           setLoading(false);
@@ -129,7 +138,7 @@ export default function WelcomeModal() {
             <MaterialCommunityIcons name="account-heart-outline" size={28} color="#FFFFFF" />
           </View>
           <Text style={styles.title}>Welcome to MVS</Text>
-          <Text style={styles.message}>{getWelcomeCopy(profile.role)}</Text>
+          <Text style={styles.message}>{getWelcomeCopy(profile.role, profile.full_name)}</Text>
 
           <Pressable style={styles.primaryButton} onPress={() => { void handleContinue(); }}>
             <Text style={styles.primaryButtonText}>Go to Profile</Text>

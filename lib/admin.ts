@@ -39,6 +39,7 @@ export interface AdminUserNin {
 
 export interface VetApplication {
   id: string;
+  role: 'vet' | 'paravet';
   email: string;
   full_name: string | null;
   phone_number: string | null;

@@ -392,14 +392,14 @@ function RootAuthGate() {
           ? window.localStorage.getItem('mvs_pending_signup_role')
           : null;
         const pendingRole = pendingManualRole;
-        let userRole = pendingRole || resolvedProfile?.role || profileData?.role;
+        let userRole = profileData?.role || pendingRole || cachedProfile?.role;
 
         if (!userRole) {
           // If no role exists yet, use metadata only. Profile creation belongs to signup.
           userRole = session.user.user_metadata?.role || pendingRole || 'client';
         }
         if (profileData?.nin_verified === false && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-          setNinReminderRole(userRole === 'vet' || userRole === 'veterinarian' ? 'vet' : userRole === 'merchant' ? 'merchant' : 'client');
+          setNinReminderRole(userRole === 'vet' || userRole === 'veterinarian' || userRole === 'paravet' ? 'vet' : userRole === 'merchant' ? 'merchant' : 'client');
         }
 
         if (pendingManualRole && Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
@@ -431,7 +431,7 @@ function RootAuthGate() {
         if (currentRootSegment === '(admin)' && isSuperAdmin(session.user.email)) {
           return;
         }
-        const expectedRootSegment = userRole === 'vet' || userRole === 'veterinarian'
+        const expectedRootSegment = userRole === 'vet' || userRole === 'veterinarian' || userRole === 'paravet'
           ? '(vet)'
           : userRole === 'merchant'
             ? '(merchant)'

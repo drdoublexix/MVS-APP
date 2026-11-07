@@ -32,7 +32,7 @@ interface AiSession {
 const getVetGreetingName = (fullName?: string | null) => {
   const nameParts = (fullName || '').trim().replace(/^dr\.?\s+/i, '').split(/\s+/).filter(Boolean);
   const lastName = nameParts[nameParts.length - 1];
-  return lastName ? `Dr. ${lastName.toLocaleUpperCase()}` : 'Dr.';
+  return lastName ? lastName.toLocaleUpperCase() : 'there';
 };
 
 export default function VetDashboardScreen() {
@@ -45,7 +45,7 @@ export default function VetDashboardScreen() {
   const [totalPatients, setTotalPatients] = useState(0);
   const [overallRating, setOverallRating] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
-  const [vetGreetingName, setVetGreetingName] = useState('Dr.');
+  const [vetGreetingName, setVetGreetingName] = useState('there');
   const [aiVisible, setAiVisible] = useState(false);
   const [userQuery, setUserQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -82,7 +82,7 @@ export default function VetDashboardScreen() {
         try {
           const user = await getCurrentUser();
           if (!user) {
-            if (active) setVetGreetingName('Dr.');
+            if (active) setVetGreetingName('there');
             return;
           }
 
@@ -102,7 +102,7 @@ export default function VetDashboardScreen() {
           if (active) setVetGreetingName(getVetGreetingName(fullName));
         } catch (error) {
           console.error('[Vet Dashboard] Could not load profile name for greeting:', error);
-          if (active) setVetGreetingName('Dr.');
+          if (active) setVetGreetingName('there');
         }
       };
 

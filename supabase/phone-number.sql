@@ -2,6 +2,5 @@
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS phone_number TEXT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS profiles_phone_number_unique
-ON public.profiles (phone_number)
-WHERE phone_number IS NOT NULL;
+-- Phone numbers can be shared across the same person's role accounts.
+DROP INDEX IF EXISTS public.profiles_phone_number_unique;

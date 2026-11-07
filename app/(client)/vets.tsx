@@ -136,7 +136,7 @@ export default function VetsScreen() {
         const detailedQuery = await supabase
           .from('profiles')
           .select(vetDirectoryFields)
-          .eq('role', 'vet')
+          .in('role', ['vet', 'paravet'])
           .eq('is_vet_approved', true)
           .is('deleted_at', null)
           .order('full_name', { ascending: true });
@@ -149,7 +149,7 @@ export default function VetsScreen() {
           const fallbackQuery = await supabase
             .from('profiles')
             .select('id, full_name, role, avatar_url, specialty, clinic, bio, latitude, longitude, city, state, phone_number, deleted_at')
-            .eq('role', 'vet')
+            .in('role', ['vet', 'paravet'])
             .eq('is_vet_approved', true)
             .is('deleted_at', null)
             .order('full_name', { ascending: true });
@@ -167,7 +167,7 @@ export default function VetsScreen() {
         if (error) throw error;
         const sortedVets = ((data || []) as VetProfile[]).map((vet) => ({
           ...vet,
-          full_name: formatVetDisplayName(vet.full_name || 'Veterinarian', 'vet'),
+          full_name: formatVetDisplayName(vet.full_name || 'Veterinarian', vet.role),
           specialty: vet.specialty || '',
           city: vet.city || null,
           state: vet.state || null,
@@ -191,7 +191,7 @@ export default function VetsScreen() {
           if (sortedVets.some((vet) => isValidCoordinate(vet.latitude, -90, 90) && isValidCoordinate(vet.longitude, -180, 180))) {
             setMapVisible(true);
           } else {
-            Alert.alert('Locations unavailable', 'No veterinarian locations are available yet.');
+            Alert.alert('Locations unavailable', 'No veterinary professional locations are available yet.');
           }
           router.setParams({ openMap: undefined });
         }
@@ -285,7 +285,7 @@ export default function VetsScreen() {
     const conversationId = `conv_${[userId, doctorId].sort().join('_')}`;
 
     try {
-      await ensureConsultationRecord(conversationId, userId, doctorId, 'client', 'vet', category);
+      await ensureConsultationRecord(conversationId, userId, doctorId, 'client', intakeVet.role, category);
     } catch (error) {
       console.warn('[Consultation] Failed to initialise active consultation from vet modal:', error);
       Alert.alert('Unable to start consultation', error instanceof Error ? error.message : 'Please try again.');
@@ -314,7 +314,8 @@ export default function VetsScreen() {
       params: {
         conversationId,
         category,
-        vet: formatVetDisplayName(intakeVet.full_name, 'vet'),
+        vet: formatVetDisplayName(intakeVet.full_name, intakeVet.role),
+        vetRole: intakeVet.role,
         clinic: intakeVet.clinic || 'Veterinary Clinic',
         receiver_id: doctorId,
         vet_id: doctorId,
@@ -420,7 +421,7 @@ export default function VetsScreen() {
       setSelectedVet(null);
       Alert.alert(
         'Request sent',
-        `Your appointment request was sent to ${formatVetDisplayName(bookingVet.full_name, 'vet')}. It is not confirmed until the veterinarian responds.`,
+        `Your appointment request was sent to ${formatVetDisplayName(bookingVet.full_name, bookingVet.role)}. It is not confirmed until they respond.`,
       );
     } catch (error) {
       console.error('[Appointments] Could not submit appointment request:', error);
@@ -436,7 +437,7 @@ export default function VetsScreen() {
 
   const openVetMap = async () => {
     if (vetsWithCoordinates.length === 0) {
-      Alert.alert('Locations unavailable', 'No veterinarian locations are available yet.');
+      Alert.alert('Locations unavailable', 'No veterinary professional locations are available yet.');
       return;
     }
     setMapVisible(true);
@@ -460,7 +461,7 @@ export default function VetsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.title}>Nearby Veterinarians</Text>
+          <Text style={styles.title}>Nearby Veterinary Professionals</Text>
           <View style={styles.mapActions}>
             <TouchableOpacity
               style={styles.mapButton}
@@ -497,10 +498,10 @@ export default function VetsScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
           {vets.length === 0 ? (
-            <Text style={styles.emptyState}>No veterinarians are available yet.</Text>
+            <Text style={styles.emptyState}>No veterinary professionals are available yet.</Text>
           ) : (
             vets.map((vet) => {
-              const specialty = vet.specialty || 'Veterinarian';
+              const specialty = vet.specialty || (vet.role === 'paravet' ? 'Veterinary paraprofessional' : 'Veterinarian');
               const location = [vet.city, vet.state].filter(Boolean).join(', ');
               const distance = vet.distanceKm !== null
                 ? `${vet.distanceKm < 10 ? vet.distanceKm.toFixed(1) : Math.round(vet.distanceKm)} km away`
@@ -521,7 +522,7 @@ export default function VetsScreen() {
                       )}
                     </View>
                     <View style={styles.flex}>
-                      <Text style={styles.doctor}>{formatVetDisplayName(vet.full_name, 'vet')}</Text>
+                      <Text style={styles.doctor}>{formatVetDisplayName(vet.full_name, vet.role)}</Text>
                       <Text style={styles.clinic}>{specialty}</Text>
                       <Text style={styles.distanceBadge}>
                         {location || 'Location Pending'}
@@ -555,7 +556,7 @@ export default function VetsScreen() {
         vets={vetsWithCoordinates.map((vet) => ({
           id: vet.id,
           full_name: vet.full_name,
-          specialty: vet.specialty || 'Veterinarian',
+          specialty: vet.specialty || (vet.role === 'paravet' ? 'Veterinary paraprofessional' : 'Veterinarian'),
           city: vet.city,
           state: vet.state,
           distanceKm: vet.distanceKm,
@@ -596,7 +597,7 @@ export default function VetsScreen() {
                     );
                   })()}
                 </TouchableOpacity>
-                <Text style={styles.modalDoctor}>{formatVetDisplayName(selectedVet.full_name, 'vet')}</Text>
+                <Text style={styles.modalDoctor}>{formatVetDisplayName(selectedVet.full_name, selectedVet.role)}</Text>
                 <View style={styles.ratingSection}>
                   <View style={styles.stars}>
                     {[1, 2, 3, 4, 5].map((star) => (
@@ -609,7 +610,7 @@ export default function VetsScreen() {
                 </View>
                 {profileLoading ? <ActivityIndicator style={styles.profileDetailsLoading} color="#10B981" /> : (
                   <View style={styles.profileDetails}>
-                    <Text style={styles.detailLabel}>About Doctor</Text>
+                    <Text style={styles.detailLabel}>About {selectedVet.role === 'paravet' ? 'Veterinary Paraprofessional' : 'Veterinarian'}</Text>
                     <Text style={styles.detailValue}>{selectedVetProfile?.bio || 'Not provided'}</Text>
                     <Text style={styles.detailLabel}>Clinic</Text>
                     <Text style={styles.detailValue}>{selectedVetProfile?.clinic || 'Not provided'}</Text>
@@ -643,7 +644,7 @@ export default function VetsScreen() {
               <View style={styles.bookingHeadingCopy}>
                 <Text style={styles.bookingTitle}>Request an appointment</Text>
                 <Text style={styles.bookingSubtitle}>
-                  {bookingVet ? formatVetDisplayName(bookingVet.full_name, 'vet') : 'Veterinarian'}
+                  {bookingVet ? formatVetDisplayName(bookingVet.full_name, bookingVet.role) : 'Veterinarian'}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setBookingVisible(false)} accessibilityLabel="Close appointment form">

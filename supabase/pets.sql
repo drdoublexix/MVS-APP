@@ -45,7 +45,7 @@ create policy "Vets can view pets of active consultation clients" on public.pets
       select 1
       from public.profiles
       where profiles.id = auth.uid()
-        and profiles.role::text in ('vet', 'veterinarian')
+        and profiles.role::text in ('vet', 'veterinarian', 'paravet')
     )
   );
 

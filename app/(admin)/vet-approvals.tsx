@@ -39,7 +39,8 @@ export default function VetApprovalsScreen() {
       await setVetApproval(vet.id, true);
       setSelectedVet(null);
       await loadVets();
-      Alert.alert('Veterinarian approved', `${vet.full_name || vet.email} can now appear in the client vet directory.`);
+      const professionalLabel = vet.role === 'paravet' ? 'Veterinary paraprofessional' : 'Veterinarian';
+      Alert.alert(`${professionalLabel} approved`, `${vet.full_name || vet.email} can now appear in the client directory.`);
     } catch (saveError) {
       console.error('[Vet Approvals] Could not approve veterinarian:', saveError);
       setError(saveError instanceof Error ? saveError.message : 'Could not approve this veterinarian.');
@@ -50,9 +51,9 @@ export default function VetApprovalsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.heading}>Veterinarian approvals</Text>
+      <Text style={styles.heading}>Veterinary professional approvals</Text>
       <Text style={styles.subtitle}>
-        New vet accounts stay out of the client directory until you approve them. Existing vets remain listed.
+        New veterinarian and paraprofessional accounts stay out of the client directory until approved.
       </Text>
 
       <View style={styles.searchBox}>
@@ -64,7 +65,7 @@ export default function VetApprovalsScreen() {
           placeholderTextColor="#64748B"
           autoCapitalize="none"
           style={styles.searchInput}
-          accessibilityLabel="Search veterinarian applications"
+          accessibilityLabel="Search veterinary professional applications"
         />
       </View>
 
@@ -86,7 +87,7 @@ export default function VetApprovalsScreen() {
       {loading ? <ActivityIndicator color="#00C853" style={styles.loader} /> : null}
       {!loading && !error && vets.length === 0 ? (
         <Text style={styles.empty}>
-          {showApproved ? 'No approved veterinarian accounts found.' : 'No pending veterinarian approvals.'}
+          {showApproved ? 'No approved veterinary professional accounts found.' : 'No pending veterinary professional approvals.'}
         </Text>
       ) : null}
 
@@ -94,6 +95,7 @@ export default function VetApprovalsScreen() {
         <View key={vet.id} style={styles.vetCard}>
           <View style={styles.vetCopy}>
             <Text style={styles.name}>{vet.full_name || 'Name unavailable'}</Text>
+            <Text style={styles.meta}>{vet.role === 'paravet' ? 'Licensed veterinary paraprofessional' : 'Veterinarian'}</Text>
             <Text style={styles.email}>{vet.email || 'Email unavailable'}</Text>
             <Text style={styles.meta}>License: {vet.license_number || 'Not provided'}</Text>
             {vet.specialty ? <Text style={styles.meta}>Specialty: {vet.specialty}</Text> : null}
@@ -125,9 +127,9 @@ export default function VetApprovalsScreen() {
         <View style={styles.modalOverlay}>
           {selectedVet ? (
           <View style={styles.confirmation}>
-            <Text style={styles.modalTitle}>Approve this veterinarian?</Text>
+            <Text style={styles.modalTitle}>Approve this {selectedVet.role === 'paravet' ? 'veterinary paraprofessional' : 'veterinarian'}?</Text>
             <Text style={styles.modalCopy}>
-              {selectedVet.full_name || selectedVet.email} will become visible in the client vet directory.
+              {selectedVet.full_name || selectedVet.email} will become visible in the client directory.
             </Text>
             <View style={styles.modalActions}>
               <Pressable style={styles.cancelButton} onPress={() => setSelectedVet(null)} disabled={savingVetId !== null}>
@@ -140,7 +142,7 @@ export default function VetApprovalsScreen() {
               >
                 {savingVetId === selectedVet.id
                   ? <ActivityIndicator color="#FFFFFF" size="small" />
-                  : <Text style={styles.confirmText}>Approve vet</Text>}
+                  : <Text style={styles.confirmText}>Approve</Text>}
               </Pressable>
             </View>
           </View>

@@ -9,7 +9,7 @@ import { getCurrentUser, supabase } from '../../lib/supabase';
 type AppointmentFilter = 'requests' | 'upcoming' | 'history';
 
 const statusLabels: Record<AppointmentStatus, string> = {
-  pending: 'Awaiting veterinarian',
+  pending: 'Awaiting provider',
   proposed: 'Your response needed',
   confirmed: 'Confirmed',
   declined: 'Declined',
@@ -121,7 +121,7 @@ export default function ClientAppointmentsScreen() {
         : `${appointment.client_name} cancelled the appointment for ${appointment.pet_name}.`;
       void sendAppointmentNotification(appointment.vet_id, 'vet', appointment.id, notificationTitle, notificationBody);
       await loadAppointments(true);
-      if (action === 'accept') Alert.alert('Appointment confirmed', 'Your appointment is now confirmed with the veterinarian.');
+      if (action === 'accept') Alert.alert('Appointment confirmed', 'Your appointment is now confirmed with the veterinary professional.');
     } catch (error) {
       console.error(`[Appointments] Could not ${action} client appointment:`, error);
       Alert.alert('Update unsuccessful', error instanceof Error ? error.message : 'Please try again.');

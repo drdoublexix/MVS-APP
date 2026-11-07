@@ -51,6 +51,7 @@ import { calculatePetAgeInWeeks } from "../lib/petAge";
 import { addPlatformFee, PLATFORM_FEE_PERCENT } from "../lib/price";
 import { sanitizeInput } from "../lib/sanitize";
 import { formatVetDisplayName } from "../lib/vetDisplayName";
+import { getVeterinaryProfessionalLabel, isVeterinaryProfessionalRole } from "../lib/veterinaryRoles";
 import {
   deleteMessageForEveryone,
   ensureConsultationRecord,
@@ -90,6 +91,7 @@ type ChatParams = {
   vet_id?: string;
   receiver_id?: string;
   vet?: string;
+  vetRole?: string;
   category?: string;
   initialMessage?: string;
   productId?: string;
@@ -246,8 +248,8 @@ type InvoiceProps = {
 type InvoiceItem = { id: string; description: string; amount: number };
 type Category = "Online Consultation" | "Emergency Request" | "Vaccination" | "Routine Checks" | "General Inquiry" | "Others";
 
-const getCategoryInitialMessage = (category: Category, vetName: string) => {
-  const addressedVet = formatVetDisplayName(vetName, "vet");
+const getCategoryInitialMessage = (category: Category, vetName: string, vetRole?: string) => {
+  const addressedVet = formatVetDisplayName(vetName, vetRole || "vet");
   switch (category) {
     case "Online Consultation":
       return `Hello ${addressedVet}, I would like to book an online consultation for my `;
@@ -384,7 +386,7 @@ function ParticipantProfileModal({ visible, profile, onClose }: { visible: boole
   const avatarUrl = getPublicAvatarUrl(profile?.avatar_url);
   const isMerchant = profile?.role === "merchant";
   const displayName = formatVetDisplayName(
-    profile?.full_name || profile?.business_name || (isMerchant ? "Merchant" : "Veterinarian"),
+    profile?.full_name || profile?.business_name || (isMerchant ? "Merchant" : "Veterinary professional"),
     profile?.role,
   );
   const location = [profile?.city, profile?.state].filter(Boolean).join(", ") || profile?.location;
@@ -394,7 +396,7 @@ function ParticipantProfileModal({ visible, profile, onClose }: { visible: boole
       <View style={styles.profileModalBackdrop}>
         <ScrollView style={styles.profileModal} contentContainerStyle={styles.profileModalContent}>
           <View style={styles.profileModalHeader}>
-            <Text style={styles.profileModalTitle}>{isMerchant ? "Merchant Profile" : "Veterinarian Profile"}</Text>
+            <Text style={styles.profileModalTitle}>{isMerchant ? "Merchant Profile" : `${getVeterinaryProfessionalLabel(profile?.role)} Profile`}</Text>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close participant profile">
               <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -461,7 +463,7 @@ function ParticipantProfileModal({ visible, profile, onClose }: { visible: boole
 
 function ParticipantProfileAction({ profile, compact = false }: { profile?: RecipientProfile | null; compact?: boolean }) {
   const [visible, setVisible] = useState(false);
-  if (!profile || !["merchant", "vet", "veterinarian"].includes(profile.role || "")) return null;
+  if (!profile || !(profile.role === "merchant" || isVeterinaryProfessionalRole(profile.role))) return null;
 
   return (
     <>
@@ -472,7 +474,7 @@ function ParticipantProfileAction({ profile, compact = false }: { profile?: Reci
           setVisible(true);
         }}
         accessibilityRole="button"
-        accessibilityLabel={`View ${profile.role === "merchant" ? "merchant" : "veterinarian"} profile`}
+        accessibilityLabel={`View ${profile.role === "merchant" ? "merchant" : getVeterinaryProfessionalLabel(profile.role)} profile`}
       >
         <MaterialCommunityIcons name="eye-outline" size={compact ? 16 : 18} color="#FFFFFF" />
         {!compact ? <Text style={styles.completeButtonText}>View Profile</Text> : null}
@@ -871,6 +873,7 @@ export default function ChatScreen() {
   const vetIdParam = firstParam(params.vet_id);
   const receiverIdParam = firstParam(params.receiver_id);
   const vetParam = firstParam(params.vet);
+  const vetRoleParam = firstParam(params.vetRole);
   const categoryParam = firstParam(params.category);
   const productNameParam = firstParam(params.productName);
   const initialMessageParam = firstParam(params.initialMessage);
@@ -886,7 +889,7 @@ export default function ChatScreen() {
   const clearedThreadsRef = useRef<Set<string>>(new Set());
   const [message, setMessage] = useState(
     isCategory(categoryParam)
-      ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian")
+      ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian", vetRoleParam)
       : initialMessageParam || starterMessageParam || ""
   );
   const [selectedImages, setSelectedImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
@@ -1482,7 +1485,7 @@ export default function ChatScreen() {
     openedRoute.current = routeKey;
     let cancelled = false;
     const participantName = vetParam
-      ? formatVetDisplayName(vetParam, "vet")
+      ? formatVetDisplayName(vetParam, vetRoleParam || "vet")
       : merchantNameParam || "Merchant";
     const resolvedConversationId = conversationIdParam || conversationIdFor(currentUserId, routeRecipient);
     const existingThread = threads.find((thread) => thread.id === resolvedConversationId);
@@ -1490,7 +1493,7 @@ export default function ChatScreen() {
       id: resolvedConversationId,
       participantId: routeRecipient,
       participantName,
-      participantRole: vetParam ? "veterinarian" : "merchant",
+      participantRole: vetParam ? vetRoleParam || "vet" : "merchant",
       productName: productNameParam,
       messages: existingThread?.messages ?? [],
       recipientProfile: existingThread?.recipientProfile,
@@ -1502,7 +1505,7 @@ export default function ChatScreen() {
       setRecipientProfile(null);
       setMessages(filterVisibleMessages(nextActive.messages, currentUserId));
       setActive(nextActive);
-      setMessage(isCategory(categoryParam) ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian") : initialMessageParam || starterMessageParam || "");
+      setMessage(isCategory(categoryParam) ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian", vetRoleParam) : initialMessageParam || starterMessageParam || "");
     });
     return () => {
       cancelled = true;
@@ -1510,6 +1513,7 @@ export default function ChatScreen() {
   }, [
     currentUserId,
     userRole,
+    vetRoleParam,
     conversationIdParam,
     recipientIdParam,
     merchantIdParam,
@@ -1560,8 +1564,8 @@ export default function ChatScreen() {
     if (
       !active ||
       !currentUserId ||
-      !["client", "veterinarian", "vet"].includes(userRole) ||
-      !["client", "veterinarian", "vet"].includes(active.participantRole)
+      !(userRole === "client" || isVeterinaryProfessionalRole(userRole)) ||
+      !(active.participantRole === "client" || isVeterinaryProfessionalRole(active.participantRole))
     )
       {
         queueMicrotask(() => setConsultationLoading(false));
@@ -1734,12 +1738,12 @@ export default function ChatScreen() {
     if (!initialMessageParam && !isCategory(categoryParam)) return;
     let cancelled = false;
     queueMicrotask(() => {
-      if (!cancelled) setMessage(isCategory(categoryParam) ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian") : initialMessageParam || "");
+      if (!cancelled) setMessage(isCategory(categoryParam) ? getCategoryInitialMessage(categoryParam, vetParam || "Veterinarian", vetRoleParam) : initialMessageParam || "");
     });
     return () => {
       cancelled = true;
     };
-  }, [initialMessageParam, categoryParam, vetParam]);
+  }, [initialMessageParam, categoryParam, vetParam, vetRoleParam]);
 
   useEffect(() => {
     if (!inquiryKeyParam || !starterMessageParam) return;
@@ -2241,7 +2245,7 @@ export default function ChatScreen() {
     setPatientPets([]);
     setMedicalRecords([]);
     try {
-      if (!active || !["vet", "veterinarian"].includes(userRole)) {
+      if (!active || !isVeterinaryProfessionalRole(userRole)) {
         console.warn("[Patient File] No active vet conversation available");
         return [];
       }
@@ -2418,7 +2422,7 @@ export default function ChatScreen() {
       await saveOfflineSnapshot(currentUserId, `vet-farm-records:${clientId}`, farms || []);
       const farmIds = (farms || []).map((farm) => farm.id);
       const { data: soapRecords, error: soapError } = farmIds.length
-        ? await (["vet", "veterinarian"].includes(userRole)
+        ? await (isVeterinaryProfessionalRole(userRole)
             ? supabase
                 .from("farm_soap_records")
                 .select("id, farm_id, subjective, objective, tentative_diagnosis, plan, created_at, is_deleted")
@@ -2522,7 +2526,7 @@ export default function ChatScreen() {
       userRole !== "client" ||
       !isUuid(currentUserId) ||
       !isUuid(active.participantId) ||
-      !["vet", "veterinarian"].includes(active.participantRole) ||
+      !isVeterinaryProfessionalRole(active.participantRole) ||
       consultation?.status === "active"
     ) {
       return;
@@ -2559,7 +2563,7 @@ export default function ChatScreen() {
 
   const handleEndConsultationByVet = async () => {
     if (
-      !(["vet", "veterinarian"].includes(userRole)) ||
+      !isVeterinaryProfessionalRole(userRole) ||
       !consultation ||
       consultation.vet_id !== currentUserId ||
       consultation.status !== "active"
@@ -2711,7 +2715,7 @@ export default function ChatScreen() {
   };
 
   const createInvoice = async (amount: number, note: string, items: InvoiceItem[]) => {
-    if (!active || !currentUserId || !isUuid(active.participantId) || !["merchant", "vet", "veterinarian"].includes(userRole)) return;
+    if (!active || !currentUserId || !isUuid(active.participantId) || !(userRole === "merchant" || isVeterinaryProfessionalRole(userRole))) return;
     setInvoiceSubmitting(true);
     try {
       const user = await getCurrentUser();
@@ -2844,7 +2848,7 @@ export default function ChatScreen() {
   };
 
   const createPrescription = async (draft: PrescriptionDraft) => {
-    if (!active || !currentUserId || !["vet", "veterinarian"].includes(userRole)) return;
+    if (!active || !currentUserId || !isVeterinaryProfessionalRole(userRole)) return;
     const activeConversationId = active.id;
     if (!activeConversationId) {
       Alert.alert("Error", "Missing active conversation ID.");
@@ -3192,8 +3196,8 @@ export default function ChatScreen() {
       return;
     }
     if (
-      ["client", "veterinarian", "vet"].includes(userRole) &&
-      ["client", "veterinarian", "vet"].includes(active.participantRole)
+      (userRole === "client" || isVeterinaryProfessionalRole(userRole)) &&
+      (active.participantRole === "client" || isVeterinaryProfessionalRole(active.participantRole))
     ) {
       try {
         const consultation = await ensureConsultationRecord(
@@ -3414,7 +3418,7 @@ export default function ChatScreen() {
         patientFileLoading={patientFileLoading}
         onClosePatientFile={() => setPatientFileVisible(false)}
         uploading={uploading}
-        canCreateInvoice={["merchant", "vet", "veterinarian"].includes(userRole)}
+        canCreateInvoice={userRole === "merchant" || isVeterinaryProfessionalRole(userRole)}
         invoiceVisible={invoiceVisible}
         invoiceSubmitting={invoiceSubmitting}
         onOpenInvoice={() => { setInvoiceItems([]); setInvoiceVisible(true); }}
@@ -3453,7 +3457,7 @@ export default function ChatScreen() {
           <Text style={styles.subtitle}>
             {userRole === "merchant"
               ? "Connect with pet parents and vets"
-              : ["vet", "veterinarian"].includes(userRole)
+              : isVeterinaryProfessionalRole(userRole)
                 ? "Connect with pet parents and merchants"
                 : "Connect with vets and merchants"}
           </Text>
@@ -3495,8 +3499,7 @@ export default function ChatScreen() {
                       name={
                         thread.participantRole === "merchant"
                           ? "store"
-                          : thread.participantRole === "vet" ||
-                            thread.participantRole === "veterinarian"
+                          : isVeterinaryProfessionalRole(thread.participantRole)
                           ? "hospital-box"
                           : "account"
                       }
@@ -3520,9 +3523,8 @@ export default function ChatScreen() {
                     <Text style={styles.muted}>
                       {thread.participantRole === "merchant"
                         ? "Merchant"
-                        : thread.participantRole === "vet" ||
-                          thread.participantRole === "veterinarian"
-                        ? "Veterinarian"
+                        : isVeterinaryProfessionalRole(thread.participantRole)
+                        ? getVeterinaryProfessionalLabel(thread.participantRole)
                         : "Pet parent"}
                     </Text>
                     {userRole === "client" ? (
@@ -3860,8 +3862,8 @@ function ChatRoom({
   }, [matchingMessages.length, searchResultIndex, trimmedSearchQuery.length]);
   const isPetParent = userRole === "client" || consultation?.client_id === currentUserId;
   const isVetClientThread =
-    (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
-    (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
+    (isVeterinaryProfessionalRole(userRole) && active.participantRole === "client") ||
+    (userRole === "client" && isVeterinaryProfessionalRole(active.participantRole));
   const consultationStatus = consultation?.status || null;
   const consultationPending = consultationLoading || (
     isVetClientThread && !!consultation && consultation.conversation_id !== active.id
@@ -3899,13 +3901,13 @@ function ChatRoom({
             style={styles.headerActions}
             contentContainerStyle={styles.headerActionsContent}
           >
-            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+            {isVetClientThread && isVeterinaryProfessionalRole(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
                 <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>Pet Records</Text>
               </TouchableOpacity>
             ) : null}
-            {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
+            {!isMerchantConversation && isVeterinaryProfessionalRole(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
                 <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>Farm Records</Text>
@@ -3923,13 +3925,13 @@ function ChatRoom({
                 <Text style={styles.clearThreadText}>Clear Thread</Text>
               </TouchableOpacity>
             ) : null}
-            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+            {isVetClientThread && isVeterinaryProfessionalRole(userRole) ? (
               <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
                 <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>Prescribe</Text>
               </TouchableOpacity>
             ) : null}
-            {userRole === "client" && ["merchant", "vet", "veterinarian"].includes(recipientProfile?.role || "") ? (
+            {userRole === "client" && (recipientProfile?.role === "merchant" || isVeterinaryProfessionalRole(recipientProfile?.role)) ? (
               <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
                 <ShieldCheck size={16} stroke="#FFFFFF" />
                 <Text style={styles.completeButtonText}>MVS User Protection</Text>
@@ -4811,12 +4813,12 @@ function PatientFileOverlay({ visible, loading, pets, activePetId, records, user
                         <Text style={styles.patientDetail}>{record.objective || "-"}</Text>
                         <Text style={styles.patientLabel}>Plan</Text>
                         <Text style={styles.patientDetail}>{record.plan}</Text>
-                        {userRole === "vet" || userRole === "veterinarian" ? <TouchableOpacity style={styles.deleteButton} onPress={() => onDeleteRecord(record.id)}><Text style={styles.deleteButtonText}>Mark as Done</Text></TouchableOpacity> : null}
+                        {isVeterinaryProfessionalRole(userRole) ? <TouchableOpacity style={styles.deleteButton} onPress={() => onDeleteRecord(record.id)}><Text style={styles.deleteButtonText}>Mark as Done</Text></TouchableOpacity> : null}
                       </View>
                     ))}
                 </>
                 <PetMedicalHistory key={`history-${pet.id}-${historyVersion}`} petId={pet.id} />
-                {userRole === "vet" || userRole === "veterinarian" ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}
+                {isVeterinaryProfessionalRole(userRole) ? <VetMedicalLogForm petId={pet.id} onSaved={() => setHistoryVersion((version) => version + 1)} /> : null}
               </View>
             ))}
           </ScrollView>
@@ -4835,7 +4837,7 @@ function ConsultationTypeModal({ visible, onClose, onPet, onFarm }: { visible: b
 }
 
 function FarmRecordsModal({ visible, loading, records, selectFarm, userRole, clientId, onDeleteRecord, onRefresh, onClose, onSelectFarm }: { visible: boolean; loading: boolean; records: FarmRecord[]; selectFarm: boolean; userRole: string; clientId: string | null; onDeleteRecord: (recordId: string) => void; onRefresh: () => void; onClose: () => void; onSelectFarm: (farmId: string) => void }) {
-  const isVet = userRole === 'vet' || userRole === 'veterinarian';
+  const isVet = isVeterinaryProfessionalRole(userRole);
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.patientOverlay}><View style={styles.farmRecordsSheet}><View style={styles.patientHeader}><Text style={styles.patientTitle}>Farm & Livestock Records</Text><TouchableOpacity onPress={onClose} style={styles.patientClose} accessibilityLabel="Close farm records"><X size={22} color="#FFFFFF" /></TouchableOpacity></View>{loading ? <ActivityIndicator color="#10B981" /> : records.length === 0 ? <Text style={styles.empty}>No farm records found for this client.</Text> : <ScrollView style={styles.farmRecordsScroll} contentContainerStyle={styles.farmRecordsContent}>{records.map((farm) => { const farmSoapRecords = (farm.soapRecords || []).filter((soap) => soap.farm_id === farm.id); return <View key={farm.id} style={styles.farmRecordCard}><TouchableOpacity disabled={!selectFarm} onPress={selectFarm ? () => onSelectFarm(farm.id) : undefined}><Text style={styles.primary}>{farm.species}</Text><Text style={styles.farmRecordDetail}>Breed: {farm.breed || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Flock Size: {farm.flock_size ?? 0}</Text><Text style={styles.farmRecordDetail}>Location: {farm.location || "Not specified"}</Text><Text style={styles.farmRecordDetail}>Restock Date: {farm.restock_date || "Not specified"}</Text>{farm.medical_log ? <><Text style={styles.farmRecordHistory}>Medical Log</Text><Text style={styles.farmRecordDetail}>{farm.medical_log}</Text></> : null}{farm.production_summary ? <><Text style={styles.farmRecordHistory}>Production Summary</Text><Text style={styles.farmRecordDetail}>{farm.production_summary}</Text></> : null}{farmSoapRecords.length ? <View><Text style={styles.farmRecordHistory}>SOAP History</Text>{farmSoapRecords.map((soap) => <View key={soap.id} style={styles.farmSoapHistory}><Text style={styles.farmRecordDetail}>{new Date(soap.created_at).toLocaleDateString()}</Text>{soap.subjective ? <Text style={styles.farmRecordDetail}>Symptoms: {soap.subjective}</Text> : null}{soap.objective ? <Text style={styles.farmRecordDetail}>Findings: {soap.objective}</Text> : null}{soap.tentative_diagnosis ? <Text style={styles.farmRecordDetail}>Tentative Diagnosis: {soap.tentative_diagnosis}</Text> : null}{soap.plan ? <Text style={styles.farmRecordDetail}>Plan: {soap.plan}</Text> : null}{isVet ? <TouchableOpacity style={styles.deleteButton} onPress={() => onDeleteRecord(soap.id)}><Text style={styles.deleteButtonText}>Mark as Done</Text></TouchableOpacity> : null}</View>)}</View> : <Text style={styles.farmRecordDetail}>No SOAP history</Text>}</TouchableOpacity><FarmMedicalHistory farmId={farm.id} /><DigitalPassportCard recordId={farm.id} recordType="farm" />{isVet && clientId ? <VetFarmMedicalLogForm farmId={farm.id} clientId={clientId} onSaved={onRefresh} /> : null}</View>; })}</ScrollView>}</View></View></Modal>;
 }
 
@@ -5278,8 +5280,8 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
   const isConsultActive = consultation.status === "active";
   const isPetParent = currentUserId === consultation.client_id || userRole === "client";
   const isVetClientThread =
-    (["vet", "veterinarian"].includes(userRole) && active.participantRole === "client") ||
-    (userRole === "client" && ["vet", "veterinarian"].includes(active.participantRole));
+    (isVeterinaryProfessionalRole(userRole) && active.participantRole === "client") ||
+    (userRole === "client" && isVeterinaryProfessionalRole(active.participantRole));
   const isMerchantConversation = userRole === "merchant" || active.participantRole === "merchant";
   const showInvoiceAction = canCreateInvoice && (!isMerchantConversation || userRole === "merchant");
 
@@ -5312,13 +5314,13 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
             style={styles.headerActions}
             contentContainerStyle={styles.headerActionsContent}
           >
-            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+            {isVetClientThread && isVeterinaryProfessionalRole(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenPatientFile}>
                 <MaterialCommunityIcons name="file-account" size={18} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>Pet Records</Text>
               </TouchableOpacity>
             ) : null}
-            {!isMerchantConversation && (userRole === "vet" || userRole === "veterinarian") ? (
+            {!isMerchantConversation && isVeterinaryProfessionalRole(userRole) ? (
               <TouchableOpacity style={styles.patientButton} onPress={onOpenFarmRecords}>
                 <MaterialCommunityIcons name="barn" size={18} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>Farm Records</Text>
@@ -5336,13 +5338,13 @@ function InvoiceModal({ visible, onClose, onSubmit, submitting, initialItems }: 
                 <Text style={styles.clearThreadText}>Clear Thread</Text>
               </TouchableOpacity>
             ) : null}
-            {isVetClientThread && ["vet", "veterinarian"].includes(userRole) ? (
+            {isVetClientThread && isVeterinaryProfessionalRole(userRole) ? (
               <TouchableOpacity style={styles.prescriptionActionHeader} onPress={onOpenPrescription}>
                 <MaterialCommunityIcons name="prescription" size={17} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>Prescribe</Text>
               </TouchableOpacity>
             ) : null}
-            {userRole === "client" && ["merchant", "vet", "veterinarian"].includes(recipientProfile?.role || "") ? (
+            {userRole === "client" && (recipientProfile?.role === "merchant" || isVeterinaryProfessionalRole(recipientProfile?.role)) ? (
               <TouchableOpacity style={styles.buyerProtectionButton} onPress={() => setBuyerProtectionVisible(true)}>
                 <ShieldCheck size={16} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>MVS User Protection</Text>

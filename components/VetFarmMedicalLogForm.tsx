@@ -7,6 +7,7 @@ import { verifyDigitalPassportDetails } from '../lib/digitalPassports';
 import { createOfflineRecordId, enqueueOfflineRecord, syncOfflineRecords } from '../lib/offlineRecords';
 import { sanitizeInput } from '../lib/sanitize';
 import { getCurrentUser, readCachedAuthState, supabase } from '../lib/supabase';
+import { isVeterinaryProfessionalRole } from '../lib/veterinaryRoles';
 
 type Props = { farmId: string; clientId: string; onSaved: () => void };
 type Preset = 'vaccination' | 'deworming' | 'custom';
@@ -61,7 +62,7 @@ export default function VetFarmMedicalLogForm({ farmId, clientId, onSaved }: Pro
         ? await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
         : { data: { role: cachedState?.profile?.role }, error: null };
       if (profileError) throw profileError;
-      if (!['vet', 'veterinarian'].includes(profile?.role || '')) throw new Error('Only veterinarians can log farm medical records.');
+      if (!isVeterinaryProfessionalRole(profile?.role)) throw new Error('Only veterinary professionals can log farm medical records.');
       const payload = {
         id: createOfflineRecordId(),
         farm_id: farmId,

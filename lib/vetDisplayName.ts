@@ -1,9 +1,11 @@
+import { isVeterinarianRole } from './veterinaryRoles';
+
 export const formatVetDisplayName = (
   name?: string | null,
   role?: string | null,
 ): string => {
   const cleanName = name?.trim() || '';
-  if (!['vet', 'veterinarian'].includes(role?.trim().toLowerCase() || '')) {
+  if (!isVeterinarianRole(role)) {
     return cleanName;
   }
   if (!cleanName || cleanName.toLowerCase() === 'veterinarian') return 'Veterinarian';

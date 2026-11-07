@@ -26,6 +26,7 @@ create table if not exists public.profiles (
   role text default 'client',
   phone_number text,
   specialty text,
+  license_number text,
   loyalty_points integer,
   is_verified boolean not null default false,
   is_vet_approved boolean not null default false
@@ -37,6 +38,7 @@ alter table public.profiles
   add column if not exists role text default 'client',
   add column if not exists phone_number text,
   add column if not exists specialty text,
+  add column if not exists license_number text,
   add column if not exists loyalty_points integer,
   add column if not exists is_verified boolean not null default false,
   add column if not exists is_vet_approved boolean not null default false,
@@ -46,9 +48,7 @@ alter table public.profiles
 alter table public.profiles
   alter column notification_preferences set default '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb;
 
-create unique index if not exists profiles_phone_number_unique
-  on public.profiles (phone_number)
-  where phone_number is not null;
+drop index if exists public.profiles_phone_number_unique;
 
 create or replace function public.sync_profile_verification()
 returns trigger
@@ -77,19 +77,25 @@ declare
   requested_role public."user_role";
   requested_phone text;
   requested_specialty text;
+  requested_license_number text;
   requested_loyalty_points integer;
   requested_is_verified boolean;
 begin
   requested_role := (case lower(coalesce(new.raw_user_meta_data ->> 'role', 'client'))
     when 'vet' then 'vet'
     when 'veterinarian' then 'vet'
+    when 'paravet' then 'paravet'
     when 'merchant' then 'merchant'
     else 'client'
   end)::public.user_role;
 
   requested_phone := nullif(trim(new.raw_user_meta_data ->> 'phone_number'), '');
   requested_specialty := case
-    when requested_role = 'vet' then nullif(new.raw_user_meta_data ->> 'specialty', '')
+    when requested_role in ('vet', 'paravet') then nullif(new.raw_user_meta_data ->> 'specialty', '')
+    else null
+  end;
+  requested_license_number := case
+    when requested_role in ('vet', 'paravet') then nullif(trim(new.raw_user_meta_data ->> 'license_number'), '')
     else null
   end;
   requested_loyalty_points := case
@@ -105,6 +111,7 @@ begin
     role,
     phone_number,
     specialty,
+    license_number,
     loyalty_points,
     is_verified,
     notification_preferences
@@ -116,6 +123,7 @@ begin
     requested_role,
     requested_phone,
     requested_specialty,
+    requested_license_number,
     requested_loyalty_points,
     requested_is_verified,
     '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
@@ -123,68 +131,30 @@ begin
   on conflict (id) do update set
     email = excluded.email,
     full_name = coalesce(excluded.full_name, public.profiles.full_name),
+    license_number = coalesce(excluded.license_number, public.profiles.license_number),
     role = case
-      when public.profiles.role = 'client' and requested_role in ('vet', 'merchant') then requested_role
+      when public.profiles.role = 'client' and requested_role in ('vet', 'paravet', 'merchant') then requested_role
       else public.profiles.role
     end,
-    specialty = case when requested_role = 'vet' then excluded.specialty else public.profiles.specialty end,
+    specialty = case when requested_role in ('vet', 'paravet') then excluded.specialty else public.profiles.specialty end,
     loyalty_points = case when requested_role = 'client' then coalesce(excluded.loyalty_points, public.profiles.loyalty_points, 0) else null end,
     is_verified = public.profiles.is_verified or excluded.is_verified;
 
   return new;
-exception
-  when unique_violation then
-    -- A duplicate phone must not make auth.users signup fail. The app checks
-    -- this before signup and persists the phone after a successful session.
-    insert into public.profiles (
-      id,
-      email,
-      full_name,
-      role,
-      specialty,
-      loyalty_points,
-      is_verified,
-      notification_preferences
-    )
-    values (
-      new.id,
-      new.email,
-      coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), nullif(new.raw_user_meta_data ->> 'name', '')),
-      requested_role,
-      requested_specialty,
-      requested_loyalty_points,
-      requested_is_verified,
-      '{"chat": true, "orders": true, "vaccines": true, "consultations": true}'::jsonb
-    )
-    on conflict (id) do nothing;
-    return new;
 end;
 $$;
 
 update public.profiles
 set specialty = null
-where role = 'vet' and specialty = 'General Veterinary Practitioner';
+where role in ('vet', 'paravet') and specialty = 'General Veterinary Practitioner';
 
 update public.profiles
 set loyalty_points = null
-where role in ('vet', 'merchant') and loyalty_points is not null;
+where role in ('vet', 'paravet', 'merchant') and loyalty_points is not null;
 
--- Remove every application trigger on auth.users. Keeping an older trigger
--- alongside this one would execute both functions and can still abort signup.
-do $$
-declare
-  trigger_record record;
-begin
-  for trigger_record in
-    select tgname
-    from pg_trigger
-    where tgrelid = 'auth.users'::regclass
-      and not tgisinternal
-  loop
-    execute format('drop trigger if exists %I on auth.users', trigger_record.tgname);
-  end loop;
-end;
-$$;
+-- Replace only the profile triggers; preserve NIN and other auth safeguards.
+drop trigger if exists on_auth_user_created on auth.users;
+drop trigger if exists on_auth_user_email_confirmed on auth.users;
 
 create trigger on_auth_user_created
 after insert on auth.users

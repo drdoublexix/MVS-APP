@@ -296,8 +296,8 @@ export const loginUser = async (email: string, password: string) => {
   return data;
 };
 
-export type AppRole = 'client' | 'vet' | 'merchant';
-export type DatabaseRole = 'client' | 'vet' | 'merchant';
+export type AppRole = 'client' | 'vet' | 'paravet' | 'merchant';
+export type DatabaseRole = 'client' | 'vet' | 'paravet' | 'merchant';
 export type ReplySnippet = {
   id: string;
   sender_name: string;
@@ -381,6 +381,7 @@ export const uploadChatAttachment = async (chatId: string, asset: ImagePickerAss
 // Normalize role from UI or legacy database values to the current database enum.
 export const normalizeRole = (role: string | AppRole | DatabaseRole): DatabaseRole => {
   if (role === 'vet' || role === 'veterinarian') return 'vet';
+  if (role === 'paravet') return 'paravet';
   if (role === 'merchant') return 'merchant';
   return 'client';
 };
@@ -388,6 +389,7 @@ export const normalizeRole = (role: string | AppRole | DatabaseRole): DatabaseRo
 // Get the app role from database role
 export const denormalizeRole = (dbRole: DatabaseRole | string): AppRole => {
   if (dbRole === 'vet' || dbRole === 'veterinarian') return 'vet';
+  if (dbRole === 'paravet') return 'paravet';
   if (dbRole === 'merchant') return 'merchant';
   return 'client';
 };
@@ -395,7 +397,7 @@ export const denormalizeRole = (dbRole: DatabaseRole | string): AppRole => {
 // Get navigation path from normalized role
 export const getRoleNavPath = (role: DatabaseRole | AppRole | string): string => {
   const normalized = normalizeRole(role);
-  if (normalized === 'vet') return '/(vet)';
+  if (normalized === 'vet' || normalized === 'paravet') return '/(vet)';
   if (normalized === 'merchant') return '/(merchant)';
   return '/(client)';
 };
@@ -499,10 +501,13 @@ export type ConsultationStatus = 'active' | 'completed';
 export const ensureConsultationRecord = async (conversationId: string, currentUserId: string, recipientId: string, currentUserRole: string, recipientRole: string, serviceType?: string, activateExisting = true) => {
   const currentRole = normalizeRole(currentUserRole);
   const normalizedRecipientRole = normalizeRole(recipientRole);
-  if (!['client', 'vet'].includes(currentRole) || !['client', 'vet'].includes(normalizedRecipientRole)) return null;
+  const isCurrentProfessional = currentRole === 'vet' || currentRole === 'paravet';
+  const isRecipientProfessional = normalizedRecipientRole === 'vet' || normalizedRecipientRole === 'paravet';
+  if (!['client', 'vet', 'paravet'].includes(currentRole) || !['client', 'vet', 'paravet'].includes(normalizedRecipientRole)) return null;
 
   const clientId = currentRole === 'client' ? currentUserId : recipientId;
-  const vetId = currentRole === 'vet' ? currentUserId : recipientId;
+  const vetId = isCurrentProfessional ? currentUserId : recipientId;
+  if (currentRole === 'client' ? !isRecipientProfessional : normalizedRecipientRole !== 'client') return null;
   const { data: existing, error: lookupError } = await supabase
     .from('consultations')
     .select('id, conversation_id, client_id, vet_id, status, service_type')
